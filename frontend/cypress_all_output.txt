@@ -1,0 +1,26 @@
+
+
+
+  Critical Path Sanity Check
+    ÔêÜ Should log in as ADMIN and access Cash Dashboard (2092ms)
+    ÔêÜ Should protect routes from unauthenticated access (309ms)
+
+
+  2 passing (2s)
+
+
+
+  Tables Map Editor (Drag & Drop)
+    1) should create an area, a table, move it, and save the position
+
+
+  0 passing (7s)
+  1 failing
+
+  1) Tables Map Editor (Drag & Drop)
+       should create an area, a table, move it, and save the position:
+     AssertionError: Timed out retrying after 4000ms: Expected to find element: `input[placeholder="Posici├│n X"]`, but never found it.
+      at Context.eval (webpack://frontend_temp/./cypress/e2e/tables_dnd.cy.ts:25:11)
+
+
+
