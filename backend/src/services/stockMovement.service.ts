@@ -1,6 +1,7 @@
 
 import { PrismaClient, StockMoveType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { stockAlertService } from './stockAlert.service';
 
 export class StockMovementService {
   
@@ -12,8 +13,9 @@ export class StockMovementService {
    * @param isAdjustment If true, and type is ADJUSTMENT, quantity is treated as the DELTA. 
    *                     If the user wants to set exact stock, the controller should calculate the delta.
    *                     For now, we assume quantity is always the amount to ADD or SUBTRACT.
+   * @param reason Optional reason string
    */
-  async register(ingredientId: number, type: StockMoveType, quantity: number, externalTx?: any) {
+  async register(ingredientId: number, type: StockMoveType, quantity: number, reason?: string, externalTx?: any) {
     // If not adjustment, quantity is absolute magnitude
     if (type !== 'ADJUSTMENT' && quantity < 0) {
         throw new Error("Quantity must be positive for PURCHASE, SALE, or WASTE");
@@ -25,7 +27,8 @@ export class StockMovementService {
         data: {
           ingredientId,
           type,
-          quantity // Record the raw quantity (can be negative for adjustment)
+          quantity, // Record the raw quantity (can be negative for adjustment)
+          reason
         }
       });
 
@@ -53,11 +56,17 @@ export class StockMovementService {
       return { movement, newStock: ingredient.stock };
     };
 
+    let result;
     if (externalTx) {
-        return await performMove(externalTx);
+        result = await performMove(externalTx);
     } else {
-        return await prisma.$transaction(async (tx) => performMove(tx));
+        result = await prisma.$transaction(async (tx) => performMove(tx));
     }
+    
+    // Check for low stock alert after movement
+    stockAlertService.checkAndAlert(ingredientId, Number(result.newStock));
+    
+    return result;
   }
 
   async getHistory(ingredientId?: number) {

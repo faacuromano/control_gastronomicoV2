@@ -8,14 +8,23 @@ datasource db {
 }
 
 model TenantConfig {
-  id             Int     @id @default(1)
-  businessName   String
-  enableStock    Boolean @default(true)
-  enableDelivery Boolean @default(true)
-  enableKDS      Boolean @default(false)
-  enableFiscal   Boolean @default(false)
-  enableDigital  Boolean @default(false)
-  currencySymbol String  @default("$")
+  id               Int     @id @default(1)
+  businessName     String
+  enableStock      Boolean @default(true)
+  enableDelivery   Boolean @default(true)
+  enableKDS        Boolean @default(false)
+  enableFiscal     Boolean @default(false)
+  enableDigital    Boolean @default(false)
+  enableBlindCount Boolean @default(false)  // Arqueo ciego: oculta monto esperado al cerrar turno
+  currencySymbol   String  @default("$")
+}
+
+// Dedicated sequence table for order numbers
+// Using a single-row table with AUTO_INCREMENT-like behavior
+// This is much more efficient than SELECT MAX(orderNumber) FOR UPDATE
+model OrderSequence {
+  id            Int @id @default(1)
+  lastNumber    Int @default(0)
 }
 
 model Role {
@@ -26,43 +35,54 @@ model Role {
 }
 
 model User {
-  id           Int         @id @default(autoincrement())
-  roleId       Int
-  role         Role        @relation(fields: [roleId], references: [id])
-  name         String
-  email        String?     @unique
-  pinCode      String?     @unique @db.VarChar(6)
-  passwordHash String?
-  uiSettings   Json?
-  orders       Order[]     @relation("OrderServer")
-  deliveries   Order[]     @relation("OrderDriver")
-  shifts       CashShift[]
-  isActive     Boolean     @default(true)
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
+  id                  Int         @id @default(autoincrement())
+  roleId              Int
+  role                Role        @relation(fields: [roleId], references: [id])
+  name                String
+  email               String?     @unique
+  pinCode             String?     @unique @db.VarChar(6)
+  passwordHash        String?
+  uiSettings          Json?
+  orders              Order[]     @relation("OrderServer")
+  deliveries          Order[]     @relation("OrderDriver")
+  shifts              CashShift[]
+  isActive            Boolean     @default(true)
+  failedLoginAttempts Int         @default(0)  // Count of consecutive failed PIN attempts
+  lockedUntil         DateTime?   // Account locked until this time (null = not locked)
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
 
   @@index([roleId])
 }
 
 model Category {
-  id        Int       @id @default(autoincrement())
-  name      String
-  printerId Int?
-  printer   Printer?  @relation(fields: [printerId], references: [id])
-  products  Product[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id               Int                   @id @default(autoincrement())
+  name             String
+  printerId        Int?
+  printer          Printer?              @relation(fields: [printerId], references: [id])
+  products         Product[]
+  printerOverrides AreaPrinterOverride[] // Areas that override this category's printer
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
 
   @@index([printerId])
 }
 
 model Printer {
-  id         Int        @id @default(autoincrement())
-  name       String
-  ipAddress  String?
-  categories Category[]
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
+  id             Int              @id @default(autoincrement())
+  name           String
+  connectionType PrinterConnection @default(NETWORK)
+  ipAddress      String?          // For NETWORK type: IP address (port 9100 default)
+  windowsName    String?          // For USB type: Windows printer name
+  categories     Category[]
+  areaOverrides  AreaPrinterOverride[]  // Areas using this printer as override
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
+
+enum PrinterConnection {
+  NETWORK  // TCP/IP connection (tcp://IP:9100)
+  USB      // Windows USB printer via printer name
 }
 
 model Product {
@@ -119,6 +139,7 @@ model ModifierOption {
   group           ModifierGroup       @relation(fields: [modifierGroupId], references: [id])
   name            String
   priceOverlay    Decimal             @default(0) @db.Decimal(10, 2)
+  isActive        Boolean             @default(true)
   ingredientId    Int?
   ingredient      Ingredient?         @relation(fields: [ingredientId], references: [id])
   qtyUsed         Decimal?            @default(1)
@@ -129,17 +150,18 @@ model ModifierOption {
 }
 
 model Ingredient {
-  id        Int                 @id @default(autoincrement())
-  name      String
-  unit      String
-  cost      Decimal             @db.Decimal(10, 4)
-  stock     Decimal             @db.Decimal(10, 4)
-  minStock  Decimal             @default(0)
-  products  ProductIngredient[]
-  modifiers ModifierOption[]
-  movements StockMovement[]
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
+  id                 Int                 @id @default(autoincrement())
+  name               String
+  unit               String
+  cost               Decimal             @db.Decimal(10, 4)
+  stock              Decimal             @db.Decimal(10, 4)
+  minStock           Decimal             @default(0)
+  products           ProductIngredient[]
+  modifiers          ModifierOption[]
+  movements          StockMovement[]
+  purchaseOrderItems PurchaseOrderItem[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
 }
 
 model ProductIngredient {
@@ -160,6 +182,7 @@ model StockMovement {
   ingredient   Ingredient    @relation(fields: [ingredientId], references: [id])
   type         StockMoveType
   quantity     Decimal       @db.Decimal(10, 4)
+  reason       String?       // Reason for movement (e.g. "Order #123", "Expired")
   createdAt    DateTime      @default(now())
 
   @@index([ingredientId])
@@ -172,6 +195,83 @@ enum StockMoveType {
   ADJUSTMENT
 }
 
+model Supplier {
+  id             Int             @id @default(autoincrement())
+  name           String
+  phone          String?
+  email          String?
+  address        String?
+  taxId          String?         // CUIT/RUT
+  purchaseOrders PurchaseOrder[]
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([name])
+}
+
+model PurchaseOrder {
+  id          Int                 @id @default(autoincrement())
+  orderNumber Int                 @unique
+  supplierId  Int
+  supplier    Supplier            @relation(fields: [supplierId], references: [id])
+  status      PurchaseStatus      @default(PENDING)
+  subtotal    Decimal             @default(0) @db.Decimal(10, 2)
+  total       Decimal             @default(0) @db.Decimal(10, 2)
+  notes       String?             @db.Text
+  orderedAt   DateTime            @default(now())
+  receivedAt  DateTime?
+  items       PurchaseOrderItem[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([supplierId])
+  @@index([status])
+  @@index([orderedAt])
+}
+
+model PurchaseOrderItem {
+  id              Int           @id @default(autoincrement())
+  purchaseOrderId Int
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  ingredientId    Int
+  ingredient      Ingredient    @relation(fields: [ingredientId], references: [id])
+  quantity        Decimal       @db.Decimal(10, 4)
+  unitCost        Decimal       @db.Decimal(10, 4)
+
+  @@index([purchaseOrderId])
+  @@index([ingredientId])
+}
+
+enum PurchaseStatus {
+  PENDING
+  ORDERED
+  PARTIAL
+  RECEIVED
+  CANCELLED
+}
+
+// ==================== INVOICING ====================
+
+model Invoice {
+  id            Int         @id @default(autoincrement())
+  orderId       Int         @unique
+  order         Order       @relation(fields: [orderId], references: [id])
+  invoiceNumber String      @unique
+  type          InvoiceType @default(RECEIPT)
+  clientName    String?
+  clientTaxId   String?     // CUIT/DNI
+  subtotal      Decimal     @db.Decimal(10, 2)
+  tax           Decimal     @default(0) @db.Decimal(10, 2)
+  total         Decimal     @db.Decimal(10, 2)
+  createdAt     DateTime    @default(now())
+}
+
+enum InvoiceType {
+  RECEIPT    // Ticket simple
+  INVOICE_B  // Factura B (Consumidor Final)
+}
+
 model Order {
   id              Int           @id @default(autoincrement())
   orderNumber     Int           @unique
@@ -182,6 +282,7 @@ model Order {
   paymentStatus   PaymentStatus @default(PENDING)
   subtotal        Decimal       @default(0) @db.Decimal(10, 2)
   discount        Decimal       @default(0) @db.Decimal(10, 2)
+  tip             Decimal       @default(0) @db.Decimal(10, 2)  // Total tips for this order
   total           Decimal       @default(0) @db.Decimal(10, 2)
   tableId         Int?
   table           Table?        @relation(fields: [tableId], references: [id])
@@ -199,6 +300,7 @@ model Order {
   businessDate    DateTime      @db.Date // Para agrupar ventas por "Día Operativo"
   items           OrderItem[]
   payments        Payment[]
+  invoice         Invoice?
 
   @@index([tableId])
   @@index([clientId])
@@ -218,6 +320,7 @@ enum OrderChannel {
 enum OrderStatus {
   OPEN
   CONFIRMED
+  IN_PREPARATION
   PREPARED
   ON_ROUTE
   DELIVERED
@@ -267,11 +370,32 @@ model OrderItemModifier {
 }
 
 model Area {
-  id        Int      @id @default(autoincrement())
-  name      String
-  tables    Table[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               Int                   @id @default(autoincrement())
+  name             String
+  tables           Table[]
+  printerOverrides AreaPrinterOverride[] // Override print routing for this area
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+}
+
+// Print Routing Override per Area (Toast-style)
+// Allows an area to override the default category->printer routing
+// Example: "Terraza" area sends all drinks to "Printer Terraza" instead of "Bar Printer"
+model AreaPrinterOverride {
+  id         Int      @id @default(autoincrement())
+  areaId     Int
+  area       Area     @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  categoryId Int?     // If null, applies to ALL categories (area-wide override)
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  printerId  Int
+  printer    Printer  @relation(fields: [printerId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([areaId, categoryId])  // One override per category per area
+  @@index([areaId])
+  @@index([categoryId])
+  @@index([printerId])
 }
 
 model Table {
@@ -333,6 +457,7 @@ model Payment {
   shiftId     Int?
   shift       CashShift?    @relation(fields: [shiftId], references: [id])
   amount      Decimal       @db.Decimal(10, 2)
+  tip         Decimal       @default(0) @db.Decimal(10, 2)  // Tip included in this payment
   method      PaymentMethod
   externalRef String?
   createdAt   DateTime      @default(now())
@@ -347,4 +472,66 @@ enum PaymentMethod {
   TRANSFER
   QR_INTEGRATED
   ONLINE
+}
+
+// Dynamic payment method configuration
+model PaymentMethodConfig {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique  // Matches PaymentMethod enum value
+  name        String            // Display name: "Efectivo", "Tarjeta", etc.
+  icon        String?           // Lucide icon name
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Audit log for tracking critical actions
+model AuditLog {
+  id          Int        @id @default(autoincrement())
+  userId      Int?
+  action      AuditAction
+  entity      String     // Table/model name: 'Order', 'Payment', 'CashShift'
+  entityId    Int?
+  details     Json?      // Additional context (old/new values, etc)
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime   @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+enum AuditAction {
+  // Auth
+  LOGIN
+  LOGOUT
+  LOGIN_FAILED
+  // Orders
+  ORDER_CREATED
+  ORDER_CANCELLED
+  ORDER_REFUNDED
+  // Order Items
+  ITEM_VOIDED       // Item removed from order with reason
+  ITEM_TRANSFERRED  // Item moved to different table
+  // Payments
+  PAYMENT_RECEIVED
+  PAYMENT_VOIDED
+  // Pricing
+  DISCOUNT_APPLIED  // Manual discount with authorization
+  // Cash
+  SHIFT_OPENED
+  SHIFT_CLOSED
+  CASH_ADJUSTMENT
+  // Inventory
+  STOCK_ADJUSTED
+  STOCK_WASTED
+  BULK_PRICE_UPDATE  // Mass price update operation
+  // Admin
+  USER_CREATED
+  USER_DELETED
+  ROLE_CHANGED
+  CONFIG_CHANGED
 }

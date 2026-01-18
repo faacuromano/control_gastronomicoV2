@@ -65,6 +65,7 @@ describe('Order Transaction Integrity', () => {
             .mockRejectedValue(new Error('Simulated Stock Error'));
         // Act & Assert
         const orderData = {
+            userId,
             items: [{ productId, quantity: 1 }],
             serverId: userId,
             channel: 'POS'

@@ -36,69 +36,28 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteCategory = exports.updateCategory = exports.createCategory = exports.getCategory = exports.listCategories = void 0;
 const categoryService = __importStar(require("../services/category.service"));
 const response_1 = require("../utils/response");
-const listCategories = async (req, res, next) => {
-    try {
-        const categories = await categoryService.getCategories();
-        (0, response_1.sendSuccess)(res, categories);
-    }
-    catch (error) {
-        next(error);
-    }
-};
-exports.listCategories = listCategories;
-const getCategory = async (req, res, next) => {
-    try {
-        const id = parseInt(req.params.id);
-        const category = await categoryService.getCategoryById(id);
-        (0, response_1.sendSuccess)(res, category);
-    }
-    catch (error) {
-        if (error.code === 'NOT_FOUND')
-            return (0, response_1.sendError)(res, 'NOT_FOUND', error.message, null, 404);
-        next(error);
-    }
-};
-exports.getCategory = getCategory;
-const createCategory = async (req, res, next) => {
-    try {
-        const category = await categoryService.createCategory(req.body);
-        (0, response_1.sendSuccess)(res, category, undefined, 201);
-    }
-    catch (error) {
-        if (error.code === 'VALIDATION_ERROR')
-            return (0, response_1.sendError)(res, 'VALIDATION_ERROR', error.message, error.details, 400);
-        next(error);
-    }
-};
-exports.createCategory = createCategory;
-const updateCategory = async (req, res, next) => {
-    try {
-        const id = parseInt(req.params.id);
-        const category = await categoryService.updateCategory(id, req.body);
-        (0, response_1.sendSuccess)(res, category);
-    }
-    catch (error) {
-        if (error.code === 'NOT_FOUND')
-            return (0, response_1.sendError)(res, 'NOT_FOUND', error.message, null, 404);
-        if (error.code === 'VALIDATION_ERROR')
-            return (0, response_1.sendError)(res, 'VALIDATION_ERROR', error.message, error.details, 400);
-        next(error);
-    }
-};
-exports.updateCategory = updateCategory;
-const deleteCategory = async (req, res, next) => {
-    try {
-        const id = parseInt(req.params.id);
-        await categoryService.deleteCategory(id);
-        (0, response_1.sendSuccess)(res, { message: 'Category deleted' });
-    }
-    catch (error) {
-        if (error.code === 'NOT_FOUND')
-            return (0, response_1.sendError)(res, 'NOT_FOUND', error.message, null, 404);
-        if (error.code === 'CONFLICT')
-            return (0, response_1.sendError)(res, 'CONFLICT', error.message, null, 409);
-        next(error);
-    }
-};
-exports.deleteCategory = deleteCategory;
+const asyncHandler_1 = require("../middleware/asyncHandler");
+exports.listCategories = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+    const categories = await categoryService.getCategories();
+    (0, response_1.sendSuccess)(res, categories);
+});
+exports.getCategory = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+    const id = parseInt(req.params.id);
+    const category = await categoryService.getCategoryById(id);
+    (0, response_1.sendSuccess)(res, category);
+});
+exports.createCategory = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+    const category = await categoryService.createCategory(req.body);
+    (0, response_1.sendSuccess)(res, category, undefined, 201);
+});
+exports.updateCategory = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+    const id = parseInt(req.params.id);
+    const category = await categoryService.updateCategory(id, req.body);
+    (0, response_1.sendSuccess)(res, category);
+});
+exports.deleteCategory = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+    const id = parseInt(req.params.id);
+    await categoryService.deleteCategory(id);
+    (0, response_1.sendSuccess)(res, { message: 'Category deleted' });
+});
 //# sourceMappingURL=category.controller.js.map

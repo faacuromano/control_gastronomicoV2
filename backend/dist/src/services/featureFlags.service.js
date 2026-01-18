@@ -32,7 +32,7 @@ async function getTenantConfig() {
             data: {
                 businessName: 'Mi Negocio',
                 enableStock: true,
-                enableDelivery: true,
+                enableDelivery: false, // FROZEN: Delivery module incomplete for MVP
                 enableKDS: false,
                 enableFiscal: false,
                 enableDigital: false,

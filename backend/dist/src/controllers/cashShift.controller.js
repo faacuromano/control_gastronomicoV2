@@ -1,60 +1,96 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getCurrentShift = exports.closeShift = exports.openShift = void 0;
+exports.getAllShifts = exports.closeShift = exports.getCurrentShift = exports.getShiftReport = exports.closeShiftWithCount = exports.openShift = void 0;
 const cashShift_service_1 = require("../services/cashShift.service");
 const response_1 = require("../utils/response");
 const zod_1 = require("zod");
+const asyncHandler_1 = require("../middleware/asyncHandler");
+const errors_1 = require("../utils/errors");
+const audit_service_1 = require("../services/audit.service");
 const openShiftSchema = zod_1.z.object({
     startAmount: zod_1.z.number().min(0)
 });
 const closeShiftSchema = zod_1.z.object({
-    endAmount: zod_1.z.number().min(0)
+    countedCash: zod_1.z.number().min(0)
 });
-const openShift = async (req, res, next) => {
-    try {
-        const { startAmount } = openShiftSchema.parse(req.body);
-        const userId = req.user.id; // Auth middleware guarantees this
-        const result = await cashShift_service_1.cashShiftService.openShift(userId, startAmount);
-        return (0, response_1.sendSuccess)(res, result);
+/**
+ * Extract audit context from request
+ */
+const getAuditContext = (req) => ({
+    userId: req.user?.id,
+    ipAddress: req.ip || req.socket.remoteAddress,
+    userAgent: req.headers['user-agent']
+});
+exports.openShift = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+    const { startAmount } = openShiftSchema.parse(req.body);
+    const userId = req.user?.id;
+    if (!userId)
+        throw new errors_1.UnauthorizedError();
+    const result = await cashShift_service_1.cashShiftService.openShift(userId, startAmount);
+    // Audit: Log shift opening
+    await audit_service_1.auditService.logCashShift('SHIFT_OPENED', result.id, getAuditContext(req), {
+        startAmount,
+        userName: req.user?.name
+    });
+    return (0, response_1.sendSuccess)(res, result);
+});
+exports.closeShiftWithCount = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+    const { countedCash } = closeShiftSchema.parse(req.body);
+    const userId = req.user?.id;
+    if (!userId)
+        throw new errors_1.UnauthorizedError();
+    const report = await cashShift_service_1.cashShiftService.closeShiftWithCount(userId, countedCash);
+    // Audit: Log shift closing with cash count
+    await audit_service_1.auditService.logCashShift('SHIFT_CLOSED', report.shift.id, getAuditContext(req), {
+        countedCash,
+        expectedCash: report.cash.expectedCash,
+        difference: report.cash.difference,
+        totalSales: report.sales.totalSales
+    });
+    return (0, response_1.sendSuccess)(res, report);
+});
+exports.getShiftReport = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+    const shiftId = Number(req.params.id);
+    if (!shiftId || isNaN(shiftId)) {
+        throw new errors_1.ValidationError('Invalid shift ID');
     }
-    catch (error) {
-        if (error instanceof zod_1.z.ZodError) {
-            return (0, response_1.sendError)(res, 'VALIDATION_ERROR', 'Invalid data', error.issues);
-        }
-        if (error.message === 'User already has an open shift') {
-            return (0, response_1.sendError)(res, 'SHIFT_ALREADY_OPEN', error.message, null, 409);
-        }
-        next(error);
-    }
-};
-exports.openShift = openShift;
-const closeShift = async (req, res, next) => {
-    try {
-        const { endAmount } = closeShiftSchema.parse(req.body);
-        const userId = req.user.id;
-        const result = await cashShift_service_1.cashShiftService.closeShift(userId, endAmount);
-        return (0, response_1.sendSuccess)(res, result);
-    }
-    catch (error) {
-        if (error instanceof zod_1.z.ZodError) {
-            return (0, response_1.sendError)(res, 'VALIDATION_ERROR', 'Invalid data', error.issues);
-        }
-        if (error.message === 'No open shift found for this user') {
-            return (0, response_1.sendError)(res, 'NO_OPEN_SHIFT', error.message, null, 404);
-        }
-        next(error);
-    }
-};
-exports.closeShift = closeShift;
-const getCurrentShift = async (req, res, next) => {
-    try {
-        const userId = req.user.id;
-        const result = await cashShift_service_1.cashShiftService.getCurrentShift(userId);
-        return (0, response_1.sendSuccess)(res, result);
-    }
-    catch (error) {
-        next(error);
-    }
-};
-exports.getCurrentShift = getCurrentShift;
+    const report = await cashShift_service_1.cashShiftService.getShiftReport(shiftId);
+    return (0, response_1.sendSuccess)(res, report);
+});
+exports.getCurrentShift = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+    const userId = req.user?.id;
+    if (!userId)
+        throw new errors_1.UnauthorizedError();
+    const result = await cashShift_service_1.cashShiftService.getCurrentShift(userId);
+    return (0, response_1.sendSuccess)(res, result);
+});
+// Keep legacy closeShift for backwards compatibility
+exports.closeShift = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+    const { endAmount } = zod_1.z.object({ endAmount: zod_1.z.number().min(0) }).parse(req.body);
+    const userId = req.user?.id;
+    if (!userId)
+        throw new errors_1.UnauthorizedError();
+    const result = await cashShift_service_1.cashShiftService.closeShift(userId, endAmount);
+    // Audit: Log shift closing
+    await audit_service_1.auditService.logCashShift('SHIFT_CLOSED', result.id, getAuditContext(req), {
+        endAmount,
+        userName: req.user?.name
+    });
+    return (0, response_1.sendSuccess)(res, result);
+});
+/**
+ * Get all shifts with optional filters (for Dashboard analytics)
+ */
+exports.getAllShifts = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+    const fromDate = req.query.fromDate;
+    const userId = req.query.userId ? Number(req.query.userId) : undefined;
+    // Build filters object with only defined values
+    const filters = {};
+    if (fromDate)
+        filters.fromDate = fromDate;
+    if (userId)
+        filters.userId = userId;
+    const shifts = await cashShift_service_1.cashShiftService.getAll(filters);
+    return (0, response_1.sendSuccess)(res, shifts);
+});
 //# sourceMappingURL=cashShift.controller.js.map

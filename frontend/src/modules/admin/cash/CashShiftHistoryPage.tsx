@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { cashShiftService, type CashShift } from '../../../services/cashShiftService';
 import { userService } from '../../../services/userService';
 import { Wallet, Filter, Download } from 'lucide-react';

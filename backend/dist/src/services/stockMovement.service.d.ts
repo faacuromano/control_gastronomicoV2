@@ -8,8 +8,9 @@ export declare class StockMovementService {
      * @param isAdjustment If true, and type is ADJUSTMENT, quantity is treated as the DELTA.
      *                     If the user wants to set exact stock, the controller should calculate the delta.
      *                     For now, we assume quantity is always the amount to ADD or SUBTRACT.
+     * @param reason Optional reason string
      */
-    register(ingredientId: number, type: StockMoveType, quantity: number, externalTx?: any): Promise<{
+    register(ingredientId: number, type: StockMoveType, quantity: number, reason?: string, externalTx?: any): Promise<{
         movement: any;
         newStock: any;
     }>;
@@ -28,6 +29,7 @@ export declare class StockMovementService {
         id: number;
         type: import(".prisma/client").$Enums.StockMoveType;
         createdAt: Date;
+        reason: string | null;
         ingredientId: number;
         quantity: import("@prisma/client/runtime/library").Decimal;
     })[]>;

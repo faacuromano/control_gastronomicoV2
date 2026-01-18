@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteCategory = exports.updateCategory = exports.createCategory = exports.getCategoryById = exports.getCategories = void 0;
 const prisma_1 = require("../lib/prisma");
 const zod_1 = require("zod");
+const errors_1 = require("../utils/errors");
 const CategorySchema = zod_1.z.object({
     name: zod_1.z.string().min(1, "Name is required"),
     printerId: zod_1.z.number().optional(),
@@ -33,14 +34,14 @@ const getCategoryById = async (id) => {
         include: { products: true }
     });
     if (!category)
-        throw { code: 'NOT_FOUND', message: 'Category not found' };
+        throw new errors_1.NotFoundError('Category');
     return category;
 };
 exports.getCategoryById = getCategoryById;
 const createCategory = async (data) => {
     const validation = CategorySchema.safeParse(data);
     if (!validation.success) {
-        throw { code: 'VALIDATION_ERROR', message: 'Invalid data', details: validation.error.issues };
+        throw new errors_1.ValidationError('Invalid data', validation.error.issues);
     }
     return await prisma_1.prisma.category.create({
         data: {
@@ -53,11 +54,11 @@ exports.createCategory = createCategory;
 const updateCategory = async (id, data) => {
     const validation = CategorySchema.partial().safeParse(data);
     if (!validation.success) {
-        throw { code: 'VALIDATION_ERROR', message: 'Invalid data', details: validation.error.issues };
+        throw new errors_1.ValidationError('Invalid data', validation.error.issues);
     }
     const exists = await prisma_1.prisma.category.findUnique({ where: { id } });
     if (!exists)
-        throw { code: 'NOT_FOUND', message: 'Category not found' };
+        throw new errors_1.NotFoundError('Category');
     const updateData = { ...validation.data };
     if (validation.data.printerId === undefined)
         delete updateData.printerId;
@@ -68,11 +69,22 @@ const updateCategory = async (id, data) => {
 };
 exports.updateCategory = updateCategory;
 const deleteCategory = async (id) => {
-    const exists = await prisma_1.prisma.category.findUnique({ where: { id }, include: { _count: { select: { products: true } } } });
-    if (!exists)
-        throw { code: 'NOT_FOUND', message: 'Category not found' };
-    if (exists._count.products > 0) {
-        throw { code: 'CONFLICT', message: 'Cannot delete category with products' };
+    const category = await prisma_1.prisma.category.findUnique({
+        where: { id },
+        include: { products: { select: { isActive: true } } }
+    });
+    if (!category)
+        throw new errors_1.NotFoundError('Category');
+    const activeProducts = category.products.filter(p => p.isActive);
+    const inactiveProducts = category.products.filter(p => !p.isActive);
+    if (activeProducts.length > 0) {
+        throw new errors_1.ConflictError('Cannot delete category with active products');
+    }
+    // If we have inactive products, delete them first to allow category deletion
+    if (inactiveProducts.length > 0) {
+        await prisma_1.prisma.product.deleteMany({
+            where: { categoryId: id }
+        });
     }
     return await prisma_1.prisma.category.delete({
         where: { id }

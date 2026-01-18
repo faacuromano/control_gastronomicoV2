@@ -1,7 +1,6 @@
 import { Router } from 'express';
-import { getDeliveryOrders, assignDriver } from '../controllers/delivery.controller';
-import { authenticate } from '../middleware/auth'; 
-// Assuming auth required for these operations
+import { getDeliveryOrders, assignDriver } from '../controllers/order.controller';
+import { authenticateToken as authenticate } from '../middleware/auth'; 
 
 const router = Router();
 

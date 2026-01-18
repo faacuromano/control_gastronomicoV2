@@ -1,77 +1,112 @@
 "use strict";
+/**
+ * @fileoverview Order management service (Facade).
+ * Handles order creation, updates, and lifecycle management.
+ *
+ * @module services/order.service
+ * @pattern Facade - Delegates to specialized services for better SRP
+ * @see orderItem.service.ts - Item validation and calculation
+ * @see orderKitchen.service.ts - KDS operations
+ * @see orderDelivery.service.ts - Delivery operations
+ * @see orderStatus.service.ts - Status transitions
+ */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OrderService = void 0;
+exports.orderService = exports.OrderService = void 0;
 const prisma_1 = require("../lib/prisma");
-const stockMovement_service_1 = require("./stockMovement.service");
 const client_1 = require("@prisma/client");
+const stockMovement_service_1 = require("./stockMovement.service");
+const orderNumber_service_1 = require("./orderNumber.service");
+const payment_service_1 = require("./payment.service");
+const kds_service_1 = require("./kds.service");
+const featureFlags_service_1 = require("./featureFlags.service");
+const loyalty_service_1 = require("./loyalty.service");
+const logger_1 = require("../utils/logger");
+// Extracted specialized services
+const orderKitchen_service_1 = require("./orderKitchen.service");
+const orderDelivery_service_1 = require("./orderDelivery.service");
+const orderStatus_service_1 = require("./orderStatus.service");
+const orderItem_service_1 = require("./orderItem.service");
 const stockService = new stockMovement_service_1.StockMovementService();
+const loyaltyService = new loyalty_service_1.LoyaltyService();
 class OrderService {
-    async createOrder(data) {
-        return await prisma_1.prisma.$transaction(async (tx) => {
-            let subtotal = 0;
-            let total = 0;
-            // 1. Validate Products & Calculate Totals
-            const itemDataList = [];
-            const stockUpdates = [];
-            for (const item of data.items) {
-                const product = await tx.product.findUnique({
-                    where: { id: item.productId },
-                    include: { ingredients: true } // Need this for stock
-                });
-                if (!product)
-                    throw new Error(`Product ID ${item.productId} not found`);
-                if (!product.isActive)
-                    throw new Error(`Product ${product.name} is not active`);
-                const price = Number(product.price);
-                const itemTotal = price * item.quantity;
-                subtotal += itemTotal;
-                itemDataList.push({
-                    productId: item.productId,
-                    quantity: item.quantity,
-                    unitPrice: price,
-                    notes: item.notes,
-                    status: 'PENDING'
-                });
-                // Prepare Stock Updates (if stockable)
-                if (product.isStockable && product.ingredients.length > 0) {
-                    for (const ing of product.ingredients) {
-                        stockUpdates.push({
-                            ingredientId: ing.ingredientId,
-                            quantity: Number(ing.quantity) * item.quantity // Recipe Qty * Order Qty
-                        });
+    /**
+     * Get order by ID with full relations
+     */
+    async getById(id) {
+        return await prisma_1.prisma.order.findUnique({
+            where: { id },
+            include: {
+                items: {
+                    include: {
+                        product: true,
+                        modifiers: { include: { modifierOption: true } }
                     }
-                }
+                },
+                payments: true,
+                client: true,
+                driver: true
             }
-            total = subtotal; // Apply discounts here if needed
-            // 2. Create Order & Items
-            // We explicitly enable 'orderNumber' autoincrement in generic SQL, 
-            // but Prisma needs to handle the logic if not handled by DB trigger/sequence.
-            // Since we defined @default(autoincrement) on ID, and orderNumber is unique, 
-            // we might need to manually set orderNumber or rely on a separate counter if MySQL can't do two auto-incs.
-            // Wait, schema has `id @autoincrement` AND `orderNumber @unique`. 
-            // User fixed `orderNumber` to be UNIQUE, NOT autoincrement in the schema fix?
-            // "Modified the `orderNumber` field... to `@unique` to resolve a Prisma schema parsing error".
-            // This means WE must generate the orderNumber.
-            const lastOrder = await tx.order.findFirst({ orderBy: { orderNumber: 'desc' } });
-            const nextOrderNumber = (lastOrder?.orderNumber || 0) + 1;
-            // Check for active shift for the server (user)
+        });
+    }
+    /**
+     * Create a new order with items and optional payments.
+     */
+    async createOrder(data) {
+        // Check if stock validation is enabled BEFORE transaction
+        const stockEnabled = await (0, featureFlags_service_1.isFeatureEnabled)('enableStock');
+        const txResult = await prisma_1.prisma.$transaction(async (tx) => {
+            // 1. Validate Products & Calculate Totals (stock validation if enabled)
+            const { itemDataList, stockUpdates, subtotal } = await this.validateAndCalculateItems(tx, data.items, stockEnabled);
+            const total = subtotal; // Apply discounts here if needed
+            // 2. Generate order number
+            const orderNumber = await orderNumber_service_1.orderNumberService.getNextOrderNumber(tx);
+            // 3. Validate active shift
             if (!data.serverId) {
                 throw new Error('Server ID is required to create an order');
             }
             const activeShift = await tx.cashShift.findFirst({
-                where: {
-                    userId: data.serverId,
-                    endTime: null
-                }
+                where: { userId: data.serverId, endTime: null }
             });
             if (!activeShift) {
                 throw new Error('NO_OPEN_SHIFT: Debes abrir un turno de caja antes de vender.');
             }
+            // 4. Process payments - Map dynamic codes to PaymentMethod enum
+            const mapToPaymentMethod = (code) => {
+                const codeUpper = code.toUpperCase();
+                // Direct enum matches
+                if (codeUpper in client_1.PaymentMethod) {
+                    return client_1.PaymentMethod[codeUpper];
+                }
+                // Common mappings for dynamic codes
+                if (['DEBIT', 'CREDIT', 'DEBITO', 'CREDITO', 'TARJETA'].includes(codeUpper)) {
+                    return client_1.PaymentMethod.CARD;
+                }
+                if (['EFECTIVO'].includes(codeUpper)) {
+                    return client_1.PaymentMethod.CASH;
+                }
+                if (['TRANSFERENCIA', 'BANCO'].includes(codeUpper)) {
+                    return client_1.PaymentMethod.TRANSFER;
+                }
+                if (['MERCADOPAGO', 'MP', 'QR'].includes(codeUpper)) {
+                    return client_1.PaymentMethod.QR_INTEGRATED;
+                }
+                // Default to CASH for unknown codes
+                console.warn(`[OrderService] Unknown payment code "${code}" - defaulting to CASH`);
+                return client_1.PaymentMethod.CASH;
+            };
+            const singlePaymentMethod = data.paymentMethod === 'SPLIT' ? undefined :
+                (data.paymentMethod ? mapToPaymentMethod(data.paymentMethod) : undefined);
+            const splitPayments = data.payments?.map(p => ({
+                ...p,
+                method: mapToPaymentMethod(p.method)
+            }));
+            const paymentResult = payment_service_1.paymentService.processPayments(total, activeShift.id, singlePaymentMethod, splitPayments);
+            // 5. Build order create data
             const createData = {
-                orderNumber: nextOrderNumber,
+                orderNumber,
                 channel: data.channel ?? 'POS',
-                status: data.paymentMethod ? 'CONFIRMED' : 'OPEN',
-                paymentStatus: data.paymentMethod ? 'PAID' : 'PENDING',
+                status: paymentResult.isFullyPaid ? 'CONFIRMED' : 'OPEN',
+                paymentStatus: paymentResult.paymentStatus,
                 subtotal,
                 total,
                 businessDate: new Date(),
@@ -81,50 +116,218 @@ class OrderService {
                         quantity: item.quantity,
                         unitPrice: item.unitPrice,
                         notes: item.notes ?? null,
-                        status: 'PENDING'
+                        status: 'PENDING',
+                        ...(item.modifiers ? {
+                            modifiers: {
+                                create: item.modifiers.map(m => ({
+                                    modifierOptionId: m.id,
+                                    priceCharged: m.price
+                                }))
+                            }
+                        } : {})
                     }))
                 }
             };
-            if (data.paymentMethod) {
-                createData.payments = {
-                    create: [{
-                            amount: total,
-                            method: data.paymentMethod,
-                            shiftId: activeShift.id
-                        }]
-                };
-                createData.closedAt = new Date(); // If paid, we can consider it closed for Fast Food flow? Or wait for Delivery?
-                // For POS fast food, it's usually instant.
-            }
+            // Add optional fields
             if (data.tableId)
                 createData.tableId = data.tableId;
             if (data.clientId)
                 createData.clientId = data.clientId;
             if (data.serverId)
                 createData.serverId = data.serverId;
-            console.log('DEBUG: Creating Order with data:', JSON.stringify(createData, null, 2));
+            // Auto-close only if fully paid AND NOT a delivery order
+            // Delivery orders must remain OPEN/CONFIRMED until delivered
+            if (paymentResult.isFullyPaid && data.channel !== 'DELIVERY_APP') {
+                createData.closedAt = new Date();
+            }
+            // Delivery Fields - No cast needed, OrderCreateData already has these fields
+            if (data.deliveryData) {
+                createData.deliveryAddress = data.deliveryData.address;
+                // Only assign deliveryNotes if it's defined (exactOptionalPropertyTypes)
+                if (data.deliveryData.notes !== undefined) {
+                    createData.deliveryNotes = data.deliveryData.notes;
+                }
+                if (data.deliveryData.driverId) {
+                    createData.driverId = data.deliveryData.driverId;
+                }
+            }
+            // Add payments if any
+            if (paymentResult.paymentsToCreate.length > 0) {
+                createData.payments = { create: paymentResult.paymentsToCreate };
+            }
+            // 6. Create order - Use Prisma.OrderCreateInput for type safety
             const order = await tx.order.create({
                 data: createData,
                 include: { items: true }
             });
-            // 3. Update Stock (Deduction)
-            // Standardized via StockMovementService using the same transaction
-            for (const update of stockUpdates) {
-                await stockService.register(update.ingredientId, client_1.StockMoveType.SALE, update.quantity, tx // Pass transaction context
-                );
-            }
-            // 4. Update Table Status (If applicable)
+            // 7. Update Stock
+            await this.processStockUpdates(tx, stockUpdates, orderNumber);
+            // 8. Update Table Status
             if (data.tableId) {
                 await tx.table.update({
                     where: { id: data.tableId },
+                    data: { status: 'OCCUPIED', currentOrderId: order.id }
+                });
+            }
+            // 9. Award loyalty points INSIDE TRANSACTION for atomicity
+            // This ensures points are only awarded if the entire order creation succeeds
+            let pointsAwarded = 0;
+            if (data.clientId && paymentResult.isFullyPaid) {
+                pointsAwarded = await loyaltyService.awardPoints(data.clientId, Number(total), tx);
+            }
+            return { order, pointsAwarded };
+        });
+        // Log loyalty points outside transaction (logging shouldn't fail the order)
+        if (txResult.pointsAwarded > 0) {
+            logger_1.logger.info('Loyalty points awarded', {
+                clientId: data.clientId,
+                points: txResult.pointsAwarded,
+                orderId: txResult.order.id
+            });
+        }
+        const order = txResult.order;
+        // 10. Broadcast to KDS (Outside transaction)
+        if (order.status === 'CONFIRMED' || order.status === 'OPEN') {
+            const fullOrder = await this.getById(order.id);
+            if (fullOrder) {
+                kds_service_1.kdsService.broadcastNewOrder(fullOrder);
+            }
+        }
+        return order;
+    }
+    /**
+     * Assign a driver to an order.
+     * @delegates orderDeliveryService.assignDriver
+     */
+    async assignDriver(orderId, driverId) {
+        return orderDelivery_service_1.orderDeliveryService.assignDriver(orderId, driverId);
+    }
+    /**
+     * Get active delivery orders.
+     * @delegates orderDeliveryService.getDeliveryOrders
+     */
+    async getDeliveryOrders() {
+        return orderDelivery_service_1.orderDeliveryService.getDeliveryOrders();
+    }
+    /**
+     * Update individual order item status.
+     * @delegates orderKitchenService.updateItemStatus
+     */
+    async updateItemStatus(itemId, status) {
+        return orderKitchen_service_1.orderKitchenService.updateItemStatus(itemId, status);
+    }
+    /**
+     * Mark all items in an order as SERVED.
+     * @delegates orderKitchenService.markAllItemsServed
+     */
+    async markAllItemsServed(orderId) {
+        return orderKitchen_service_1.orderKitchenService.markAllItemsServed(orderId);
+    }
+    /**
+     * Validate products and calculate order totals.
+     * @delegates orderItemService.validateAndCalculateItems
+     */
+    async validateAndCalculateItems(tx, items, stockEnabled = true) {
+        return orderItem_service_1.orderItemService.validateAndCalculateItems(tx, items, stockEnabled);
+    }
+    /**
+     * Process stock deductions for order items.
+     * @private
+     *
+     * @business_rule
+     * Prevents stock corruption coverage if the "Stock Management" module is disabled via TenantConfig (enableStock).
+     * If disabled, this function exits gracefully without modifying database state.
+     */
+    async processStockUpdates(tx, stockUpdates, orderNumber) {
+        // Only execute if Stock Module is enabled
+        // This wrapper ensures we respect the TenantConfig contract
+        await (0, featureFlags_service_1.executeIfEnabled)('enableStock', async () => {
+            for (const update of stockUpdates) {
+                await stockService.register(update.ingredientId, client_1.StockMoveType.SALE, update.quantity, `Order #${orderNumber}`, tx);
+            }
+        });
+    }
+    async getOrderByTable(tableId) {
+        return await prisma_1.prisma.order.findFirst({
+            where: {
+                tableId,
+                paymentStatus: { in: ['PENDING', 'PARTIAL'] }
+            },
+            include: {
+                items: {
+                    include: {
+                        product: true,
+                        modifiers: { include: { modifierOption: true } }
+                    }
+                },
+                payments: true
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+    }
+    async addItemsToOrder(orderId, newItems, serverId) {
+        // Check if stock validation is enabled BEFORE transaction
+        const stockEnabled = await (0, featureFlags_service_1.isFeatureEnabled)('enableStock');
+        const result = await prisma_1.prisma.$transaction(async (tx) => {
+            // 1. Get existing order
+            const order = await tx.order.findUnique({
+                where: { id: orderId },
+                include: { items: true }
+            });
+            if (!order)
+                throw new Error('Order not found');
+            if (order.paymentStatus === 'PAID')
+                throw new Error('Cannot modify paid order');
+            // 2. Validate and calculate new items using extracted service
+            const { itemDataList, stockUpdates, subtotal: additionalTotal } = await orderItem_service_1.orderItemService.validateAndCalculateItems(tx, newItems, stockEnabled);
+            // 3. Create new order items
+            for (const itemData of itemDataList) {
+                await tx.orderItem.create({
                     data: {
-                        status: 'OCCUPIED',
-                        currentOrderId: order.id
+                        orderId,
+                        productId: itemData.productId,
+                        quantity: itemData.quantity,
+                        unitPrice: itemData.unitPrice,
+                        notes: itemData.notes ?? null,
+                        status: 'PENDING',
+                        ...(itemData.modifiers ? {
+                            modifiers: {
+                                create: itemData.modifiers.map((m) => ({
+                                    modifierOptionId: m.id,
+                                    priceCharged: m.price
+                                }))
+                            }
+                        } : {})
                     }
                 });
             }
-            return order;
+            // 4. Update order totals and REOPEN if needed (for KDS visibility)
+            const newSubtotal = Number(order.subtotal) + additionalTotal;
+            const newTotal = Number(order.total) + additionalTotal;
+            // If order was DELIVERED or PREPARED, reopen it to OPEN so new items appear in KDS
+            const shouldReopen = ['DELIVERED', 'PREPARED'].includes(order.status);
+            const updatedOrder = await tx.order.update({
+                where: { id: orderId },
+                data: {
+                    subtotal: newSubtotal,
+                    total: newTotal,
+                    ...(shouldReopen ? { status: 'OPEN' } : {})
+                },
+                include: { items: { include: { product: true } } }
+            });
+            // 5. Update Stock
+            const stockService = new stockMovement_service_1.StockMovementService();
+            for (const update of stockUpdates) {
+                await stockService.register(update.ingredientId, client_1.StockMoveType.SALE, update.quantity, `Order #${order.orderNumber}`, tx);
+            }
+            return updatedOrder;
         });
+        // 6. Broadcast to KDS (Outside transaction) - NEW: Notify kitchen of added items
+        const fullOrder = await this.getById(orderId);
+        if (fullOrder) {
+            kds_service_1.kdsService.broadcastOrderUpdate(fullOrder);
+        }
+        return result;
     }
     async getRecentOrders() {
         return await prisma_1.prisma.order.findMany({
@@ -133,6 +336,21 @@ class OrderService {
             include: { items: { include: { product: true } } }
         });
     }
+    /**
+     * Get active orders for KDS (Kitchen Display System).
+     * @delegates orderKitchenService.getActiveOrders
+     */
+    async getActiveOrders() {
+        return orderKitchen_service_1.orderKitchenService.getActiveOrders();
+    }
+    /**
+     * Update order status with state machine validation.
+     * @delegates orderStatusService.updateStatus
+     */
+    async updateStatus(orderId, status) {
+        return orderStatus_service_1.orderStatusService.updateStatus(orderId, status);
+    }
 }
 exports.OrderService = OrderService;
+exports.orderService = new OrderService();
 //# sourceMappingURL=order.service.js.map

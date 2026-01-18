@@ -8,17 +8,17 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Starting Seeding...');
 
-  // 1. Tenant Config (ENABLE STOCK!)
+  // 1. Tenant Config
   await prisma.tenantConfig.upsert({
     where: { id: 1 },
     update: {
-      enableStock: true, // IMPORTANT for testing stock logic
-      enableDelivery: false, // FROZEN: Delivery module incomplete for MVP
+      enableStock: true,
+      enableDelivery: true, // ENABLED for testing
     },
     create: {
       businessName: 'Pentium Bar',
       enableStock: true,
-      enableDelivery: false, // FROZEN: Delivery module incomplete for MVP
+      enableDelivery: true, // ENABLED for testing
       enableKDS: true,
       currencySymbol: '$'
     },
@@ -26,42 +26,54 @@ async function main() {
   console.log('✅ Tenant Config');
 
   // 2. Roles with RBAC permissions
+  // Modules: pos, tables, cash, kds, delivery, admin (need 'access' to see in Header)
+  // Resources: products, categories, orders, stock, users, etc (CRUD operations)
   const roles = [
     { 
       name: 'ADMIN', 
       permissions: { 
+        // ADMIN gets everything via bypass, but we still define defaults
+        pos: ['access', 'create', 'read', 'update', 'delete'],
+        tables: ['access', 'create', 'read', 'update', 'delete'],
+        cash: ['access', 'create', 'read', 'update', 'delete'],
+        kds: ['access'],
+        delivery: ['access'],
+        admin: ['access'],
         orders: ['create', 'read', 'update', 'delete'],
         products: ['create', 'read', 'update', 'delete'],
-        tables: ['create', 'read', 'update', 'delete'],
-        cash: ['create', 'read', 'update', 'delete'],
         users: ['create', 'read', 'update', 'delete'],
-        config: ['read', 'update']
+        settings: ['read', 'update']
       } 
     },
     { 
       name: 'CASHIER', 
       permissions: { 
-        orders: ['create', 'read'],
-        cash: ['read', 'update'] // Can view and close shifts
+        pos: ['access', 'create', 'read'],
+        cash: ['access', 'read', 'update'],
+        tables: ['access', 'read'],
+        orders: ['create', 'read']
       } 
     },
     { 
       name: 'WAITER', 
       permissions: { 
-        orders: ['create', 'read', 'update'],
-        tables: ['read', 'update']
+        pos: ['access', 'create', 'read', 'update'],
+        tables: ['access', 'read', 'update'],
+        orders: ['create', 'read', 'update']
       } 
     },
     { 
       name: 'KITCHEN', 
       permissions: { 
-        orders: ['read', 'update'] // Can see and update status
+        kds: ['access'],
+        orders: ['read', 'update']
       } 
     },
     { 
       name: 'DELIVERY', 
       permissions: { 
-        orders: ['read', 'update'] // Can see and update delivery status
+        delivery: ['access'],
+        orders: ['read', 'update']
       } 
     },
   ];
@@ -75,14 +87,14 @@ async function main() {
   }
   console.log('✅ Roles');
 
-  // 3. Users
+  // 3. Users (PINs must be 6 digits as required by auth validation)
   const passwordHash = await bcrypt.hash('123456', 10);
   const users = [
-    { name: 'Admin', email: 'admin@pentium.com', pin: '999999', role: 'ADMIN' },
-    { name: 'Cajero', email: 'cajero@pentium.com', pin: '1111', role: 'CASHIER' },
-    { name: 'Mozo', email: 'mozo@pentium.com', pin: '2222', role: 'WAITER' },
-    { name: 'Cocinero', email: 'cocina@pentium.com', pin: '3333', role: 'KITCHEN' },
-    { name: 'Repartidor', email: 'moto@pentium.com', pin: '4444', role: 'DELIVERY' },
+    { name: 'Admin', email: 'admin@pentium.com', pin: process.env.SEED_ADMIN_PIN || '999999', role: 'ADMIN' },
+    { name: 'Cajero', email: 'cajero@pentium.com', pin: '111111', role: 'CASHIER' },
+    { name: 'Mozo', email: 'mozo@pentium.com', pin: '222222', role: 'WAITER' },
+    { name: 'Cocinero', email: 'cocina@pentium.com', pin: '333333', role: 'KITCHEN' },
+    { name: 'Repartidor', email: 'moto@pentium.com', pin: '444444', role: 'DELIVERY' },
   ];
 
   for (const u of users) {
@@ -281,6 +293,259 @@ async function main() {
   }
 
   console.log('✅ Products & Recipes');
+
+  // 6b. Modifiers
+  console.log('🌱 Seeding Modifiers...');
+  
+  const modifierGroupsData = [
+      { 
+          name: 'Punto de Cocción', 
+          min: 1, 
+          max: 1, 
+          options: [
+              { name: 'Jugoso', price: 0 },
+              { name: 'A Punto', price: 0 },
+              { name: 'Cocido', price: 0 }
+          ] 
+      },
+      { 
+          name: 'Extras Burger', 
+          min: 0, 
+          max: 3, 
+          options: [
+              { name: 'Huevo Frito', price: 1.50 },
+              { name: 'Bacon Extra', price: 2.00 },
+              { name: 'Queso Extra', price: 1.00 },
+              { name: 'Cebolla Caramelizada', price: 0.50 }
+          ] 
+      },
+      {
+          name: 'Opciones Bebida',
+          min: 1,
+          max: 1,
+          options: [
+              { name: 'Con Hielo', price: 0 },
+              { name: 'Sin Hielo', price: 0 }
+          ]
+      }
+  ];
+
+  const modGroupsMap = new Map();
+
+  for (const group of modifierGroupsData) {
+      // Check if group exists
+      const existingGroup = await prisma.modifierGroup.findFirst({ 
+          where: { name: group.name },
+          include: { options: true }
+      });
+       
+      if (!existingGroup) {
+          // Create new group with options
+          const newGroup = await prisma.modifierGroup.create({
+            data: {
+                name: group.name,
+                minSelection: group.min,
+                maxSelection: group.max,
+                options: {
+                    create: group.options.map(o => ({
+                        name: o.name,
+                        priceOverlay: o.price
+                    }))
+                }
+            },
+            include: { options: true }
+          });
+          modGroupsMap.set(group.name, newGroup);
+      } else {
+          modGroupsMap.set(group.name, existingGroup);
+      }
+  }
+
+  // Link Modifiers to Products
+  const burgerProduct = await prisma.product.findFirst({ where: { name: 'Burger Clásica' } });
+  const burgerBacon = await prisma.product.findFirst({ where: { name: 'Burger Bacon' } });
+  const cocaCola = await prisma.product.findFirst({ where: { name: 'Coca Cola' } });
+
+  const coccionGroup = modGroupsMap.get('Punto de Cocción');
+  const extrasGroup = modGroupsMap.get('Extras Burger');
+  const iceGroup = modGroupsMap.get('Opciones Bebida');
+
+  if (burgerProduct && coccionGroup) {
+      await prisma.productModifierGroup.createMany({
+          data: [
+              { productId: burgerProduct.id, modifierGroupId: coccionGroup.id },
+              { productId: burgerProduct.id, modifierGroupId: extrasGroup.id }
+          ],
+          skipDuplicates: true
+      });
+  }
+
+  if (burgerBacon && coccionGroup) {
+      await prisma.productModifierGroup.createMany({
+          data: [
+               { productId: burgerBacon.id, modifierGroupId: coccionGroup.id }
+          ],
+          skipDuplicates: true
+      });
+  }
+  
+  if (cocaCola && iceGroup) {
+      await prisma.productModifierGroup.createMany({
+          data: [
+               { productId: cocaCola.id, modifierGroupId: iceGroup.id }
+          ],
+          skipDuplicates: true
+      });
+  }
+  
+  console.log('✅ Modifiers Linked');
+
+  // 7. Areas & Tables
+  const mainArea = await prisma.area.upsert({
+    where: { id: 1 },
+    update: { name: 'Salón Principal' },
+    create: { name: 'Salón Principal' }
+  });
+
+  const tablesData = [
+    { name: 'Mesa 1', areaId: mainArea.id, x: 50, y: 50 },
+    { name: 'Mesa 2', areaId: mainArea.id, x: 200, y: 50 },
+    { name: 'Mesa 3', areaId: mainArea.id, x: 350, y: 50 },
+    { name: 'Mesa 4', areaId: mainArea.id, x: 50, y: 200 },
+    { name: 'Mesa 5', areaId: mainArea.id, x: 200, y: 200 },
+  ];
+
+  for (const t of tablesData) {
+    const existing = await prisma.table.findFirst({ where: { name: t.name, areaId: t.areaId } });
+    if (!existing) {
+      await prisma.table.create({ data: t });
+    }
+  }
+  console.log('✅ Areas & Tables');
+
+  // 8. Open Cash Shift for testing
+  const waiterUser = await prisma.user.findFirst({ where: { email: 'mozo@pentium.com' } });
+  if (waiterUser) {
+    const existingShift = await prisma.cashShift.findFirst({
+      where: { userId: waiterUser.id, endTime: null }
+    });
+
+    if (!existingShift) {
+      await prisma.cashShift.create({
+        data: {
+          userId: waiterUser.id,
+          startAmount: 1000,
+          businessDate: new Date(),
+          startTime: new Date(),
+        }
+      });
+      console.log('✅ Open Cash Shift');
+    }
+  }
+
+  // 9. Test Orders for KDS
+  const tables = await prisma.table.findMany();
+  const products = await prisma.product.findMany({ include: { ingredients: true } });
+  
+  if (waiterUser && tables.length >= 3 && products.length > 0) {
+    const table1 = tables[0]!;
+    const table2 = tables[1]!;
+    const table3 = tables[2]!;
+    const burgerProduct = products.find(p => p.name.includes('Burger'));
+    const pizzaProduct = products.find(p => p.name.includes('Pizza'));
+    const drinkProduct = products.find(p => p.name.includes('Coca'));
+    const friesProduct = products.find(p => p.name.includes('Papas'));
+
+    // Order 1: Pending (New order just arrived)
+    await prisma.order.create({
+      data: {
+        orderNumber: 9001,
+        channel: 'POS',
+        status: 'CONFIRMED',
+        paymentStatus: 'PAID',
+        subtotal: burgerProduct ? Number(burgerProduct.price) * 2 : 0,
+        total: burgerProduct ? Number(burgerProduct.price) * 2 : 0,
+        businessDate: new Date(),
+        tableId: table1.id,
+        serverId: waiterUser.id,
+        items: {
+          create: burgerProduct ? [
+            { 
+              product: { connect: { id: burgerProduct.id } },
+              quantity: 2, 
+              unitPrice: Number(burgerProduct.price), 
+              status: 'PENDING' 
+            }
+          ] : []
+        }
+      }
+    });
+
+    // Order 2: In Preparation (Cooking)
+    await prisma.order.create({
+      data: {
+        orderNumber: 9002,
+        channel: 'POS',
+        status: 'IN_PREPARATION',
+        paymentStatus: 'PAID',
+        subtotal: pizzaProduct && drinkProduct ? Number(pizzaProduct.price) + Number(drinkProduct.price) * 2 : 0,
+        total: pizzaProduct && drinkProduct ? Number(pizzaProduct.price) + Number(drinkProduct.price) * 2 : 0,
+        businessDate: new Date(),
+        tableId: table2.id,
+        serverId: waiterUser.id,
+        items: {
+          create: [
+            ...(pizzaProduct ? [{ 
+              product: { connect: { id: pizzaProduct.id } },
+              quantity: 1, 
+              unitPrice: Number(pizzaProduct.price), 
+              status: 'COOKING' as const 
+            }] : []),
+            ...(drinkProduct ? [{ 
+              product: { connect: { id: drinkProduct.id } },
+              quantity: 2, 
+              unitPrice: Number(drinkProduct.price), 
+              status: 'READY' as const 
+            }] : [])
+          ]
+        }
+      }
+    });
+
+    // Order 3: Ready (Completed)
+    await prisma.order.create({
+      data: {
+        orderNumber: 9003,
+        channel: 'POS',
+        status: 'PREPARED',
+        paymentStatus: 'PAID',
+        subtotal: friesProduct && burgerProduct ? Number(friesProduct.price) + Number(burgerProduct.price) : 0,
+        total: friesProduct && burgerProduct ? Number(friesProduct.price) + Number(burgerProduct.price) : 0,
+        businessDate: new Date(),
+        tableId: table3.id,
+        serverId: waiterUser.id,
+        items: {
+          create: [
+            ...(friesProduct ? [{ 
+              product: { connect: { id: friesProduct.id } },
+              quantity: 1, 
+              unitPrice: Number(friesProduct.price), 
+              status: 'READY' as const 
+            }] : []),
+            ...(burgerProduct ? [{ 
+              product: { connect: { id: burgerProduct.id } },
+              quantity: 1, 
+              unitPrice: Number(burgerProduct.price), 
+              status: 'READY' as const 
+            }] : [])
+          ]
+        }
+      }
+    });
+
+    console.log('✅ Test Orders for KDS');
+  }
+
   console.log('🚀 Seeding finished.');
 }
 

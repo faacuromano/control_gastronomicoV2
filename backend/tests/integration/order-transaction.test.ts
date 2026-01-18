@@ -78,6 +78,7 @@ describe('Order Transaction Integrity', () => {
 
         // Act & Assert
         const orderData = {
+            userId,
             items: [{ productId, quantity: 1 }],
             serverId: userId,
             channel: 'POS' as const

@@ -4,7 +4,7 @@
  * Provides typed errors for consistent error handling
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ServiceUnavailableError = exports.InternalError = exports.RateLimitError = exports.ConflictError = exports.NotFoundError = exports.ForbiddenError = exports.UnauthorizedError = exports.ValidationError = exports.ApiError = void 0;
+exports.ServiceUnavailableError = exports.InsufficientStockError = exports.InternalError = exports.RateLimitError = exports.ConflictError = exports.NotFoundError = exports.ForbiddenError = exports.UnauthorizedError = exports.ValidationError = exports.ApiError = void 0;
 /**
  * Base class for API errors
  */
@@ -92,6 +92,23 @@ class InternalError extends ApiError {
     }
 }
 exports.InternalError = InternalError;
+/**
+ * 400 Insufficient Stock - Not enough ingredients to prepare the product
+ */
+class InsufficientStockError extends ApiError {
+    constructor(productName, ingredientName, required, available) {
+        const message = `No hay suficiente "${ingredientName}" para preparar "${productName}". ` +
+            `Se necesitan ${required} pero solo hay ${available} disponibles.`;
+        super('INSUFFICIENT_STOCK', message, 400, {
+            productName,
+            ingredientName,
+            required,
+            available
+        });
+        this.name = 'InsufficientStockError';
+    }
+}
+exports.InsufficientStockError = InsufficientStockError;
 /**
  * 503 Service Unavailable - Database or external service down
  */

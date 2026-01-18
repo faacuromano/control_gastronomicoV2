@@ -1,0 +1,400 @@
+ Informe de Due Diligence - PentiumPOS
+## Auditoría de Viabilidad Comercial y Competitiva
+
+**Fecha:** 17 de Enero de 2026  
+**Auditor:** Socio M&A, Venture Capital Due Diligence  
+**Target:** control_gastronomicoV2 (PentiumPOS)  
+**Tipo de Inversión:** Software POS Gastronómico  
+
+---
+
+## Executive Summary
+
+> [!WARNING]
+> **VEREDICTO: RETAIN WITH CONDITIONS (Retener con Condiciones)**
+> 
+> Este software representa un intento competente de crear un sistema POS gastronómico modular. Sin embargo, **NO está listo para inversión en su estado actual**. Faltan componentes críticos para competir contra Toast, Square o Micros. La recomendación es **continuar desarrollo 3-6 meses más** antes de considerar ronda de inversión.
+
+| Métrica | Puntuación | Comentario |
+|---------|------------|------------|
+| **Potencial de Mercado** | 6/10 | Mercado fragmentado en LATAM, oportunidad real |
+| **Madurez Técnica** | 5/10 | Arquitectura sólida, ejecución incompleta |
+| **Defensibilidad** | 3/10 | Sin moat tecnológico claro |
+| **Time-to-Market** | 4/10 | 3-6 meses mínimo para MVP vendible |
+| **Riesgo de Ejecución** | ALTO | Un solo desarrollador, scope ambicioso |
+
+---
+
+## 1. Análisis de Competitividad
+
+### 1.1 ¿Por qué un restaurante cambiaría a PentiumPOS?
+
+**Propuesta de Valor Declarada:**
+- Arquitectura modular "desactivable" (Food Truck → Restaurante Multi-piso)
+- Feature Flags para personalizar por cliente
+- Stack moderno (React 19, Express 5, Prisma 6)
+
+**Realidad del Código:**
+
+| Diferenciador Prometido | Estado Actual | Competidores |
+|-------------------------|---------------|--------------|
+| Modularidad por Feature Flags | ✅ Implementado | Toast/Square no ofrecen esto |
+| KDS Integrado | ✅ Funcional | Toast: $99/mes extra |
+| Split Payments | ✅ Funcional | Standard en industria |
+| Control de Stock + Recetas | ✅ Funcional | Mismo nivel que competencia |
+| Modo Offline | ❌ **CRÍTICO: No existe** | Toast/Micros: SÍ |
+| Integraciones Delivery | ❌ Solo schema, sin webhooks | Toast: Integrado |
+| Impresión Térmica | 🟡 Código existe, sin testing | Standard |
+| Facturación Fiscal (AFIP) | ❌ No implementado | Requerido para Argentina |
+
+> [!CAUTION]
+> **Killer Feature Faltante: MODO OFFLINE**
+> 
+> En restaurantes de LATAM, la conectividad es inestable. Sin modo offline, **CADA corte de internet = pérdida de ventas**. Esto es deal-breaker para el 80% del mercado target.
+
+### 1.2 Ventaja Tecnológica Real: ¿Existe?
+
+**Honestamente: NO HAY MOAT TECNOLÓGICO.**
+
+El software no tiene ninguna innovación que no pueda ser replicada en 2-3 meses por un equipo competente. Lo que tiene es:
+
+1. **Arquitectura limpia** - Bien estructurada, pero no es patentable
+2. **Feature Flags nativos** - Buen diferenciador para PYMES, pero trivial de copiar
+3. **Stack moderno** - Ventaja de mantenibilidad, no de mercado
+
+**Valoración de IP:** $0-50K USD. No hay propiedad intelectual defensible.
+
+---
+
+## 2. Vectores de Ataque
+
+### 2.1 Si fuera la competencia, atacaría así:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  VULNERABILIDADES COMERCIALES                               │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  1. SIN MODO OFFLINE                                        │
+│     → Marketing: "Nosotros sí funcionamos cuando se         │
+│        cae internet"                                        │
+│     → Impacto: CRÍTICO                                      │
+│                                                             │
+│  2. SIN INTEGRACIONES DELIVERY                              │
+│     → Marketing: "Recibe pedidos de PedidosYa/Rappi         │
+│        directo en tu sistema"                               │
+│     → Impacto: ALTO (40% del mercado lo necesita)           │
+│                                                             │
+│  3. SIN FACTURACIÓN ELECTRÓNICA                             │
+│     → Marketing: "Nosotros sí tenemos AFIP integrado"       │
+│     → Impacto: CRÍTICO para Argentina                       │
+│                                                             │
+│  4. UN SOLO DESARROLLADOR                                   │
+│     → Argumento: "¿Quién mantiene tu sistema si se va?"     │
+│     → Impacto: Riesgo percibido por clientes enterprise     │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 2.2 Fragilidades del Backend
+
+| Área | Problema | Riesgo Comercial |
+|------|----------|------------------|
+| **Rate Limiting** | `max: 1000` en auth - prácticamente deshabilitado | Brute force trivial en producción |
+| **CORS** | Configurable vía env, pero default es localhost | Requiere configuración correcta cada deploy |
+| **JWT Expiry** | 12-24 horas - largo para POS | Sesiones activas muy prolongadas |
+| **Tests** | 3 unit + 5 E2E = ~20% coverage | Regresiones probables en producción |
+| **Transacciones** | `prisma.$transaction` usado, pero no sistemático | Posible corrupción de datos en edge cases |
+
+### 2.3 Costes de Mantenimiento Proyectados
+
+Basado en complejidad del codebase:
+
+```
+Backend:  25 services × ~200 LOC promedio = 5,000 LOC
+Frontend: ~40 componentes × ~150 LOC promedio = 6,000 LOC
+Schema:   490 líneas Prisma
+Tests:    ~20% coverage
+
+Mantenimiento Anual Estimado:
+- 1 Developer Full-Time: $48,000-72,000 USD/año
+- Infraestructura (DB + Hosting): $200-500 USD/mes
+- Soporte por cliente: 2-4 horas/mes inicialmente
+
+CAC Estimado: $500-1,500 por restaurante (onboarding + training)
+LTV Necesario para Break-even: >$150/mes × 12 meses = $1,800
+```
+
+---
+
+## 3. Problemas de Implementación (Go-to-Market)
+
+### 3.1 ¿Es fácil de instalar y mantener?
+
+> [!IMPORTANT]
+> **Respuesta Corta: NO**
+
+**Requisitos de Setup Actuales:**
+
+```bash
+# Backend
+1. Clonar repo
+2. npm install
+3. Configurar MySQL
+4. Configurar variables de entorno (10+ vars)
+5. npx prisma migrate deploy
+6. npx prisma db seed
+7. npm run dev
+
+# Frontend
+1. npm install
+2. Configurar API URL
+3. npm run dev
+```
+
+**Tiempo de Setup por Cliente:** 2-4 horas con desarrollador experto
+
+**Problemas Go-to-Market:**
+
+| Barrera | Impacto | Solución Necesaria |
+|---------|---------|-------------------|
+| Requiere MySQL instalado | Fricción alta | Docker compose o cloud-managed |
+| 10+ variables de entorno | Error-prone | Wizard de configuración |
+| No hay instalador | Solo técnicos pueden instalar | Electron wrapper o cloud-hosted |
+| No hay dashboard admin SaaS | No hay control multi-tenant | Tenant management layer |
+| No hay billing integrado | Cobro manual | Stripe/MercadoPago integration |
+
+### 3.2 Modelo de Negocio Viable
+
+**Opciones:**
+
+1. **SaaS Multi-Tenant (Recomendado)**
+   - Hospedar centralmente
+   - $49-199/mes por local
+   - Requiere: Multi-tenancy real (actualmente single-tenant)
+
+2. **On-Premise con Licencia**
+   - Vender licencia + soporte
+   - $500-2000 setup + $50-100/mes soporte
+   - Requiere: Instalador simplificado
+
+3. **Franchise/White-Label**
+   - Vender a integradores
+   - Requiere: Documentación exhaustiva + SDK
+
+**Veredicto:** El código actual **NO soporta ningún modelo de negocio escalable**. Se necesita trabajo adicional.
+
+---
+
+## 4. Veredicto de Mercado
+
+### 4.1 ¿Es vendible HOY?
+
+**NO.** Las siguientes carencias lo hacen inviable comercialmente:
+
+| Gap Crítico | Tiempo para Cerrar | Costo Estimado |
+|-------------|--------------------| ----------------|
+| Modo Offline | 4-6 semanas | $5,000-10,000 |
+| Facturación AFIP | 3-4 semanas | $3,000-6,000 |
+| Instalador simplificado | 2 semanas | $2,000-3,000 |
+| Multi-tenancy real | 6-8 semanas | $8,000-15,000 |
+| Integración Delivery | 4-6 semanas | $5,000-10,000 |
+| Testing coverage 60%+ | 3-4 semanas | $4,000-6,000 |
+
+**Total para MVP Comercializable:** 
+- **Tiempo:** 3-5 meses
+- **Inversión:** $30,000-60,000 USD
+
+### 4.2 Competidores Directos y Posicionamiento
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                    MAPA COMPETITIVO                            │
+├────────────────────────────────────────────────────────────────┤
+│                                                                │
+│  PRECIO ALTO                                                   │
+│       ▲                                                        │
+│       │    [Micros]         [Toast]                            │
+│       │      (Legacy)         (Market Leader)                  │
+│       │                                                        │
+│       │                                                        │
+│       │              [Square for Restaurants]                  │
+│       │                                                        │
+│       │                                                        │
+│       │   [Maxirest]                                           │
+│       │     (LATAM)                                            │
+│       │                    [PentiumPOS]  ← AQUÍ ESTAMOS        │
+│       │                      (Trabajo en progreso)             │
+│       │                                                        │
+│       │  [Woki/Nocueloit]                                      │
+│       │    (LATAM Low-End)                                     │
+│       │                                                        │
+│  PRECIO BAJO                                                   │
+│       └────────────────────────────────────────────────►       │
+│                                                    FEATURES    │
+│          BÁSICO                              ENTERPRISE        │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**Posicionamiento Sugerido:** 
+- Target: Restaurantes medianos en LATAM (10-50 mesas)
+- Precio: $79-149/mes
+- Diferenciador: "Todo incluido, sin módulos extra"
+
+---
+
+## 5. Riesgos Mayores para Éxito Comercial
+
+### Riesgo #1: Bus Factor = 1
+
+> [!CAUTION]
+> **CRÍTICO: Un solo desarrollador**
+> 
+> Si el desarrollador se enferma, renuncia o es contratado por competidor, el proyecto muere. No hay documentación arquitectónica suficiente para onboarding rápido.
+
+**Probabilidad:** Alta (40-60%)  
+**Impacto:** Catastrófico  
+**Mitigación:** Contratar segundo developer, documentar arquitectura
+
+### Riesgo #2: Sin Tracción Comercial Probada
+
+No hay evidencia de:
+- Clientes pagando
+- Pilotos en restaurantes reales
+- Métricas de uso (DAU, MAU, Churn)
+
+**Probabilidad:** N/A (Estado actual)  
+**Impacto:** No se puede valorar el negocio  
+**Mitigación:** Desplegar en 3-5 restaurantes beta ANTES de buscar inversión
+
+### Riesgo #3: Mercado Competitivo con Giants
+
+Toast ($65B market cap), Square ($40B), y Micros (Oracle) tienen recursos ilimitados para copiar features y competir en precio.
+
+**Probabilidad:** Certainty  
+**Impacto:** Alto  
+**Mitigación:** Nicho geográfico (LATAM), vertical específico (dark kitchens, food trucks)
+
+### Riesgo #4: Deuda Técnica Acumulada
+
+El análisis de código revela:
+- `req.user` usa casting inseguro (`as any` pattern aún presente)
+- Tests cubren ~20% del código crítico
+- Rate limiting deshabilitado efectivamente
+- No hay logging/monitoring de producción
+
+**Probabilidad:** Alta  
+**Impacto:** Fallos en producción, pérdida de confianza  
+**Mitigación:** Sprint de hardening (2-3 semanas)
+
+---
+
+## 6. Recomendación Estratégica
+
+### Decisión: **ACELERAR CON CONDICIONES**
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                                                                │
+│   ❌ PIVOTEAR                                                  │
+│      No aplica. La dirección del producto es correcta.        │
+│                                                                │
+│   ✅ ACELERAR (CON CONDICIONES)                                │
+│      El producto tiene fundamentos sólidos, pero necesita     │
+│      3-6 meses más de desarrollo antes de ser comercializable │
+│                                                                │
+│   ❌ RECONSTRUIR                                               │
+│      No necesario. La arquitectura es salvable.               │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### Condiciones para Inversión:
+
+1. **Milestone 1 (30 días):** Modo offline básico implementado
+2. **Milestone 2 (60 días):** 3 restaurantes beta usando el sistema
+3. **Milestone 3 (90 días):** Facturación electrónica Argentina (AFIP)
+4. **Milestone 4 (120 días):** Segundo desarrollador contratado
+5. **Milestone 5 (150 días):** Test coverage >50%, 0 bugs críticos
+
+### Valoración Pre-Money Sugerida:
+
+| Estado | Valoración |
+|--------|------------|
+| Actual (solo código) | $50,000-100,000 USD |
+| Post-Milestones 1-3 | $200,000-400,000 USD |
+| Con 10 clientes pagando | $500,000-1,000,000 USD |
+
+---
+
+## 7. Veredicto Final
+
+> **¿Invertiría mi propio dinero en este estado?**
+>
+> **NO.**
+> 
+> El producto tiene potencial, pero no está listo. Faltan componentes críticos (offline, facturación fiscal), no hay tracción comercial probada, y el riesgo de ejecución es alto con un solo desarrollador.
+>
+> **Lo que recomendaría:**
+> 1. NO buscar inversión todavía
+> 2. Cerrar los gaps críticos (3-6 meses)
+> 3. Conseguir 5-10 clientes beta (pagando aunque sea mínimo)
+> 4. Volver a conversar con métricas reales
+
+---
+
+## Anexos
+
+### A. Archivos Clave Analizados
+
+| Archivo | LOC | Comentario |
+|---------|-----|------------|
+| [prisma/schema.prisma](file:///d:/Proyectos/control_gastronomicoV2/backend/prisma/schema.prisma) | 490 | Schema maduro, 20+ modelos |
+| [order.service.ts](file:///d:/Proyectos/control_gastronomicoV2/backend/src/services/order.service.ts) | 437 | Core del negocio, bien estructurado |
+| [payment.service.ts](file:///d:/Proyectos/control_gastronomicoV2/backend/src/services/payment.service.ts) | 142 | Pagos split implementados |
+| [auth.service.ts](file:///d:/Proyectos/control_gastronomicoV2/backend/src/services/auth.service.ts) | 176 | JWT + bcrypt, estándar |
+| [analytics.service.ts](file:///d:/Proyectos/control_gastronomicoV2/backend/src/services/analytics.service.ts) | 301 | Reportes básicos |
+| [App.tsx](file:///d:/Proyectos/control_gastronomicoV2/frontend/src/App.tsx) | 124 | Router con RBAC |
+
+### B. Estadísticas del Codebase
+
+```
+Backend:
+  - 25 services
+  - 20 controllers
+  - 19 routes
+  - 490 líneas de schema Prisma
+  - 3 unit tests, 2 integration tests
+
+Frontend:
+  - 4 Zustand stores
+  - 17 services (API clients)
+  - 41 modules
+  - 5 E2E tests Cypress
+
+Dependencias críticas:
+  - Express 5.2.1 (moderna)
+  - Prisma 6.19.2 (actualizada)
+  - React 19.2.0 (edge)
+  - TypeScript 5.9.3
+```
+
+### C. Gaps Funcionales Detallados
+
+| Feature | Toast | Square | PentiumPOS | Gap |
+|---------|-------|--------|------------|-----|
+| POS Core | ✅ | ✅ | ✅ | - |
+| KDS | $99/mes | $60/mes | ✅ Incluido | ✅ Ventaja |
+| Offline | ✅ | ✅ | ❌ | CRÍTICO |
+| Delivery Integration | ✅ | ✅ | ❌ | ALTO |
+| Fiscal (AFIP) | N/A | N/A | ❌ | CRÍTICO para Argentina |
+| Multi-location | ✅ | ✅ | ❌ | MEDIO |
+| Loyalty Program | ✅ | ✅ | 🟡 Básico | BAJO |
+| QR Ordering | ✅ | ✅ | ❌ | MEDIO |
+
+---
+
+**Fin del Informe de Due Diligence**
+
+*Este documento es confidencial y solo para uso interno de evaluación de inversión.*

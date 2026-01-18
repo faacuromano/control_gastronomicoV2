@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from './store/auth.store';
 import LoginPage from './pages/auth/LoginPage';
+import { HomePage } from './pages/HomePage';
 import Layout from './modules/core/ui/Layout';
 import CategoryList from './modules/admin/products/CategoryList';
 import ProductList from './modules/admin/products/ProductList';
@@ -13,7 +14,16 @@ import { TablesAdminPage } from './modules/admin/tables/TablesAdminPage';
 import { ClientsPage } from './modules/admin/pages/ClientsPage';
 import { UsersPage } from './modules/admin/users/UsersPage';
 import { IngredientsPage } from './modules/admin/pages/IngredientsPage';
+import ModifiersPage from './modules/admin/pages/ModifiersPage';
 import { SettingsPage } from './modules/admin/pages/SettingsPage';
+import { SuppliersPage } from './modules/admin/pages/SuppliersPage';
+import { PurchaseOrdersPage } from './modules/admin/pages/PurchaseOrdersPage';
+import { DashboardPage } from './modules/admin/pages/DashboardPage';
+import { RolesPage } from './modules/admin/pages/RolesPage';
+import { PaymentMethodsPage } from './modules/admin/pages/PaymentMethodsPage';
+import { PrintersPage } from './modules/admin/pages/PrintersPage';
+import { PrintRoutingPage } from './modules/admin/pages/PrintRoutingPage';
+import { BulkPriceUpdatePage } from './modules/admin/pages/BulkPriceUpdatePage';
 import { CashPage } from './pages/CashPage';
 import { CashShiftHistoryPage } from './modules/admin/cash/CashShiftHistoryPage';
 import { RouteGuard } from './components/auth/RouteGuard';
@@ -34,11 +44,7 @@ function App() {
                     
                     <Route element={<ProtectedRoute />}>
                         <Route element={<Layout />}>
-                            <Route path="/" element={
-                                <div className="p-8">
-                                    <h1 className="text-3xl font-bold mb-4">Welcome to PentiumPOS</h1>
-                                </div>
-                            } />
+                            <Route path="/" element={<HomePage />} />
                             <Route path="/ventas" element={
                                 <RouteGuard permission={{ resource: 'orders', action: 'create' }}>
                                     <POSPage />
@@ -67,14 +73,30 @@ function App() {
                             
                             {/* Admin Section with Sidebar */}
                             <Route path="/admin" element={<AdminLayout />}>
+                                <Route index element={<DashboardPage />} />
+                                <Route path="dashboard" element={<DashboardPage />} />
                                 <Route path="categories" element={<CategoryList />} />
                                 <Route path="products" element={<ProductList />} />
+                                <Route path="bulk-prices" element={
+                                    <RouteGuard permission={{ resource: 'products', action: 'update' }}>
+                                        <BulkPriceUpdatePage />
+                                    </RouteGuard>
+                                } />
+                                <Route path="modifiers" element={<ModifiersPage />} />
                                 <Route path="tables" element={<TablesAdminPage />} />
                                 <Route path="users" element={
                                     <RouteGuard permission={{ resource: 'users', action: 'read' }}>
                                         <UsersPage />
                                     </RouteGuard>
                                 } />
+                                <Route path="roles" element={
+                                    <RouteGuard permission={{ resource: 'users', action: 'update' }}>
+                                        <RolesPage />
+                                    </RouteGuard>
+                                } />
+                                <Route path="payment-methods" element={<PaymentMethodsPage />} />
+                                <Route path="printers" element={<PrintersPage />} />
+                                <Route path="print-routing" element={<PrintRoutingPage />} />
                                 <Route path="clients" element={<ClientsPage />} />
                                 <Route path="cash-shifts" element={
                                     <RouteGuard permission={{ resource: 'cash', action: 'read' }}>
@@ -84,6 +106,16 @@ function App() {
                                 <Route path="ingredients" element={
                                     <RouteGuard flag="enableStock">
                                         <IngredientsPage />
+                                    </RouteGuard>
+                                } />
+                                <Route path="suppliers" element={
+                                    <RouteGuard flag="enableStock">
+                                        <SuppliersPage />
+                                    </RouteGuard>
+                                } />
+                                <Route path="purchase-orders" element={
+                                    <RouteGuard flag="enableStock">
+                                        <PurchaseOrdersPage />
                                     </RouteGuard>
                                 } />
                                 <Route path="settings" element={<SettingsPage />} />

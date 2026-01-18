@@ -4,11 +4,11 @@ import api from '../lib/api';
 
 /**
  * Permission structure following RBAC pattern.
- * Maps resource names to allowed actions.
- * @example { "orders": ["create", "read"], "products": ["create", "read", "update", "delete"] }
+ * Maps resource/module names to allowed actions.
+ * @example { "pos": ["access"], "orders": ["create", "read"] }
  */
 export interface RolePermissions {
-    [resource: string]: ('create' | 'read' | 'update' | 'delete')[];
+    [resource: string]: ('access' | 'create' | 'read' | 'update' | 'delete')[];
 }
 
 /**
@@ -49,12 +49,12 @@ interface AuthState {
     logout: () => void;
     
     /**
-     * Check if current user has permission for a specific action on a resource.
-     * @param resource - The resource name (e.g., 'orders', 'products')
-     * @param action - The action to check (e.g., 'create', 'read')
-     * @returns true if user has permission, false otherwise
+     * Check if current user has permission for a specific action on a resource/module.
+     * @param resource - The resource or module name (e.g., 'pos', 'orders', 'products')
+     * @param action - The action to check (e.g., 'access', 'create', 'read')
+     * @returns true if user has permission, false otherwise. ADMIN always returns true.
      */
-    hasPermission: (resource: string, action: 'create' | 'read' | 'update' | 'delete') => boolean;
+    hasPermission: (resource: string, action: 'access' | 'create' | 'read' | 'update' | 'delete') => boolean;
 }
 
 /**
@@ -84,9 +84,14 @@ export const useAuthStore = create<AuthState>()(
                 set({ user: null, token: null, isAuthenticated: false });
             },
             
-            hasPermission: (resource: string, action: 'create' | 'read' | 'update' | 'delete') => {
+            hasPermission: (resource: string, action: 'access' | 'create' | 'read' | 'update' | 'delete') => {
                 const user = get().user;
-                if (!user || !user.permissions) return false;
+                if (!user) return false;
+                
+                // ADMIN role always has full access
+                if (user.role === 'ADMIN') return true;
+                
+                if (!user.permissions) return false;
                 
                 const resourcePermissions = user.permissions[resource];
                 if (!resourcePermissions) return false;

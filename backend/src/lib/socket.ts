@@ -6,10 +6,14 @@ import { logger } from '../utils/logger';
 let io: Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any> | undefined;
 
 export const initSocket = (httpServer: HttpServer) => {
+  // Use same CORS configuration as Express app
+  const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173'];
+  
   io = new Server(httpServer, {
     cors: {
-      origin: "*", // Allow all origins for now, configure for production later
-      methods: ["GET", "POST"]
+      origin: allowedOrigins,
+      methods: ["GET", "POST"],
+      credentials: true
     }
   });
 
@@ -20,10 +24,38 @@ export const initSocket = (httpServer: HttpServer) => {
       logger.debug('WebSocket client disconnected', { socketId: socket.id });
     });
     
-    // Join room logic can go here (e.g. socket.join('kitchen'))
+    // --- Room Management ---
+    
+    // Kitchen (General)
     socket.on('join:kitchen', () => {
         socket.join('kitchen');
-        logger.debug('Socket joined kitchen room', { socketId: socket.id });
+        logger.debug('Socket joined room: kitchen', { socketId: socket.id });
+    });
+
+    // Kitchen Stations (e.g., 'kitchen:station:hot', 'kitchen:station:cold')
+    socket.on('join:kitchen:station', (station: string) => {
+        const room = `kitchen:station:${station}`;
+        socket.join(room);
+        logger.debug(`Socket joined room: ${room}`, { socketId: socket.id });
+    });
+
+    // Waiters (for ready alerts)
+    socket.on('join:waiters', () => {
+        socket.join('waiters');
+        logger.debug('Socket joined room: waiters', { socketId: socket.id });
+    });
+
+    // Specific Table (for customer updates in future)
+    socket.on('join:table', (tableId: number) => {
+        const room = `table:${tableId}`;
+        socket.join(room);
+        logger.debug(`Socket joined room: ${room}`, { socketId: socket.id });
+    });
+    
+    // Admin stock alerts room
+    socket.on('join:admin:stock', () => {
+        socket.join('admin:stock');
+        logger.debug('Socket joined room: admin:stock', { socketId: socket.id });
     });
   });
 

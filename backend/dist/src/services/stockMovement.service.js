@@ -11,8 +11,9 @@ class StockMovementService {
      * @param isAdjustment If true, and type is ADJUSTMENT, quantity is treated as the DELTA.
      *                     If the user wants to set exact stock, the controller should calculate the delta.
      *                     For now, we assume quantity is always the amount to ADD or SUBTRACT.
+     * @param reason Optional reason string
      */
-    async register(ingredientId, type, quantity, externalTx) {
+    async register(ingredientId, type, quantity, reason, externalTx) {
         // If not adjustment, quantity is absolute magnitude
         if (type !== 'ADJUSTMENT' && quantity < 0) {
             throw new Error("Quantity must be positive for PURCHASE, SALE, or WASTE");
@@ -23,7 +24,8 @@ class StockMovementService {
                 data: {
                     ingredientId,
                     type,
-                    quantity // Record the raw quantity (can be negative for adjustment)
+                    quantity, // Record the raw quantity (can be negative for adjustment)
+                    reason
                 }
             });
             // 2. Calculate stock change

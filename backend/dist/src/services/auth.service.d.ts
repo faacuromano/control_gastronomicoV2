@@ -1,3 +1,14 @@
+interface RegisterData {
+    email: string;
+    password: string;
+    name: string;
+    pinCode: string;
+    roleId: number;
+}
+interface PasswordLoginData {
+    email: string;
+    password: string;
+}
 export declare const loginWithPin: (pin: string) => Promise<{
     user: {
         id: number;
@@ -7,7 +18,7 @@ export declare const loginWithPin: (pin: string) => Promise<{
     };
     token: string;
 }>;
-export declare const register: (data: any) => Promise<{
+export declare const register: (data: RegisterData) => Promise<{
     user: {
         id: number;
         name: string;
@@ -16,7 +27,7 @@ export declare const register: (data: any) => Promise<{
     };
     token: string;
 }>;
-export declare const loginWithPassword: (data: any) => Promise<{
+export declare const loginWithPassword: (data: PasswordLoginData) => Promise<{
     user: {
         id: number;
         name: string;
@@ -25,4 +36,5 @@ export declare const loginWithPassword: (data: any) => Promise<{
     };
     token: string;
 }>;
+export {};
 //# sourceMappingURL=auth.service.d.ts.map

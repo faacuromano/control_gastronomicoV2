@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { sendError } from '../utils/response';
-import { JwtPayload } from '../types/express.d';
+import type { JwtPayload, Permissions } from '../types/express-extensions';
 
 // Get JWT_SECRET - will throw at import time if missing (from auth.service.ts)
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -63,8 +63,8 @@ export const authorize = (allowedRoles: string[]) => {
  * Verifies if the authenticated user has the specific action allowed on the resource.
  * 
  * @business_rule
- * Enforces strict access control by validating against the "permissions" JSON object from the database/token.
- * Does NOT rely solely on Role Name.
+ * - ADMIN role has full access to all resources and actions (bypass)
+ * - Other roles require explicit permissions in the token/user object
  * 
  * @param resource - The resource identifier (e.g. 'orders', 'products')
  * @param action - The action attempted (e.g. 'create', 'delete')
@@ -75,7 +75,12 @@ export const requirePermission = (resource: string, action: string) => {
             return sendError(res, 'AUTH_REQUIRED', 'Not authenticated', null, 401);
         }
 
-        const permissions = req.user.permissions as Record<string, string[]>;
+        // ADMIN BYPASS: Admin role has full access to everything
+        if (req.user.role === 'ADMIN') {
+            return next();
+        }
+
+        const permissions: Permissions | undefined = req.user.permissions;
 
         // If no permissions found in token/user object, deny access
         if (!permissions) {
@@ -84,10 +89,6 @@ export const requirePermission = (resource: string, action: string) => {
 
         // Check if resource exists in permissions
         const resourcePermissions = permissions[resource];
-        
-        // ADMIN Override: If user has 'admin' or '*' permission on resource (optional, depending on policy)
-        // For strict MVP, we stick to explicit action check, but assuming '*' might be used.
-        // Let's implement strict check: Array must include action.
         
         if (!resourcePermissions || !Array.isArray(resourcePermissions)) {
             return sendError(res, 'AUTH_FORBIDDEN', `Access to resource '${resource}' denied`, null, 403);
@@ -100,3 +101,4 @@ export const requirePermission = (resource: string, action: string) => {
         next();
     };
 };
+

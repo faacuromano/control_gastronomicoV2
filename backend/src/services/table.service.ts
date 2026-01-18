@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { TableStatus } from '@prisma/client';
 import { NotFoundError, ConflictError, ValidationError } from '../utils/errors';
+import { logger } from '../utils/logger';
 
 export class TableService {
     // --- AREAS ---
@@ -190,7 +191,7 @@ export class TableService {
             // We need to import the service at the top of file
             const { orderNumberService } = await import('./orderNumber.service');
             // Cast tx to the type expected by getNextOrderNumber if needed, or rely on compatibility
-            const orderNumber = await orderNumberService.getNextOrderNumber(tx as any);
+            const orderNumber = await orderNumberService.getNextOrderNumber(tx);
 
             // 4. Create an empty order (no items)
             const order = await tx.order.create({
@@ -246,9 +247,34 @@ export class TableService {
             const { paymentService } = await import('./payment.service');
             const { PaymentMethod } = await import('@prisma/client');
             
-            // Map string methods to PaymentMethod enum
+            // Map dynamic payment codes to PaymentMethod enum
+            // e.g., 'DEBIT'/'CREDIT' -> 'CARD', 'EFECTIVO' -> 'CASH'
+            const mapToPaymentMethod = (code: string): typeof PaymentMethod[keyof typeof PaymentMethod] => {
+                const codeUpper = code.toUpperCase();
+                // Direct enum matches
+                if (codeUpper in PaymentMethod) {
+                    return PaymentMethod[codeUpper as keyof typeof PaymentMethod];
+                }
+                // Common mappings for dynamic codes
+                if (['DEBIT', 'CREDIT', 'DEBITO', 'CREDITO', 'TARJETA'].includes(codeUpper)) {
+                    return PaymentMethod.CARD;
+                }
+                if (['EFECTIVO'].includes(codeUpper)) {
+                    return PaymentMethod.CASH;
+                }
+                if (['TRANSFERENCIA', 'BANCO'].includes(codeUpper)) {
+                    return PaymentMethod.TRANSFER;
+                }
+                if (['MERCADOPAGO', 'MP', 'QR'].includes(codeUpper)) {
+                    return PaymentMethod.QR_INTEGRATED;
+                }
+                // Default to CASH for unknown codes
+                logger.warn('Unknown payment code, defaulting to CASH', { code });
+                return PaymentMethod.CASH;
+            };
+            
             const paymentInputs = payments.map(p => ({
-                method: p.method as typeof PaymentMethod[keyof typeof PaymentMethod],
+                method: mapToPaymentMethod(p.method),
                 amount: p.amount
             }));
 
@@ -258,6 +284,10 @@ export class TableService {
                 undefined,
                 paymentInputs
             );
+
+            // DEBUG: Log payment calculation details
+            logger.debug('CloseTable payment calculation', { orderId: order.id, total: order.total, paid: paymentResult.totalPaid, isFullyPaid: paymentResult.isFullyPaid, status: paymentResult.paymentStatus });
+            logger.debug('CloseTable payments received', { payments: paymentInputs });
 
             // 4. Register payments
             if (paymentResult.paymentsToCreate.length > 0) {
@@ -281,6 +311,7 @@ export class TableService {
 
             // 6. Free table only if fully paid
             if (paymentResult.isFullyPaid) {
+                logger.info('Freeing table after full payment', { tableId });
                 await tx.table.update({
                     where: { id: tableId },
                     data: {
@@ -288,6 +319,8 @@ export class TableService {
                         currentOrderId: null
                     }
                 });
+            } else {
+                logger.debug('Table NOT freed - payment incomplete', { tableId });
             }
 
             return { 

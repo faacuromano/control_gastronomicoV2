@@ -1,119 +1,47 @@
+    
 /**
- * @fileoverview Order management service.
+ * @fileoverview Order management service (Facade).
  * Handles order creation, updates, and lifecycle management.
  * 
  * @module services/order.service
- * @adheres Single Responsibility - Order entity operations only
- * @dependencies OrderNumberService, PaymentService, StockMovementService
+ * @pattern Facade - Delegates to specialized services for better SRP
+ * @see orderItem.service.ts - Item validation and calculation
+ * @see orderKitchen.service.ts - KDS operations
+ * @see orderDelivery.service.ts - Delivery operations  
+ * @see orderStatus.service.ts - Status transitions
  */
 
 import { prisma } from '../lib/prisma';
-import { Prisma, StockMoveType, OrderChannel, PaymentMethod, OrderStatus, PaymentStatus } from '@prisma/client';
+import { Prisma, StockMoveType, OrderStatus, PaymentMethod } from '@prisma/client';
 import { StockMovementService } from './stockMovement.service';
 import { orderNumberService } from './orderNumber.service';
-import { paymentService, PaymentInput } from './payment.service';
+import { paymentService } from './payment.service';
 import { kdsService } from './kds.service';
-import { executeIfEnabled } from './featureFlags.service';
+import { executeIfEnabled, isFeatureEnabled } from './featureFlags.service';
+import { LoyaltyService } from './loyalty.service';
+import { logger } from '../utils/logger';
+
+// Extracted specialized services
+import { orderKitchenService } from './orderKitchen.service';
+import { orderDeliveryService } from './orderDelivery.service';
+import { orderStatusService } from './orderStatus.service';
+import { orderItemService } from './orderItem.service';
+
+// Types from centralized definitions
+import type {
+    OrderItemInput,
+    DeliveryData,
+    CreateOrderInput,
+    OrderItemData,
+    StockUpdate,
+    OrderCreateData
+} from '../types/order.types';
+
+// Re-export types for backwards compatibility
+export type { OrderItemInput, DeliveryData, CreateOrderInput };
 
 const stockService = new StockMovementService();
-
-/**
- * Input for a single order item.
- */
-export interface OrderItemInput {
-  productId: number;
-  quantity: number;
-  notes?: string;
-}
-
-/**
- * Input for delivery details.
- */
-export interface DeliveryData {
-    address: string;
-    notes?: string;
-    phone: string;
-    name: string;
-    driverId?: number;
-}
-
-/**
- * Input for creating a new order.
- * Supports both legacy single payment and split payments.
- */
-export interface CreateOrderInput {
-  userId: number;
-  items: {
-    productId: number;
-    quantity: number;
-    notes?: string;
-    modifiers?: { id: number; price: number }[];
-  }[];
-  channel?: OrderChannel;
-  tableId?: number;
-  clientId?: number;
-  serverId?: number;
-  deliveryData?: DeliveryData;
-  paymentMethod?: PaymentMethod | 'SPLIT';
-  payments?: { method: string; amount: number }[];
-}
-
-// ... helper interfaces ...
-
-/**
- * Internal structure for order item data before insertion.
- */
-interface OrderItemData {
-  productId: number;
-  quantity: number;
-  unitPrice: number;
-  notes?: string | undefined;
-  status: string;
-}
-
-/**
- * Internal structure for stock updates.
- */
-interface StockUpdate {
-  ingredientId: number;
-  quantity: number;
-}
-
-/**
- * Prisma order creation data structure.
- */
-interface OrderCreateData {
-  orderNumber: number;
-  channel: OrderChannel;
-  status: OrderStatus;
-  paymentStatus: PaymentStatus;
-  subtotal: number;
-  total: number;
-  businessDate: Date;
-  tableId?: number | undefined;
-  clientId?: number | undefined;
-  serverId?: number | undefined;
-  driverId?: number | undefined;
-  deliveryAddress?: string | undefined;
-  deliveryNotes?: string | undefined;
-  closedAt?: Date | undefined;
-  items: {
-    create: {
-      product: { connect: { id: number } };
-      quantity: number;
-      unitPrice: number;
-      notes: string | null;
-      status: string;
-    }[];
-  };
-  payments?: {
-    create: {
-      amount: number;
-      method: PaymentMethod;
-      shiftId: number;
-    }[];
-  } | undefined;
-}
+const loyaltyService = new LoyaltyService();
 
 export class OrderService {
   
@@ -124,7 +52,12 @@ export class OrderService {
       return await prisma.order.findUnique({
           where: { id },
           include: {
-              items: { include: { product: true } },
+              items: {
+                  include: {
+                      product: true,
+                      modifiers: { include: { modifierOption: true } }
+                  }
+              },
               payments: true,
               client: true,
               driver: true
@@ -136,11 +69,15 @@ export class OrderService {
    * Create a new order with items and optional payments.
    */
   async createOrder(data: CreateOrderInput) {
-    const order = await prisma.$transaction(async (tx) => {
-      // 1. Validate Products & Calculate Totals
+    // Check if stock validation is enabled BEFORE transaction
+    const stockEnabled = await isFeatureEnabled('enableStock');
+
+    const txResult = await prisma.$transaction(async (tx) => {
+      // 1. Validate Products & Calculate Totals (stock validation if enabled)
       const { itemDataList, stockUpdates, subtotal } = await this.validateAndCalculateItems(
         tx,
-        data.items
+        data.items,
+        stockEnabled
       );
 
       const total = subtotal; // Apply discounts here if needed
@@ -161,12 +98,37 @@ export class OrderService {
         throw new Error('NO_OPEN_SHIFT: Debes abrir un turno de caja antes de vender.');
       }
 
-      // 4. Process payments
-      const singlePaymentMethod = data.paymentMethod === 'SPLIT' ? undefined : (data.paymentMethod as PaymentMethod);
+      // 4. Process payments - Map dynamic codes to PaymentMethod enum
+      const mapToPaymentMethod = (code: string): PaymentMethod => {
+          const codeUpper = code.toUpperCase();
+          // Direct enum matches
+          if (codeUpper in PaymentMethod) {
+              return PaymentMethod[codeUpper as keyof typeof PaymentMethod];
+          }
+          // Common mappings for dynamic codes
+          if (['DEBIT', 'CREDIT', 'DEBITO', 'CREDITO', 'TARJETA'].includes(codeUpper)) {
+              return PaymentMethod.CARD;
+          }
+          if (['EFECTIVO'].includes(codeUpper)) {
+              return PaymentMethod.CASH;
+          }
+          if (['TRANSFERENCIA', 'BANCO'].includes(codeUpper)) {
+              return PaymentMethod.TRANSFER;
+          }
+          if (['MERCADOPAGO', 'MP', 'QR'].includes(codeUpper)) {
+              return PaymentMethod.QR_INTEGRATED;
+          }
+          // Default to CASH for unknown codes
+          console.warn(`[OrderService] Unknown payment code "${code}" - defaulting to CASH`);
+          return PaymentMethod.CASH;
+      };
+      
+      const singlePaymentMethod = data.paymentMethod === 'SPLIT' ? undefined : 
+          (data.paymentMethod ? mapToPaymentMethod(data.paymentMethod) : undefined);
       
       const splitPayments = data.payments?.map(p => ({
         ...p,
-        method: p.method as PaymentMethod
+        method: mapToPaymentMethod(p.method)
       }));
 
       const paymentResult = paymentService.processPayments(
@@ -191,7 +153,15 @@ export class OrderService {
             quantity: item.quantity,
             unitPrice: item.unitPrice,
             notes: item.notes ?? null,
-            status: 'PENDING'
+            status: 'PENDING',
+            ...(item.modifiers ? {
+                modifiers: {
+                    create: item.modifiers.map(m => ({
+                        modifierOptionId: m.id,
+                        priceCharged: m.price
+                    }))
+                }
+            } : {})
           }))
         }
       };
@@ -200,14 +170,21 @@ export class OrderService {
       if (data.tableId) createData.tableId = data.tableId;
       if (data.clientId) createData.clientId = data.clientId;
       if (data.serverId) createData.serverId = data.serverId;
-      if (paymentResult.isFullyPaid) createData.closedAt = new Date();
+      // Auto-close only if fully paid AND NOT a delivery order
+      // Delivery orders must remain OPEN/CONFIRMED until delivered
+      if (paymentResult.isFullyPaid && data.channel !== 'DELIVERY_APP') {
+          createData.closedAt = new Date();
+      }
       
-      // Delivery Fields
+      // Delivery Fields - No cast needed, OrderCreateData already has these fields
       if (data.deliveryData) {
-          (createData as any).deliveryAddress = data.deliveryData.address;
-          (createData as any).deliveryNotes = data.deliveryData.notes;
+          createData.deliveryAddress = data.deliveryData.address;
+          // Only assign deliveryNotes if it's defined (exactOptionalPropertyTypes)
+          if (data.deliveryData.notes !== undefined) {
+              createData.deliveryNotes = data.deliveryData.notes;
+          }
           if (data.deliveryData.driverId) {
-             (createData as any).driverId = data.deliveryData.driverId;
+             createData.driverId = data.deliveryData.driverId;
           }
       }
 
@@ -216,14 +193,14 @@ export class OrderService {
         createData.payments = { create: paymentResult.paymentsToCreate };
       }
 
-      // 6. Create order
+      // 6. Create order - Use Prisma.OrderCreateInput for type safety
       const order = await tx.order.create({
-        data: createData as Parameters<typeof tx.order.create>[0]['data'],
+        data: createData as Prisma.OrderCreateInput,
         include: { items: true }
       });
 
       // 7. Update Stock
-      await this.processStockUpdates(tx, stockUpdates);
+      await this.processStockUpdates(tx, stockUpdates, orderNumber);
 
       // 8. Update Table Status
       if (data.tableId) {
@@ -233,139 +210,80 @@ export class OrderService {
         });
       }
 
-      return order;
+      // 9. Award loyalty points INSIDE TRANSACTION for atomicity
+      // This ensures points are only awarded if the entire order creation succeeds
+      let pointsAwarded = 0;
+      if (data.clientId && paymentResult.isFullyPaid) {
+          pointsAwarded = await loyaltyService.awardPoints(data.clientId, Number(total), tx);
+      }
+
+      return { order, pointsAwarded };
     });
 
-    // 9. Broadcast to KDS (Outside transaction)
+    // Log loyalty points outside transaction (logging shouldn't fail the order)
+    if (txResult.pointsAwarded > 0) {
+        logger.info('Loyalty points awarded', { 
+            clientId: data.clientId, 
+            points: txResult.pointsAwarded, 
+            orderId: txResult.order.id 
+        });
+    }
+
+    const order = txResult.order;
+
+    // 10. Broadcast to KDS (Outside transaction)
     if (order.status === 'CONFIRMED' || order.status === 'OPEN') {
-        kdsService.broadcastNewOrder(order);
+        const fullOrder = await this.getById(order.id);
+        if (fullOrder) {
+            kdsService.broadcastNewOrder(fullOrder);
+        }
     }
 
     return order;
   }
 
   /**
-   * Assign a driver to an order
+   * Assign a driver to an order.
+   * @delegates orderDeliveryService.assignDriver
    */
   async assignDriver(orderId: number, driverId: number) {
-      const order = await prisma.order.update({
-          where: { id: orderId },
-          data: { 
-              driverId,
-              status: 'ON_ROUTE' as any // Force cast if type update lags
-          },
-          include: { driver: true }
-      });
-      
-      // Broadcast update
-      kdsService.broadcastOrderUpdate(order);
-      
-      return order;
+    return orderDeliveryService.assignDriver(orderId, driverId);
   }
 
   /**
- * Get active delivery orders (including delivered orders from today)
- */
-async getDeliveryOrders() {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return await prisma.order.findMany({
-        where: {
-            deliveryAddress: { not: null },
-            OR: [
-                // Active orders (any status except DELIVERED/CANCELLED/CLOSED)
-                {
-                    status: { in: ['OPEN', 'CONFIRMED', 'PREPARED', 'ON_ROUTE' as any] }
-                },
-                // Delivered orders from today
-                {
-                    status: 'DELIVERED' as any,
-                    closedAt: { gte: today }
-                }
-            ]
-        },
-        include: {
-            items: { include: { product: true } },
-            client: true,
-            driver: true
-        },
-        orderBy: { createdAt: 'asc' }
-    });
-}
+   * Get active delivery orders.
+   * @delegates orderDeliveryService.getDeliveryOrders
+   */
+  async getDeliveryOrders() {
+    return orderDeliveryService.getDeliveryOrders();
+  }
 
   /**
-   * Update individual order item status
+   * Update individual order item status.
+   * @delegates orderKitchenService.updateItemStatus
    */
   async updateItemStatus(itemId: number, status: 'PENDING' | 'COOKING' | 'READY' | 'SERVED') {
-      const item = await prisma.orderItem.update({
-          where: { id: itemId },
-          data: { status },
-          include: { order: true } // Need orderId to broadcast
-      });
+    return orderKitchenService.updateItemStatus(itemId, status);
+  }
 
-      // Broadcast update via KDS (Using order update event for now, or specific item event)
-      // For simplicity, we can fetch the full order and broadcast 'order:update'
-      const fullOrder = await this.getById(item.orderId);
-      if (fullOrder) {
-          kdsService.broadcastOrderUpdate(fullOrder);
-      }
-
-      return item;
+  /**
+   * Mark all items in an order as SERVED.
+   * @delegates orderKitchenService.markAllItemsServed
+   */
+  async markAllItemsServed(orderId: number) {
+    return orderKitchenService.markAllItemsServed(orderId);
   }
 
   /**
    * Validate products and calculate order totals.
-   * @private
+   * @delegates orderItemService.validateAndCalculateItems
    */
   private async validateAndCalculateItems(
     tx: Prisma.TransactionClient,
-    items: OrderItemInput[]
-  ): Promise<{ itemDataList: OrderItemData[]; stockUpdates: StockUpdate[]; subtotal: number }> {
-    let subtotal = 0;
-    const itemDataList: OrderItemData[] = [];
-    const stockUpdates: StockUpdate[] = [];
-
-    const productIds = items.map(i => i.productId);
-    
-    // Optimize: Batch fetch
-    const products = await tx.product.findMany({
-        where: { id: { in: productIds } },
-        include: { ingredients: true }
-    });
-
-    const productMap = new Map(products.map(p => [p.id, p]));
-
-    for (const item of items) {
-      const product = productMap.get(item.productId);
-
-      if (!product) throw new Error(`Product ID ${item.productId} not found`);
-      if (!product.isActive) throw new Error(`Product ${product.name} is not active`);
-
-      const price = Number(product.price);
-      const itemTotal = price * item.quantity;
-      subtotal += itemTotal;
-
-      itemDataList.push({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: price,
-        notes: item.notes,
-        status: 'PENDING'
-      });
-
-      // Prepare stock updates if stockable
-      if (product.isStockable && product.ingredients.length > 0) {
-        for (const ing of product.ingredients) {
-          stockUpdates.push({
-            ingredientId: ing.ingredientId,
-            quantity: Number(ing.quantity) * item.quantity
-          });
-        }
-      }
-    }
-
-    return { itemDataList, stockUpdates, subtotal };
+    items: OrderItemInput[],
+    stockEnabled: boolean = true
+  ) {
+    return orderItemService.validateAndCalculateItems(tx, items, stockEnabled);
   }
 
   /**
@@ -378,7 +296,8 @@ async getDeliveryOrders() {
    */
   private async processStockUpdates(
     tx: Prisma.TransactionClient,
-    stockUpdates: StockUpdate[]
+    stockUpdates: StockUpdate[],
+    orderNumber: number
   ): Promise<void> {
     // Only execute if Stock Module is enabled
     // This wrapper ensures we respect the TenantConfig contract
@@ -388,6 +307,7 @@ async getDeliveryOrders() {
                 update.ingredientId,
                 StockMoveType.SALE,
                 update.quantity,
+                `Order #${orderNumber}`,
                 tx
             );
         }
@@ -402,7 +322,12 @@ async getDeliveryOrders() {
         paymentStatus: { in: ['PENDING', 'PARTIAL'] }
       },
       include: {
-        items: { include: { product: true } },
+        items: {
+            include: {
+                product: true,
+                modifiers: { include: { modifierOption: true } }
+            }
+        },
         payments: true
       },
       orderBy: { createdAt: 'desc' }
@@ -410,7 +335,10 @@ async getDeliveryOrders() {
   }
 
   async addItemsToOrder(orderId: number, newItems: OrderItemInput[], serverId: number) {
-    return await prisma.$transaction(async (tx) => {
+    // Check if stock validation is enabled BEFORE transaction
+    const stockEnabled = await isFeatureEnabled('enableStock');
+
+    const result = await prisma.$transaction(async (tx) => {
       // 1. Get existing order
       const order = await tx.order.findUnique({
         where: { id: orderId },
@@ -420,48 +348,9 @@ async getDeliveryOrders() {
       if (!order) throw new Error('Order not found');
       if (order.paymentStatus === 'PAID') throw new Error('Cannot modify paid order');
 
-      // 2. Validate and calculate new items
-      let additionalTotal = 0;
-      const itemDataList = [];
-      const stockUpdates = [];
-
-      // Optimize: Fetch all products in one query
-      const productIds = newItems.map(i => i.productId);
-      const products = await tx.product.findMany({
-          where: { id: { in: productIds } },
-          include: { ingredients: true }
-      });
-      
-      const productMap = new Map(products.map(p => [p.id, p]));
-
-      for (const item of newItems) {
-        const product = productMap.get(item.productId);
-
-        if (!product) throw new Error(`Product ID ${item.productId} not found`);
-        if (!product.isActive) throw new Error(`Product ${product.name} is not active`);
-
-        const price = Number(product.price);
-        const itemTotal = price * item.quantity;
-        additionalTotal += itemTotal;
-
-        itemDataList.push({
-          productId: item.productId,
-          quantity: item.quantity,
-          unitPrice: price,
-          notes: item.notes,
-          status: 'PENDING'
-        });
-
-        // Prepare Stock Updates
-        if (product.isStockable && product.ingredients.length > 0) {
-          for (const ing of product.ingredients) {
-            stockUpdates.push({
-              ingredientId: ing.ingredientId,
-              quantity: Number(ing.quantity) * item.quantity
-            });
-          }
-        }
-      }
+      // 2. Validate and calculate new items using extracted service
+      const { itemDataList, stockUpdates, subtotal: additionalTotal } = 
+        await orderItemService.validateAndCalculateItems(tx, newItems, stockEnabled);
 
       // 3. Create new order items
       for (const itemData of itemDataList) {
@@ -472,20 +361,32 @@ async getDeliveryOrders() {
             quantity: itemData.quantity,
             unitPrice: itemData.unitPrice,
             notes: itemData.notes ?? null,
-            status: 'PENDING'
+            status: 'PENDING',
+            ...(itemData.modifiers ? {
+                modifiers: {
+                    create: itemData.modifiers.map((m: { id: number; price: number }) => ({
+                        modifierOptionId: m.id,
+                        priceCharged: m.price
+                    }))
+                }
+            } : {})
           }
         });
       }
 
-      // 4. Update order totals
+      // 4. Update order totals and REOPEN if needed (for KDS visibility)
       const newSubtotal = Number(order.subtotal) + additionalTotal;
       const newTotal = Number(order.total) + additionalTotal;
+
+      // If order was DELIVERED or PREPARED, reopen it to OPEN so new items appear in KDS
+      const shouldReopen = ['DELIVERED', 'PREPARED'].includes(order.status);
 
       const updatedOrder = await tx.order.update({
         where: { id: orderId },
         data: {
           subtotal: newSubtotal,
-          total: newTotal
+          total: newTotal,
+          ...(shouldReopen ? { status: 'OPEN' as OrderStatus } : {})
         },
         include: { items: { include: { product: true } } }
       });
@@ -497,12 +398,21 @@ async getDeliveryOrders() {
           update.ingredientId,
           StockMoveType.SALE,
           update.quantity,
+          `Order #${order.orderNumber}`,
           tx
         );
       }
 
       return updatedOrder;
     });
+
+    // 6. Broadcast to KDS (Outside transaction) - NEW: Notify kitchen of added items
+    const fullOrder = await this.getById(orderId);
+    if (fullOrder) {
+        kdsService.broadcastOrderUpdate(fullOrder);
+    }
+
+    return result;
   }
 
   async getRecentOrders() {
@@ -514,50 +424,19 @@ async getDeliveryOrders() {
   }
 
   /**
-   * Get active orders for KDS (Kitchen Display System)
-   * Returns orders that are not CLOSED, CANCELLED or DELIVERED
-   * Focuses on orders that need kitchen attention.
+   * Get active orders for KDS (Kitchen Display System).
+   * @delegates orderKitchenService.getActiveOrders
    */
   async getActiveOrders() {
-    return await prisma.order.findMany({
-      where: {
-        status: { in: ['OPEN', 'CONFIRMED', 'PREPARED'] },
-        createdAt: {
-            gte: new Date(new Date().setHours(0,0,0,0)) // From today
-        }
-      },
-      include: {
-        items: {
-            include: { product: true },
-            where: { status: { not: 'SERVED' } } 
-        },
-        table: true
-      },
-      orderBy: { createdAt: 'asc' }
-    });
+    return orderKitchenService.getActiveOrders();
   }
 
   /**
-   * Update order status and broadcast to KDS
+   * Update order status with state machine validation.
+   * @delegates orderStatusService.updateStatus
    */
   async updateStatus(orderId: number, status: OrderStatus) {
-    const data: any = { status };
-    
-    // Auto-close order if terminal status
-    if (['DELIVERED', 'CANCELLED', 'CLOSED'].includes(status)) {
-        data.closedAt = new Date();
-    }
-
-    const order = await prisma.order.update({
-      where: { id: orderId },
-      data,
-      include: { items: { include: { product: true } }, table: true }
-    });
-
-    // Broadcast update
-    kdsService.broadcastOrderUpdate(order);
-
-    return order;
+    return orderStatusService.updateStatus(orderId, status);
   }
 }
 

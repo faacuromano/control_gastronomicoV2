@@ -7,6 +7,7 @@ import { configService, type TenantConfig } from '../services/configService';
 import { CloseShiftModal } from './cash/CloseShiftModal';
 import { useSocket } from '../context/SocketContext';
 import { useCashStore } from '../store/cash.store';
+import { StockAlertBadge } from './alerts/StockAlertBadge';
 
 export default function Header() {
     const location = useLocation();
@@ -23,6 +24,8 @@ export default function Header() {
     const [showCloseShiftModal, setShowCloseShiftModal] = useState(false);
     const [readyCount, setReadyCount] = useState(0);
     const [features, setFeatures] = useState<TenantConfig['features'] | null>(null);
+    const [showNotifications, setShowNotifications] = useState(false);
+    const [readyOrders, setReadyOrders] = useState<{ id: number; orderNumber: number; tableId?: number }[]>([]);
 
     useEffect(() => {
         checkShiftStatus();
@@ -32,6 +35,10 @@ export default function Header() {
             socket.on('order:update', (order: any) => {
                 if (order.status === 'PREPARED') {
                     setReadyCount(prev => prev + 1);
+                    setReadyOrders(prev => [
+                        ...prev.filter(o => o.id !== order.id),
+                        { id: order.id, orderNumber: order.orderNumber, tableId: order.tableId }
+                    ]);
                     const audio = new Audio('/sounds/bell.mp3');
                     audio.play().catch(() => {});
                 }
@@ -60,8 +67,18 @@ export default function Header() {
     };
 
     const handleBellClick = () => {
+        setShowNotifications(prev => !prev);
+    };
+
+    const dismissNotification = (orderId: number) => {
+        setReadyOrders(prev => prev.filter(o => o.id !== orderId));
+        setReadyCount(prev => Math.max(0, prev - 1));
+    };
+
+    const clearAllNotifications = () => {
+        setReadyOrders([]);
         setReadyCount(0);
-        navigate('/pos'); // Or Kitchen? Usually waiter wants to see orders or just clear notification
+        setShowNotifications(false);
     };
 
 
@@ -84,36 +101,40 @@ export default function Header() {
                         PentiumPOS
                     </h1>
                     
-                    {/* Dynamic Module Navigation - Feature Flag Aware */}
+                    {/* Dynamic Module Navigation - Permission & Feature Flag Aware */}
                     <nav className="flex items-center gap-2">
-                        {/* Core: Always visible */}
-                        <button
-                            onClick={() => navigate('/ventas')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                                isActive('/ventas') 
-                                    ? 'bg-primary text-primary-foreground shadow-sm' 
-                                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                            }`}
-                        >
-                            <ShoppingCart className="h-4 w-4" />
-                            Venta
-                        </button>
+                        {/* POS: Module Permission */}
+                        {hasPermission('pos', 'access') && (
+                            <button
+                                onClick={() => navigate('/ventas')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                                    isActive('/ventas') 
+                                        ? 'bg-primary text-primary-foreground shadow-sm' 
+                                        : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                                }`}
+                            >
+                                <ShoppingCart className="h-4 w-4" />
+                                Venta
+                            </button>
+                        )}
                         
-                        {/* Core: Always visible */}
-                        <button
-                            onClick={() => navigate('/tables')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                                isActive('/tables') 
-                                    ? 'bg-primary text-primary-foreground shadow-sm' 
-                                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                            }`}
-                        >
-                            <Utensils className="h-4 w-4" />
-                            Mesas
-                        </button>
+                        {/* Tables: Module Permission */}
+                        {hasPermission('tables', 'access') && (
+                            <button
+                                onClick={() => navigate('/tables')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                                    isActive('/tables') 
+                                        ? 'bg-primary text-primary-foreground shadow-sm' 
+                                        : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                                }`}
+                            >
+                                <Utensils className="h-4 w-4" />
+                                Mesas
+                            </button>
+                        )}
 
-                        {/* Cash: Permission Controlled */}
-                        {hasPermission('cash', 'read') && (
+                        {/* Cash: Module Permission */}
+                        {hasPermission('cash', 'access') && (
                             <button
                                 onClick={() => navigate('/cash')}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
@@ -127,8 +148,8 @@ export default function Header() {
                             </button>
                         )}
                         
-                        {/* KDS: Feature Flag Controlled */}
-                        {features?.enableKDS && (
+                        {/* KDS: Feature Flag + Module Permission */}
+                        {features?.enableKDS && hasPermission('kds', 'access') && (
                             <button
                                 onClick={() => navigate('/kitchen')}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
@@ -142,21 +163,23 @@ export default function Header() {
                             </button>
                         )}
                         
-                        {/* Admin: Always visible */}
-                        <button
-                            onClick={() => navigate('/admin/products')}
-                            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                                isActive('/admin') 
-                                    ? 'bg-primary text-primary-foreground shadow-sm' 
-                                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                            }`}
-                        >
-                            <Settings className="h-4 w-4" />
-                            Admin
-                        </button>
+                        {/* Admin: Module Permission */}
+                        {hasPermission('admin', 'access') && (
+                            <button
+                                onClick={() => navigate('/admin/products')}
+                                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                                    isActive('/admin') 
+                                        ? 'bg-primary text-primary-foreground shadow-sm' 
+                                        : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                                }`}
+                            >
+                                <Settings className="h-4 w-4" />
+                                Admin
+                            </button>
+                        )}
                         
-                        {/* Delivery: Feature Flag Controlled */}
-                        {features?.enableDelivery && (
+                        {/* Delivery: Feature Flag + Module Permission */}
+                        {features?.enableDelivery && hasPermission('delivery', 'access') && (
                             <button
                                 onClick={() => navigate('/delivery-dashboard')}
                                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
@@ -173,18 +196,69 @@ export default function Header() {
                 </div>
                 
                 <div className="flex items-center gap-4">
-                    {/* Notifications */}
-                    <button 
-                        onClick={handleBellClick}
-                        className="relative p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
-                        title="Notificaciones de Cocina"
-                    >
-                        <Bell className="w-5 h-5" />
-                        {readyCount > 0 && (
-                            <span className="absolute top-1 right-1 w-3 h-3 bg-red-600 rounded-full border-2 border-background"></span>
-                        )}
-                    </button>
+                    {/* Stock Alerts - Only for users with inventory access */}
+                    {features?.enableStock && hasPermission('ingredients', 'read') && (
+                        <StockAlertBadge />
+                    )}
 
+                    {/* Notifications */}
+                    <div className="relative">
+                        <button 
+                            onClick={handleBellClick}
+                            className="relative p-2 text-muted-foreground hover:text-foreground hover:bg-accent rounded-lg transition-colors"
+                            title="Notificaciones de Cocina"
+                        >
+                            <Bell className="w-5 h-5" />
+                            {readyCount > 0 && (
+                                <span className="absolute top-1 right-1 w-3 h-3 bg-red-600 rounded-full border-2 border-background"></span>
+                            )}
+                        </button>
+
+                        {/* Notification Panel */}
+                        {showNotifications && (
+                            <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
+                                <div className="p-3 border-b border-border bg-muted/30 flex justify-between items-center">
+                                    <span className="font-semibold text-sm">Pedidos Listos</span>
+                                    {readyOrders.length > 0 && (
+                                        <button 
+                                            onClick={clearAllNotifications}
+                                            className="text-xs text-muted-foreground hover:text-foreground"
+                                        >
+                                            Limpiar todo
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="max-h-64 overflow-y-auto">
+                                    {readyOrders.length === 0 ? (
+                                        <div className="p-6 text-center text-muted-foreground">
+                                            <Bell className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                                            <p className="text-sm">No hay pedidos listos</p>
+                                        </div>
+                                    ) : (
+                                        readyOrders.map(order => (
+                                            <div 
+                                                key={order.id}
+                                                className="p-3 border-b border-border last:border-0 hover:bg-muted/20 flex justify-between items-center"
+                                            >
+                                                <div>
+                                                    <p className="font-medium">Orden #{order.orderNumber}</p>
+                                                    {order.tableId && (
+                                                        <p className="text-xs text-muted-foreground">Mesa {order.tableId}</p>
+                                                    )}
+                                                </div>
+                                                <button
+                                                    onClick={() => dismissNotification(order.id)}
+                                                    className="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700 transition-colors"
+                                                >
+                                                    Enterado
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
 
                     {/* Close Shift Button */}
                     {shift && (

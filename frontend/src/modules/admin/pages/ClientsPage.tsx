@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, MapPin, Phone, Mail, Edit, Trash2 } from 'lucide-react';
+import { Plus, Search, MapPin, Phone, Mail, Edit } from 'lucide-react';
 import { clientService, type Client } from '../../../services/clientService';
 
 export const ClientsPage: React.FC = () => {

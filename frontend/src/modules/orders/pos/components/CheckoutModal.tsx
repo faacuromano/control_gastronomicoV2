@@ -2,23 +2,35 @@
 import React, { useState, useEffect } from 'react';
 import { usePOSStore } from '../../../../store/pos.store';
 import { orderService, type OrderResponse } from '../../../../services/orderService';
-import { X, CreditCard, Banknote, QrCode, Loader2, AlertCircle, Smartphone, Printer, CheckCircle, Trash2, Plus } from 'lucide-react';
+import { invoiceService } from '../../../../services/invoiceService';
+import { paymentMethodService, type PaymentMethodConfig } from '../../../../services/paymentMethodService';
+import { printerService, type Printer as PrinterConfig } from '../../../../services/printerService';
+import { loyaltyService, type LoyaltyBalance, type LoyaltyConfig } from '../../../../services/loyaltyService';
+import { calculateDiscountPreview, type DiscountType } from '../../../../services/discountService';
+import { X, CreditCard, Banknote, QrCode, Loader2, AlertCircle, Smartphone, Printer, CheckCircle, Trash2, Plus, FileText, ArrowLeftRight, Wallet, Star, Gift, Percent } from 'lucide-react';
 import { Receipt } from './Receipt';
 
 interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (method: string, payments?: { method: string; amount: number }[]) => void;
+  onConfirm: (method: string, payments?: { method: string; amount: number }[]) => Promise<any>;
   tableMode?: boolean; // When true, don't create order, just pass payments to parent
+  tableId?: number; // Table ID for fetching fresh order total
   totalAmount?: number; // Override store total (used for tables with existing items)
 }
 
-const ENABLED_METHODS = [
-    { id: 'CASH', label: 'Efectivo', icon: Banknote },
-    { id: 'QR_INTEGRATED', label: 'Mercado Pago QR', icon: QrCode },
-    { id: 'CARD', label: 'Tarjeta (D/C)', icon: CreditCard },
-    { id: 'TRANSFER', label: 'Transferencia', icon: Smartphone },
-];
+// Icon mapping for dynamic payment methods
+const ICON_MAP: Record<string, React.ComponentType<{ size?: number }>> = {
+    Banknote,
+    CreditCard,
+    QrCode,
+    Smartphone,
+    ArrowLeftRight,
+    Wallet,
+};
+
+// Fallback for unmapped icons
+const DEFAULT_ICON = CreditCard;
 
 interface PaymentEntry {
     method: string;
@@ -26,11 +38,16 @@ interface PaymentEntry {
     label: string;
 }
 
-export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, onConfirm, tableMode = false, totalAmount }) => {
+export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, onConfirm, tableMode = false, tableId, totalAmount }) => {
   const storeTotal = usePOSStore((state) => state.total());
-  const total = totalAmount !== undefined ? totalAmount : storeTotal;
   
-  const cart = usePOSStore((state) => state.cart);
+  // State for backend-fetched total (used in tableMode)
+  const [backendTotal, setBackendTotal] = useState<number | null>(null);
+  const [, setLoadingTotal] = useState(false);
+  
+  // Use backend total if available (tableMode), otherwise fallback to prop/store
+  const total = backendTotal !== null ? backendTotal : (totalAmount !== undefined ? totalAmount : storeTotal);
+  
   const clearCart = usePOSStore((state) => state.clearCart);
   
   const [payments, setPayments] = useState<PaymentEntry[]>([]);
@@ -40,10 +57,30 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [completedOrder, setCompletedOrder] = useState<OrderResponse | null>(null);
+  const [invoiceNumber, setInvoiceNumber] = useState<string | null>(null);
+  const [generatingInvoice, setGeneratingInvoice] = useState(false);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfig[]>([]);
+  const [printers, setPrinters] = useState<PrinterConfig[]>([]);
+  const [isPrinting, setIsPrinting] = useState(false);
+  
+  // Loyalty state
+  const selectedClientId = usePOSStore((state) => state.selectedClientId);
+  const [loyaltyBalance, setLoyaltyBalance] = useState<LoyaltyBalance | null>(null);
+  const [loyaltyConfig, setLoyaltyConfig] = useState<LoyaltyConfig | null>(null);
+  const [pointsToRedeem, setPointsToRedeem] = useState(0);
+  const [redeemedDiscount, setRedeemedDiscount] = useState(0);
 
-  // Calculate remaining balance
+  // Manual discount state
+  const [manualDiscountType, setManualDiscountType] = useState<DiscountType>('PERCENTAGE');
+  const [manualDiscountValue, setManualDiscountValue] = useState(0);
+  const [manualDiscountApplied, setManualDiscountApplied] = useState(0);
+  const [showDiscountSection, setShowDiscountSection] = useState(false);
+
+  // Calculate remaining balance (accounting for loyalty and manual discounts)
+  const totalDiscounts = redeemedDiscount + manualDiscountApplied;
+  const effectiveTotal = Math.max(0, total - totalDiscounts);
   const totalPaid = payments.reduce((acc, curr) => acc + curr.amount, 0);
-  const remaining = Math.max(0, total - totalPaid);
+  const remaining = Math.max(0, effectiveTotal - totalPaid);
 
   // Track previous isOpen to detect when modal opens
   const prevIsOpenRef = React.useRef(false);
@@ -57,9 +94,126 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
           setError(null);
           setLoading(false);
           setCurrentMethod('CASH');
+          setInvoiceNumber(null);
+          setGeneratingInvoice(false);
+          setBackendTotal(null);
+          setPointsToRedeem(0);
+          setRedeemedDiscount(0);
+          setLoyaltyBalance(null);
+          // Reset manual discount
+          setManualDiscountType('PERCENTAGE');
+          setManualDiscountValue(0);
+          setManualDiscountApplied(0);
+          setShowDiscountSection(false);
+          
+       // Load payment methods from API
+          loadPaymentMethods();
+          
+          // Load printers
+          loadPrinters();
+          
+          // Load loyalty config
+          loadLoyaltyConfig();
+          
+          // Load loyalty balance if client selected
+          if (selectedClientId) {
+              loadLoyaltyBalance(selectedClientId);
+          }
+          
+          // In tableMode, fetch fresh order total from backend
+          if (tableMode && tableId) {
+              loadOrderTotal(tableId);
+          }
       }
       prevIsOpenRef.current = isOpen;
-  }, [isOpen]);
+  }, [isOpen, tableMode, tableId, selectedClientId]);
+
+  const loadOrderTotal = async (tblId: number) => {
+      setLoadingTotal(true);
+      try {
+          const order = await orderService.getOrderByTable(tblId);
+          if (order) {
+              const orderTotal = Number(order.total);
+              console.log('[CheckoutModal] Fetched fresh order total:', orderTotal);
+              setBackendTotal(orderTotal);
+          }
+      } catch (err) {
+          console.error('Failed to load order total:', err);
+      } finally {
+          setLoadingTotal(false);
+      }
+  };
+
+  const loadPaymentMethods = async () => {
+      try {
+          const methods = await paymentMethodService.getActive();
+          setPaymentMethods(methods.sort((a, b) => a.sortOrder - b.sortOrder));
+          // Set default payment method to first available
+          if (methods.length > 0) {
+              setCurrentMethod(methods[0].code);
+          }
+      } catch (err) {
+          console.error('Failed to load payment methods:', err);
+          // Fallback to CASH if API fails
+          setPaymentMethods([{ id: 0, code: 'CASH', name: 'Efectivo', icon: 'Banknote', isActive: true, sortOrder: 1 }]);
+      }
+  };
+
+  const loadLoyaltyConfig = async () => {
+      try {
+          const config = await loyaltyService.getConfig();
+          setLoyaltyConfig(config);
+      } catch (err) {
+          console.error('Failed to load loyalty config:', err);
+      }
+  };
+
+  const loadLoyaltyBalance = async (clientId: number) => {
+      try {
+          const balance = await loyaltyService.getBalance(clientId);
+          setLoyaltyBalance(balance);
+      } catch (err) {
+          console.error('Failed to load loyalty balance:', err);
+      }
+  };
+
+  const handleRedeemPoints = () => {
+      if (!loyaltyBalance || !loyaltyConfig || pointsToRedeem <= 0) return;
+      if (pointsToRedeem > loyaltyBalance.points) {
+          setError('No tienes suficientes puntos');
+          return;
+      }
+      // Calculate discount
+      const discount = pointsToRedeem / loyaltyConfig.pointsToRedeemValue;
+      // Don't exceed the total
+      const cappedDiscount = Math.min(discount, total);
+      setRedeemedDiscount(cappedDiscount);
+      // Add as payment entry
+      setPayments(prev => [
+          ...prev.filter(p => p.method !== 'POINTS'),
+          { method: 'POINTS', amount: cappedDiscount, label: `Puntos (${pointsToRedeem} pts)` }
+      ]);
+  };
+
+  const handleRemovePointsRedemption = () => {
+      setRedeemedDiscount(0);
+      setPointsToRedeem(0);
+      setPayments(prev => prev.filter(p => p.method !== 'POINTS'));
+  };
+
+  // Handle manual discount application
+  const handleApplyManualDiscount = () => {
+      if (manualDiscountValue <= 0) return;
+      const discountAmount = calculateDiscountPreview(total, manualDiscountType, manualDiscountValue);
+      setManualDiscountApplied(discountAmount);
+      setShowDiscountSection(false);
+  };
+
+  const handleRemoveManualDiscount = () => {
+      setManualDiscountApplied(0);
+      setManualDiscountValue(0);
+      setManualDiscountType('PERCENTAGE');
+  };
 
   // Update current amount when remaining balance changes
   useEffect(() => {
@@ -75,13 +229,31 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
       setPayments([]);
       setCurrentMethod('CASH');
       setError(null);
+      setInvoiceNumber(null);
       onClose();
+  };
+
+  const handleGenerateInvoice = async () => {
+      if (!completedOrder) return;
+      setGeneratingInvoice(true);
+      try {
+          const invoice = await invoiceService.generate({ 
+              orderId: completedOrder.id,
+              type: 'RECEIPT'
+          });
+          setInvoiceNumber(invoice.invoiceNumber);
+      } catch (err: any) {
+          console.error('Failed to generate invoice', err);
+          alert(err.response?.data?.error?.message || 'Error al generar comprobante');
+      } finally {
+          setGeneratingInvoice(false);
+      }
   };
 
   const addPayment = () => {
       if (currentAmount <= 0) return;
       
-      const methodData = ENABLED_METHODS.find(m => m.id === currentMethod);
+      const methodData = paymentMethods.find(m => m.code === currentMethod);
       const existingIndex = payments.findIndex(p => p.method === currentMethod);
 
       if (existingIndex >= 0) {
@@ -92,7 +264,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
           setPayments([...payments, {
               method: currentMethod,
               amount: currentAmount,
-              label: methodData?.label || currentMethod
+              label: methodData?.name || currentMethod
           }]);
       }
       
@@ -141,43 +313,57 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
             }
         }
 
+        const paymentData = finalPayments.map(p => ({
+            method: p.method,
+            amount: p.amount
+        }));
+
         // Table mode: pass payments to parent to handle table close
         if (tableMode) {
-            const paymentData = finalPayments.map(p => ({
-                method: p.method,
-                amount: p.amount
-            }));
             onConfirm('SPLIT', paymentData);
             handleClose();
             return;
         }
 
-        // Normal mode: create order directly
-        const order = await orderService.create({
-            items: cart.map(item => ({
-                productId: item.product.id,
-                quantity: item.quantity,
-                notes: item.notes
-            })),
-            payments: finalPayments.map(p => ({
-                method: p.method,
-                amount: p.amount
-            })),
-            channel: 'POS'
-        });
+        // Delegate order creation to parent (POSPage)
+        const order = await onConfirm(
+            paymentData.length === 1 ? paymentData[0].method : 'SPLIT',
+            paymentData
+        );
 
-        // Success - show success screen (modal stays open until user clicks "Nueva Orden")
-        clearCart();
-        setCompletedOrder(order); 
+        if (order) {
+            // Success - show success screen (modal stays open until user clicks "Nueva Orden")
+            clearCart();
+            setCompletedOrder(order);
+        } else {
+            // If parent didn't return an order (e.g. table close), just close modal
+           handleClose();
+        }
     } catch (err: any) {
         console.error("Order failed", err);
-        setError(err.response?.data?.message || 'Failed to create order');
+        setError(err.response?.data?.message || err.message || 'Failed to create order');
     } finally {
         setLoading(false);
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
+      // Try thermal printer first
+      if (completedOrder && printers.length > 0) {
+          setIsPrinting(true);
+          try {
+              // Use first configured printer
+              await printerService.printOrder(completedOrder.id, printers[0].id);
+              console.log('[CheckoutModal] Thermal print sent successfully');
+              setIsPrinting(false);
+              return;
+          } catch (error) {
+              console.warn('[CheckoutModal] Thermal print failed, falling back to browser print:', error);
+              setIsPrinting(false);
+          }
+      }
+      
+      // Fallback to browser print
       const content = document.getElementById('receipt-hidden-container')?.innerHTML;
       if (!content) return;
       const printWindow = window.open('', '', 'height=600,width=400');
@@ -188,6 +374,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
           printWindow.document.close();
           printWindow.focus();
           printWindow.print();
+      }
+  };
+  
+  const loadPrinters = async () => {
+      try {
+          const allPrinters = await printerService.getAll();
+          setPrinters(allPrinters);
+      } catch (error) {
+          console.error('Failed to load printers:', error);
       }
   };
 
@@ -217,11 +412,35 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
                         <Receipt order={completedOrder} />
                     </div>
 
-                    <div className="flex gap-4 w-full">
-                        <button onClick={handlePrint} className="flex-1 flex items-center justify-center gap-2 bg-slate-100 font-bold py-3 rounded-xl">
-                            <Printer size={20} /> Imprimir
-                        </button>
-                        <button onClick={handleClose} className="flex-1 bg-indigo-600 text-white font-bold py-3 rounded-xl">
+                    <div className="flex flex-col gap-3 w-full">
+                        {/* Invoice status */}
+                        {invoiceNumber && (
+                            <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                                <p className="text-green-700 font-medium">Comprobante: {invoiceNumber}</p>
+                            </div>
+                        )}
+                        
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={handlePrint} 
+                                disabled={isPrinting}
+                                className="flex-1 flex items-center justify-center gap-2 bg-slate-100 font-bold py-3 rounded-xl hover:bg-slate-200 transition-colors disabled:opacity-50"
+                            >
+                                {isPrinting ? <Loader2 size={20} className="animate-spin" /> : <Printer size={20} />}
+                                {isPrinting ? 'Imprimiendo...' : 'Imprimir'}
+                            </button>
+                            {!invoiceNumber && (
+                                <button 
+                                    onClick={handleGenerateInvoice} 
+                                    disabled={generatingInvoice}
+                                    className="flex-1 flex items-center justify-center gap-2 bg-amber-100 text-amber-800 font-bold py-3 rounded-xl hover:bg-amber-200 transition-colors disabled:opacity-50"
+                                >
+                                    {generatingInvoice ? <Loader2 size={20} className="animate-spin" /> : <FileText size={20} />}
+                                    Comprobante
+                                </button>
+                            )}
+                        </div>
+                        <button onClick={handleClose} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-colors">
                             Nueva Orden
                         </button>
                     </div>
@@ -231,32 +450,171 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
                     {/* Totals Header */}
                     <div className="text-center mb-6">
                         <p className="text-slate-500">Total a Pagar</p>
-                        <div className="text-4xl font-black text-indigo-600">${total.toFixed(2)}</div>
+                        {totalDiscounts > 0 ? (
+                            <>
+                                <div className="text-2xl line-through text-slate-400">${total.toFixed(2)}</div>
+                                <div className="text-4xl font-black text-green-600">${effectiveTotal.toFixed(2)}</div>
+                                <p className="text-green-600 text-sm flex items-center justify-center gap-1 mt-1">
+                                    <Percent size={14} /> Descuento: -${totalDiscounts.toFixed(2)}
+                                </p>
+                            </>
+                        ) : (
+                            <div className="text-4xl font-black text-indigo-600">${total.toFixed(2)}</div>
+                        )}
                         {remaining > 0 && totalPaid > 0 && (
                             <p className="text-red-500 font-bold mt-1">Faltan: ${remaining.toFixed(2)}</p>
                         )}
-                        {remaining === 0 && totalPaid <= total + 0.01 && (
+                        {remaining === 0 && totalPaid <= effectiveTotal + 0.01 && totalPaid > 0 && (
                             <p className="text-green-600 font-bold mt-1">¡Total Cubierto!</p>
                         )}
-                        {totalPaid > total + 0.01 && (
-                             <p className="text-blue-600 font-bold mt-1">Su Vuelto: ${(totalPaid - total).toFixed(2)}</p>
+                        {totalPaid > effectiveTotal + 0.01 && (
+                             <p className="text-blue-600 font-bold mt-1">Su Vuelto: ${(totalPaid - effectiveTotal).toFixed(2)}</p>
                         )}
                     </div>
+
+                    {/* Loyalty Points Section */}
+                    {loyaltyBalance && loyaltyConfig && !redeemedDiscount && (
+                        <div className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-xl border border-amber-200">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                    <Star className="text-amber-500" size={20} />
+                                    <span className="font-bold text-amber-800">Puntos de Lealtad</span>
+                                </div>
+                                <span className="text-lg font-black text-amber-600">{loyaltyBalance.points} pts</span>
+                            </div>
+                            <p className="text-xs text-amber-700 mb-3">
+                                {loyaltyConfig.pointsToRedeemValue} puntos = $1 descuento
+                            </p>
+                            <div className="flex gap-2">
+                                <input
+                                    type="number"
+                                    value={pointsToRedeem || ''}
+                                    onChange={(e) => setPointsToRedeem(Math.min(Number(e.target.value), loyaltyBalance.points))}
+                                    placeholder="Puntos a canjear"
+                                    max={loyaltyBalance.points}
+                                    min={0}
+                                    className="flex-1 border border-amber-300 rounded-lg px-3 py-2 text-sm"
+                                />
+                                <button
+                                    onClick={handleRedeemPoints}
+                                    disabled={pointsToRedeem <= 0}
+                                    className="bg-amber-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-amber-600 disabled:opacity-50 flex items-center gap-1"
+                                >
+                                    <Gift size={16} /> Canjear
+                                </button>
+                            </div>
+                            {pointsToRedeem > 0 && (
+                                <p className="text-xs text-amber-600 mt-2">
+                                    = ${(pointsToRedeem / loyaltyConfig.pointsToRedeemValue).toFixed(2)} de descuento
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Show redeemed points summary */}
+                    {redeemedDiscount > 0 && (
+                        <div className="mb-4 bg-green-50 border border-green-200 rounded-xl p-3 flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-green-700">
+                                <Star size={18} />
+                                <span className="font-medium">Puntos canjeados</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="font-bold text-green-700">-${redeemedDiscount.toFixed(2)}</span>
+                                <button onClick={handleRemovePointsRedemption} className="text-red-400 hover:text-red-600">
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Manual Discount Section */}
+                    {!manualDiscountApplied && !showDiscountSection && (
+                        <button 
+                            onClick={() => setShowDiscountSection(true)}
+                            className="mb-4 w-full py-2 px-4 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 hover:border-indigo-400 hover:text-indigo-600 flex items-center justify-center gap-2 transition-all"
+                        >
+                            <Percent size={16} /> Aplicar Descuento
+                        </button>
+                    )}
+
+                    {showDiscountSection && !manualDiscountApplied && (
+                        <div className="mb-6 bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-xl border border-indigo-200">
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                    <Percent className="text-indigo-500" size={20} />
+                                    <span className="font-bold text-indigo-800">Descuento Manual</span>
+                                </div>
+                                <button onClick={() => setShowDiscountSection(false)} className="text-slate-400 hover:text-slate-600">
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <div className="flex gap-2 mb-3">
+                                <select
+                                    value={manualDiscountType}
+                                    onChange={(e) => setManualDiscountType(e.target.value as DiscountType)}
+                                    className="border border-indigo-300 rounded-lg px-3 py-2 text-sm bg-white"
+                                >
+                                    <option value="PERCENTAGE">Porcentaje (%)</option>
+                                    <option value="FIXED">Monto Fijo ($)</option>
+                                </select>
+                                <input
+                                    type="number"
+                                    value={manualDiscountValue || ''}
+                                    onChange={(e) => setManualDiscountValue(Number(e.target.value))}
+                                    placeholder={manualDiscountType === 'PERCENTAGE' ? '10' : '50.00'}
+                                    min={0}
+                                    max={manualDiscountType === 'PERCENTAGE' ? 100 : total}
+                                    className="flex-1 border border-indigo-300 rounded-lg px-3 py-2 text-sm"
+                                />
+                                <button
+                                    onClick={handleApplyManualDiscount}
+                                    disabled={manualDiscountValue <= 0}
+                                    className="bg-indigo-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-600 disabled:opacity-50"
+                                >
+                                    Aplicar
+                                </button>
+                            </div>
+                            {manualDiscountValue > 0 && (
+                                <p className="text-xs text-indigo-600">
+                                    = ${calculateDiscountPreview(total, manualDiscountType, manualDiscountValue).toFixed(2)} de descuento
+                                </p>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Show applied manual discount summary */}
+                    {manualDiscountApplied > 0 && (
+                        <div className="mb-4 bg-indigo-50 border border-indigo-200 rounded-xl p-3 flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-indigo-700">
+                                <Percent size={18} />
+                                <span className="font-medium">Descuento aplicado</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="font-bold text-indigo-700">-${manualDiscountApplied.toFixed(2)}</span>
+                                <button onClick={handleRemoveManualDiscount} className="text-red-400 hover:text-red-600">
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Payment Input Section */}
                     {remaining > 0.01 && (
                         <div className="mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
                              <p className="text-xs font-bold text-slate-500 mb-2 uppercase">Agregar Pago</p>
                              <div className="grid grid-cols-2 gap-2 mb-3">
-                                {ENABLED_METHODS.map((m) => (
-                                    <button 
-                                        key={m.id}
-                                        onClick={() => setCurrentMethod(m.id)}
-                                        className={`p-2 rounded-lg text-sm font-bold border transition-all flex items-center justify-center gap-2 ${currentMethod === m.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
-                                    >
-                                        <m.icon size={16} /> {m.label}
-                                    </button>
-                                ))}
+                                {paymentMethods.map((m) => {
+                                    const IconComponent = ICON_MAP[m.icon || ''] || DEFAULT_ICON;
+                                    return (
+                                        <button 
+                                            key={m.code}
+                                            onClick={() => setCurrentMethod(m.code)}
+                                            className={`p-2 rounded-lg text-sm font-bold border transition-all flex items-center justify-center gap-2 ${currentMethod === m.code ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                                        >
+                                            <IconComponent size={16} /> {m.name}
+                                        </button>
+                                    );
+                                })}
                              </div>
                              
                              <div className="flex gap-2">

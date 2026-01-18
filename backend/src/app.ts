@@ -4,15 +4,28 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
 
-// Trigger restart
+// Environment validation
+const isProduction = process.env.NODE_ENV === 'production';
 const PORT = process.env.PORT || 3001;
+
+// CORS Configuration - Use CORS_ORIGINS env var for production
+const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173'];
+
+// SECURITY: Warn if using default CORS in production
+if (isProduction && !process.env.CORS_ORIGINS) {
+    console.error(
+        '[SECURITY WARNING] CORS_ORIGINS not configured in production! ' +
+        'Defaulting to localhost which may block legitimate requests. ' +
+        'Set CORS_ORIGINS=https://yourdomain.com in your .env'
+    );
+}
 
 const app = express();
 
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(cors());
+app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(helmet());
 app.use(morgan('dev'));
 app.use(compression());
@@ -29,6 +42,17 @@ import deliveryRoutes from './routes/delivery.routes';
 import clientRoutes from './routes/client.routes';
 import userRoutes from './routes/user.routes';
 import roleRoutes from './routes/role.routes';
+import printerRoutes from './routes/printer.routes';
+import modifierRoutes from './routes/modifier.routes';
+import supplierRoutes from './routes/supplier.routes';
+import purchaseOrderRoutes from './routes/purchaseOrder.routes';
+import analyticsRoutes from './routes/analytics.routes';
+import paymentMethodRoutes from './routes/paymentMethod.routes';
+import invoiceRoutes from './routes/invoice.routes';
+import loyaltyRoutes from './routes/loyalty.routes';
+import printRoutingRoutes from './routes/printRouting.routes';
+import stockAlertRoutes from './routes/stockAlert.routes';
+import discountRoutes from './routes/discount.routes';
 
 // Register all routes under /api/v1 for versioning
 app.use('/api/v1/auth', authRoutes);
@@ -42,6 +66,19 @@ app.use('/api/v1', menuRoutes);         // categories, products
 app.use('/api/v1/cash-shifts', cashShiftRoutes);
 app.use('/api/v1', configRoutes);       // /config
 app.use('/api/v1', tableRouter);        // /tables, /areas
+app.use('/api/v1/print', printerRoutes); // /print
+app.use('/api/v1/print-routing', printRoutingRoutes); // Print routing config
+app.use('/api/v1/modifiers', modifierRoutes);
+app.use('/api/v1', supplierRoutes);      // /suppliers
+app.use('/api/v1', purchaseOrderRoutes); // /purchase-orders
+app.use('/api/v1', analyticsRoutes);     // /analytics/*
+app.use('/api/v1/payment-methods', paymentMethodRoutes);
+app.use('/api/v1/invoices', invoiceRoutes);
+app.use('/api/v1/loyalty', loyaltyRoutes);
+app.use('/api/v1/stock-alerts', stockAlertRoutes);
+app.use('/api/v1/discounts', discountRoutes);
+import bulkPriceRoutes from './routes/bulkPriceUpdate.routes';
+app.use('/api/v1/bulk-prices', bulkPriceRoutes);
 
 // Health Check
 app.get('/health', (req, res) => {

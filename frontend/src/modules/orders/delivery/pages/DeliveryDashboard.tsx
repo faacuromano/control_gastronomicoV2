@@ -7,8 +7,7 @@ import type { User as UserType } from '../../../../services/userService';
 
 // Simple Status Mapping
 const STATUS_COLUMNS = {
-    NEW: ['OPEN', 'CONFIRMED', 'COOKING'], // 'COOKING' is ItemStatus, OrderStatus usually stays CONFIRMED until PREPARED? 
-                                          // Let's assume CONFIRMED is New/Kitchen.
+    NEW: ['OPEN', 'CONFIRMED', 'COOKING', 'IN_PREPARATION'], // Include IN_PREPARATION (kitchen working)
     READY: ['PREPARED'],
     ON_ROUTE: ['ON_ROUTE'],
     DELIVERED: ['DELIVERED']
@@ -27,14 +26,37 @@ export const DeliveryDashboard: React.FC = () => {
 
     const fetchData = async () => {
         try {
-            const [ordersData, driversData] = await Promise.all([
-                orderService.getDeliveryOrders(),
-                userService.getUsersWithCapability('delivery')
+            console.log("DeliveryDashboard: Fetching data...");
+            
+            // Fetch independently to ensure orders load even if drivers fail
+            const ordersPromise = orderService.getDeliveryOrders();
+            const driversPromise = userService.getUsersWithCapability('delivery');
+
+            const [ordersResult, driversResult] = await Promise.allSettled([
+                ordersPromise,
+                driversPromise
             ]);
-            setOrders(ordersData);
-            setDrivers(driversData);
+
+            // Handle Orders
+            if (ordersResult.status === 'fulfilled') {
+                console.log("DeliveryDashboard: Orders loaded", ordersResult.value.length);
+                setOrders(ordersResult.value);
+            } else {
+                console.error("DeliveryDashboard: Failed to fetch orders", ordersResult.reason);
+                // Optionally show error toast
+            }
+
+            // Handle Drivers
+            if (driversResult.status === 'fulfilled') {
+                console.log("DeliveryDashboard: Drivers loaded", driversResult.value.length);
+                setDrivers(driversResult.value);
+            } else {
+                console.error("DeliveryDashboard: Failed to fetch drivers", driversResult.reason);
+                // Drivers are optional for viewing orders, so we don't block
+            }
+
         } catch (error) {
-            console.error("Failed to fetch dashboard data", error);
+            console.error("Failed to fetch dashboard data (Fatal)", error);
         } finally {
             setLoading(false);
         }
@@ -58,6 +80,17 @@ export const DeliveryDashboard: React.FC = () => {
             fetchData();
         } catch (error) {
             console.error("Failed to update status", error);
+        }
+    };
+
+    const handleDispatch = async (orderId: number) => {
+        // Move from PREPARED to ON_ROUTE
+        try {
+            await orderService.updateStatus(orderId, 'ON_ROUTE');
+            fetchData();
+        } catch (error) {
+            console.error("Failed to dispatch", error);
+            alert("Error al despachar");
         }
     };
 
@@ -118,6 +151,7 @@ export const DeliveryDashboard: React.FC = () => {
                                 order={order} 
                                 drivers={drivers}
                                 onAssignDriver={handleAssignDriver}
+                                onDispatch={handleDispatch}
                                 isReady
                             />
                         ))}
@@ -176,12 +210,13 @@ interface DeliveryCardProps {
     drivers: UserType[];
     onAssignDriver?: (orderId: number, driverId: string) => void;
     onMarkDelivered?: (orderId: number) => void;
+    onDispatch?: (orderId: number) => void;
     isReady?: boolean;
     isOnRoute?: boolean;
     readOnly?: boolean;
 }
 
-const DeliveryCard: React.FC<DeliveryCardProps> = ({ order, drivers, onAssignDriver, onMarkDelivered, isReady, isOnRoute, readOnly }) => {
+const DeliveryCard: React.FC<DeliveryCardProps> = ({ order, drivers, onAssignDriver, onMarkDelivered, onDispatch, isReady, isOnRoute, readOnly }) => {
     // Assuming backend sends `deliveryAddress` and `client` in OrderResponse. 
     // Need to verify OrderResponse interface in orderService.ts if it includes these fields.
     // It currently includes `items`, `orderNumber`, etc. 
@@ -248,7 +283,24 @@ const DeliveryCard: React.FC<DeliveryCardProps> = ({ order, drivers, onAssignDri
                                     Entregado
                                 </button>
                             </div>
+                        ) : isReady && driverId ? (
+                            // Ready with driver - show dispatch button
+                            <div className="flex flex-col gap-2">
+                                <p className="text-xs flex items-center gap-1 text-yellow-600 font-medium">
+                                    <Truck className="w-3 h-3" />
+                                    {anyOrder.driver?.name || "Repartidor asignado"}
+                                </p>
+                                <button 
+                                    onClick={() => onDispatch && onDispatch(order.id)}
+                                    className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md text-sm font-medium transition-colors flex justify-center items-center gap-2"
+                                    data-testid="btn-dispatch"
+                                >
+                                    <Truck className="w-4 h-4" />
+                                    Despachar
+                                </button>
+                            </div>
                         ) : (
+                            // Not ready or no driver - show driver selector
                             <div className="flex gap-2">
                                 <select 
                                     className="flex-1 text-sm border rounded bg-slate-50 p-1.5 outline-none focus:ring-1 focus:ring-primary"
@@ -256,7 +308,7 @@ const DeliveryCard: React.FC<DeliveryCardProps> = ({ order, drivers, onAssignDri
                                     onChange={(e) => onAssignDriver && onAssignDriver(order.id, e.target.value)}
                                     data-testid="driver-select"
                                 >
-                                    <option value="">Detalle Repartidor...</option>
+                                    <option value="">Asignar Repartidor...</option>
                                     {drivers.map(d => (
                                         <option key={d.id} value={d.id}>{d.name}</option>
                                     ))}

@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit } from 'lucide-react';
+import { Plus, Edit, History, AlertTriangle, PowerOff, Loader2 } from 'lucide-react';
 import { ingredientService, type Ingredient } from '../../../services/ingredientService';
+import { configService } from '../../../services/configService';
+import StockHistoryModal from './components/StockHistoryModal';
 
 export const IngredientsPage: React.FC = () => {
     const [ingredients, setIngredients] = useState<Ingredient[]>([]);
     const [loading, setLoading] = useState(false);
+    const [disabling, setDisabling] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [formData, setFormData] = useState({
         name: '',
@@ -14,6 +17,11 @@ export const IngredientsPage: React.FC = () => {
         cost: 0
     });
     const [editingId, setEditingId] = useState<number | null>(null);
+    const [historyModalOpen, setHistoryModalOpen] = useState(false);
+    const [selectedIngredient, setSelectedIngredient] = useState<{id: number, name: string} | null>(null);
+
+    // Computed: count of ingredients with negative stock
+    const negativeStockCount = ingredients.filter(ing => (ing.stock || 0) < 0).length;
 
     useEffect(() => {
         loadIngredients();
@@ -68,6 +76,21 @@ export const IngredientsPage: React.FC = () => {
         setIsModalOpen(true);
     };
 
+    const handleDisableStock = async () => {
+        if (!confirm('¿Desactivar el módulo de stock? Las ventas dejarán de descontar inventario hasta que lo reactives en Configuración.')) return;
+        setDisabling(true);
+        try {
+            await configService.updateConfig({ enableStock: false } as any);
+            alert('Módulo de stock desactivado. Serás redirigido al panel de administración.');
+            window.location.href = '/admin';
+        } catch (error) {
+            console.error('Error disabling stock:', error);
+            alert('Error al desactivar el módulo');
+        } finally {
+            setDisabling(false);
+        }
+    };
+
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex justify-between items-center">
@@ -83,6 +106,30 @@ export const IngredientsPage: React.FC = () => {
                     <Plus size={20} /> Nuevo Insumo
                 </button>
             </div>
+
+            {/* Warning Banner for Negative Stock */}
+            {negativeStockCount > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-4">
+                    <AlertTriangle className="w-6 h-6 text-amber-500 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                        <h3 className="font-semibold text-amber-800">
+                            {negativeStockCount} ingrediente{negativeStockCount > 1 ? 's' : ''} con stock negativo
+                        </h3>
+                        <p className="text-sm text-amber-700 mt-1">
+                            Esto puede ocurrir si hubo ventas sin cargar las compras correspondientes.
+                            Si el inventario no está actualizado, puedes desactivar temporalmente el módulo.
+                        </p>
+                    </div>
+                    <button
+                        onClick={handleDisableStock}
+                        disabled={disabling}
+                        className="shrink-0 flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white rounded-lg font-medium text-sm transition-colors"
+                    >
+                        {disabling ? <Loader2 className="w-4 h-4 animate-spin" /> : <PowerOff size={16} />}
+                        Desactivar Stock
+                    </button>
+                </div>
+            )}
 
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="overflow-x-auto">
@@ -115,6 +162,12 @@ export const IngredientsPage: React.FC = () => {
                                         <td className="px-6 py-4 text-slate-500">{ing.unit}</td>
                                         <td className="px-6 py-4 text-slate-500">${ing.cost}</td>
                                         <td className="px-6 py-4 text-right">
+                                            <button onClick={() => {
+                                                setSelectedIngredient({ id: ing.id, name: ing.name });
+                                                setHistoryModalOpen(true);
+                                            }} className="text-slate-400 hover:text-blue-600 mx-1" title="Ver Historial">
+                                                <History size={18} />
+                                            </button>
                                             <button onClick={() => handleEdit(ing)} className="text-slate-400 hover:text-indigo-600 mx-1"><Edit size={18} /></button>
                                         </td>
                                     </tr>
@@ -162,6 +215,13 @@ export const IngredientsPage: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            <StockHistoryModal 
+                isOpen={historyModalOpen}
+                onClose={() => setHistoryModalOpen(false)}
+                ingredientId={selectedIngredient?.id || 0}
+                ingredientName={selectedIngredient?.name || ''}
+            />
         </div>
     );
 };

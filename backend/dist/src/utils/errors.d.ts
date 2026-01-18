@@ -54,6 +54,12 @@ export declare class InternalError extends ApiError {
     constructor(message?: string);
 }
 /**
+ * 400 Insufficient Stock - Not enough ingredients to prepare the product
+ */
+export declare class InsufficientStockError extends ApiError {
+    constructor(productName: string, ingredientName: string, required: number, available: number);
+}
+/**
  * 503 Service Unavailable - Database or external service down
  */
 export declare class ServiceUnavailableError extends ApiError {

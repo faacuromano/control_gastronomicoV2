@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteProduct = exports.toggleProductActive = exports.updateProduct = exports.createProduct = exports.getProductById = exports.getProducts = void 0;
 const prisma_1 = require("../lib/prisma");
 const zod_1 = require("zod");
+const errors_1 = require("../utils/errors");
 const IngredientInput = zod_1.z.object({
     ingredientId: zod_1.z.number(),
     quantity: zod_1.z.number().positive()
@@ -16,17 +17,23 @@ const ProductSchema = zod_1.z.object({
     isStockable: zod_1.z.boolean().optional(),
     image: zod_1.z.string().url().optional(),
     isActive: zod_1.z.boolean().optional(),
-    ingredients: zod_1.z.array(IngredientInput).optional()
+    ingredients: zod_1.z.array(IngredientInput).optional(),
+    modifierIds: zod_1.z.array(zod_1.z.number()).optional()
 });
-const getProducts = async (filters = {}) => {
-    const where = {};
-    if (filters.categoryId)
-        where.categoryId = filters.categoryId;
-    if (filters.isActive !== undefined)
-        where.isActive = filters.isActive;
+const getProducts = async (where = {}) => {
     return await prisma_1.prisma.product.findMany({
         where,
-        include: { category: true, ingredients: { include: { ingredient: true } } },
+        include: {
+            category: true,
+            ingredients: { include: { ingredient: true } },
+            modifiers: {
+                include: {
+                    modifierGroup: {
+                        include: { options: true }
+                    }
+                }
+            }
+        },
         orderBy: { name: 'asc' }
     });
 };
@@ -34,22 +41,32 @@ exports.getProducts = getProducts;
 const getProductById = async (id) => {
     const product = await prisma_1.prisma.product.findUnique({
         where: { id },
-        include: { category: true, ingredients: { include: { ingredient: true } }, modifiers: true }
+        include: {
+            category: true,
+            ingredients: { include: { ingredient: true } },
+            modifiers: {
+                include: {
+                    modifierGroup: {
+                        include: { options: true }
+                    }
+                }
+            }
+        }
     });
     if (!product)
-        throw { code: 'NOT_FOUND', message: 'Product not found' };
+        throw new errors_1.NotFoundError('Product');
     return product;
 };
 exports.getProductById = getProductById;
 const createProduct = async (data) => {
     const validation = ProductSchema.safeParse(data);
     if (!validation.success) {
-        throw { code: 'VALIDATION_ERROR', message: 'Invalid data', details: validation.error.issues };
+        throw new errors_1.ValidationError('Invalid data', validation.error.issues);
     }
     const category = await prisma_1.prisma.category.findUnique({ where: { id: validation.data.categoryId } });
     if (!category)
-        throw { code: 'VALIDATION_ERROR', message: 'Invalid Category ID' };
-    const { ingredients, ...productData } = validation.data;
+        throw new errors_1.ValidationError('Invalid Category ID');
+    const { ingredients, modifierIds, ...productData } = validation.data;
     const createData = {
         ...productData,
         productType: productData.productType,
@@ -66,26 +83,33 @@ const createProduct = async (data) => {
             }))
         };
     }
+    if (modifierIds && modifierIds.length > 0) {
+        createData.modifiers = {
+            create: modifierIds.map(groupId => ({
+                modifierGroupId: groupId
+            }))
+        };
+    }
     return await prisma_1.prisma.product.create({
         data: createData,
-        include: { ingredients: true }
+        include: { ingredients: true, modifiers: true }
     });
 };
 exports.createProduct = createProduct;
 const updateProduct = async (id, data) => {
     const validation = ProductSchema.partial().safeParse(data);
     if (!validation.success) {
-        throw { code: 'VALIDATION_ERROR', message: 'Invalid data', details: validation.error.issues };
+        throw new errors_1.ValidationError('Invalid data', validation.error.issues);
     }
     const exists = await prisma_1.prisma.product.findUnique({ where: { id } });
     if (!exists)
-        throw { code: 'NOT_FOUND', message: 'Product not found' };
+        throw new errors_1.NotFoundError('Product');
     if (validation.data.categoryId) {
         const category = await prisma_1.prisma.category.findUnique({ where: { id: validation.data.categoryId } });
         if (!category)
-            throw { code: 'VALIDATION_ERROR', message: 'Invalid Category ID' };
+            throw new errors_1.ValidationError('Invalid Category ID');
     }
-    const { ingredients, ...productData } = validation.data;
+    const { ingredients, modifierIds, ...productData } = validation.data;
     const updateData = { ...productData };
     if (productData.description === undefined && data.description === null)
         updateData.description = null; // Explicit null handling
@@ -106,10 +130,21 @@ const updateProduct = async (id, data) => {
                 }))
             });
         }
+        if (modifierIds) {
+            // Delete existing modifiers
+            await tx.productModifierGroup.deleteMany({ where: { productId: id } });
+            // Create new
+            await tx.productModifierGroup.createMany({
+                data: modifierIds.map(groupId => ({
+                    productId: id,
+                    modifierGroupId: groupId
+                }))
+            });
+        }
         return await tx.product.update({
             where: { id },
             data: updateData,
-            include: { ingredients: true }
+            include: { ingredients: true, modifiers: true }
         });
     });
 };
@@ -117,7 +152,7 @@ exports.updateProduct = updateProduct;
 const toggleProductActive = async (id) => {
     const product = await prisma_1.prisma.product.findUnique({ where: { id } });
     if (!product)
-        throw { code: 'NOT_FOUND', message: 'Product not found' };
+        throw new errors_1.NotFoundError('Product');
     return await prisma_1.prisma.product.update({
         where: { id },
         data: { isActive: !product.isActive }
@@ -125,6 +160,10 @@ const toggleProductActive = async (id) => {
 };
 exports.toggleProductActive = toggleProductActive;
 const deleteProduct = async (id) => {
+    // Check if exists
+    const product = await prisma_1.prisma.product.findUnique({ where: { id } });
+    if (!product)
+        throw new errors_1.NotFoundError('Product');
     return await prisma_1.prisma.product.update({
         where: { id },
         data: { isActive: false }

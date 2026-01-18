@@ -11,6 +11,31 @@ export interface Product {
     isActive: boolean;
     isStockable: boolean;
     category?: { name: string };
+    ingredients?: {
+        ingredient: {
+            id: number;
+            name: string;
+            stock: number;
+            unit: string;
+        };
+        quantity: number;
+        ingredientId: number;
+    }[];
+    modifiers?: {
+        modifierGroupId: number;
+        modifierGroup: {
+            id: number;
+            name: string;
+            minSelection: number;
+            maxSelection: number;
+            options: {
+                id: number;
+                name: string;
+                priceOverlay: number;
+                isActive: boolean;
+            }[];
+        }
+    }[];
 }
 
 export const productService = {

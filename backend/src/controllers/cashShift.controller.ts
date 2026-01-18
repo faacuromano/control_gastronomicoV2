@@ -1,8 +1,10 @@
-
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import { cashShiftService } from '../services/cashShift.service';
-import { sendSuccess, sendError } from '../utils/response';
+import { sendSuccess } from '../utils/response';
 import { z } from 'zod';
+import { asyncHandler } from '../middleware/asyncHandler';
+import { UnauthorizedError, ValidationError } from '../utils/errors';
+import { auditService } from '../services/audit.service';
 
 const openShiftSchema = z.object({
     startAmount: z.number().min(0)
@@ -12,68 +14,95 @@ const closeShiftSchema = z.object({
     countedCash: z.number().min(0)
 });
 
-export const openShift = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { startAmount } = openShiftSchema.parse(req.body);
-        const userId = (req as any).user!.id;
-        const result = await cashShiftService.openShift(userId, startAmount);
-        return sendSuccess(res, result);
-    } catch (error: any) {
-        if (error instanceof z.ZodError) {
-             return sendError(res, 'VALIDATION_ERROR', 'Invalid data', error.issues);
-        }
-        next(error);
-    }
-};
+/**
+ * Extract audit context from request
+ */
+const getAuditContext = (req: Request) => ({
+    userId: req.user?.id,
+    ipAddress: req.ip || req.socket.remoteAddress,
+    userAgent: req.headers['user-agent']
+});
 
-export const closeShiftWithCount = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { countedCash } = closeShiftSchema.parse(req.body);
-        const userId = (req as any).user!.id;
-        const report = await cashShiftService.closeShiftWithCount(userId, countedCash);
-        return sendSuccess(res, report);
-    } catch (error: any) {
-         if (error instanceof z.ZodError) {
-             return sendError(res, 'VALIDATION_ERROR', 'Invalid data', error.issues);
-        }
-        next(error);
-    }
-};
+export const openShift = asyncHandler(async (req: Request, res: Response) => {
+    const { startAmount } = openShiftSchema.parse(req.body);
+    const userId = req.user?.id;
+    if (!userId) throw new UnauthorizedError();
+    
+    const result = await cashShiftService.openShift(userId, startAmount);
+    
+    // Audit: Log shift opening
+    await auditService.logCashShift('SHIFT_OPENED', result.id, getAuditContext(req), {
+        startAmount,
+        userName: req.user?.name
+    });
+    
+    return sendSuccess(res, result);
+});
 
-export const getShiftReport = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const shiftId = Number(req.params.id);
-        if (!shiftId || isNaN(shiftId)) {
-            return sendError(res, 'VALIDATION_ERROR', 'Invalid shift ID', null, 400);
-        }
-        const report = await cashShiftService.getShiftReport(shiftId);
-        return sendSuccess(res, report);
-    } catch (error) {
-        next(error);
-    }
-};
+export const closeShiftWithCount = asyncHandler(async (req: Request, res: Response) => {
+    const { countedCash } = closeShiftSchema.parse(req.body);
+    const userId = req.user?.id;
+    if (!userId) throw new UnauthorizedError();
+    
+    const report = await cashShiftService.closeShiftWithCount(userId, countedCash);
+    
+    // Audit: Log shift closing with cash count
+    await auditService.logCashShift('SHIFT_CLOSED', report.shift.id, getAuditContext(req), {
+        countedCash,
+        expectedCash: report.cash.expectedCash,
+        difference: report.cash.difference,
+        totalSales: report.sales.totalSales
+    });
+    
+    return sendSuccess(res, report);
+});
 
-export const getCurrentShift = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const userId = (req as any).user!.id;
-        const result = await cashShiftService.getCurrentShift(userId);
-        return sendSuccess(res, result);
-    } catch (error) {
-        next(error);
+export const getShiftReport = asyncHandler(async (req: Request, res: Response) => {
+    const shiftId = Number(req.params.id);
+    if (!shiftId || isNaN(shiftId)) {
+        throw new ValidationError('Invalid shift ID');
     }
-};
+    const report = await cashShiftService.getShiftReport(shiftId);
+    return sendSuccess(res, report);
+});
+
+export const getCurrentShift = asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.user?.id;
+    if (!userId) throw new UnauthorizedError();
+    
+    const result = await cashShiftService.getCurrentShift(userId);
+    return sendSuccess(res, result);
+});
 
 // Keep legacy closeShift for backwards compatibility
-export const closeShift = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-        const { endAmount } = z.object({ endAmount: z.number().min(0) }).parse(req.body);
-        const userId = (req as any).user!.id;
-        const result = await cashShiftService.closeShift(userId, endAmount);
-        return sendSuccess(res, result);
-    } catch (error: any) {
-         if (error instanceof z.ZodError) {
-             return sendError(res, 'VALIDATION_ERROR', 'Invalid data', error.issues);
-        }
-        next(error);
-    }
-};
+export const closeShift = asyncHandler(async (req: Request, res: Response) => {
+    const { endAmount } = z.object({ endAmount: z.number().min(0) }).parse(req.body);
+    const userId = req.user?.id;
+    if (!userId) throw new UnauthorizedError();
+    
+    const result = await cashShiftService.closeShift(userId, endAmount);
+    
+    // Audit: Log shift closing
+    await auditService.logCashShift('SHIFT_CLOSED', result.id, getAuditContext(req), {
+        endAmount,
+        userName: req.user?.name
+    });
+    
+    return sendSuccess(res, result);
+});
+
+/**
+ * Get all shifts with optional filters (for Dashboard analytics)
+ */
+export const getAllShifts = asyncHandler(async (req: Request, res: Response) => {
+    const fromDate = req.query.fromDate as string | undefined;
+    const userId = req.query.userId ? Number(req.query.userId) : undefined;
+    
+    // Build filters object with only defined values
+    const filters: { fromDate?: string; userId?: number } = {};
+    if (fromDate) filters.fromDate = fromDate;
+    if (userId) filters.userId = userId;
+    
+    const shifts = await cashShiftService.getAll(filters);
+    return sendSuccess(res, shifts);
+});

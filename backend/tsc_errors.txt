@@ -1,0 +1,8 @@
+tests/integration/order-transaction.test.ts(87,47): error TS2345: Argument of type '{ items: { productId: number; quantity: number; }[]; serverId: number; channel: "POS"; }' is not assignable to parameter of type 'CreateOrderInput'.
+  Property 'userId' is missing in type '{ items: { productId: number; quantity: number; }[]; serverId: number; channel: "POS"; }' but required in type 'CreateOrderInput'.
+tests/unit/order.service.test.ts(91,13): error TS2741: Property 'userId' is missing in type '{ items: { productId: number; quantity: number; }[]; channel: "POS"; serverId: number; paymentMethod: "CASH"; }' but required in type 'CreateOrderInput'.
+tests/unit/order.service.test.ts(120,13): error TS2741: Property 'userId' is missing in type '{ items: { productId: number; quantity: number; }[]; serverId: number; }' but required in type 'CreateOrderInput'.
+tests/unit/order.service.test.ts(147,13): error TS2741: Property 'userId' is missing in type '{ items: { productId: number; quantity: number; }[]; serverId: number; }' but required in type 'CreateOrderInput'.
+tests/unit/order.service.test.ts(171,13): error TS2741: Property 'userId' is missing in type '{ items: { productId: number; quantity: number; }[]; }' but required in type 'CreateOrderInput'.
+tests/unit/order.service.test.ts(195,13): error TS2741: Property 'userId' is missing in type '{ items: { productId: number; quantity: number; }[]; serverId: number; }' but required in type 'CreateOrderInput'.
+tests/unit/order.service.test.ts(239,13): error TS2741: Property 'userId' is missing in type '{ items: { productId: number; quantity: number; }[]; serverId: number; }' but required in type 'CreateOrderInput'.

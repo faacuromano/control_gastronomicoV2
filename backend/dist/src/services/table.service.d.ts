@@ -25,6 +25,14 @@ export declare class TableService {
         createdAt: Date;
         updatedAt: Date;
     }>;
+    updateArea(id: number, data: {
+        name: string;
+    }): Promise<{
+        name: string;
+        id: number;
+        createdAt: Date;
+        updatedAt: Date;
+    }>;
     deleteArea(id: number): Promise<{
         name: string;
         id: number;
@@ -34,6 +42,21 @@ export declare class TableService {
     createTable(data: {
         name: string;
         areaId: number;
+        x?: number;
+        y?: number;
+    }): Promise<{
+        name: string;
+        id: number;
+        createdAt: Date;
+        updatedAt: Date;
+        y: number | null;
+        status: import(".prisma/client").$Enums.TableStatus;
+        areaId: number;
+        x: number | null;
+        currentOrderId: number | null;
+    }>;
+    updateTable(id: number, data: {
+        name?: string;
         x?: number;
         y?: number;
     }): Promise<{
@@ -58,6 +81,21 @@ export declare class TableService {
         x: number | null;
         currentOrderId: number | null;
     }>;
+    updatePositions(updates: {
+        id: number;
+        x: number;
+        y: number;
+    }[]): Promise<{
+        name: string;
+        id: number;
+        createdAt: Date;
+        updatedAt: Date;
+        y: number | null;
+        status: import(".prisma/client").$Enums.TableStatus;
+        areaId: number;
+        x: number | null;
+        currentOrderId: number | null;
+    }[]>;
     getTable(id: number): Promise<{
         orders: ({
             items: {
@@ -65,9 +103,9 @@ export declare class TableService {
                 quantity: number;
                 productId: number;
                 status: import(".prisma/client").$Enums.ItemStatus;
-                notes: string | null;
                 orderId: number;
                 unitPrice: import("@prisma/client/runtime/library").Decimal;
+                notes: string | null;
             }[];
         } & {
             id: number;
@@ -76,21 +114,34 @@ export declare class TableService {
             orderNumber: number;
             channel: import(".prisma/client").$Enums.OrderChannel;
             externalId: string | null;
+            peopleCount: number;
             status: import(".prisma/client").$Enums.OrderStatus;
             paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
             subtotal: import("@prisma/client/runtime/library").Decimal;
             discount: import("@prisma/client/runtime/library").Decimal;
+            tip: import("@prisma/client/runtime/library").Decimal;
             total: import("@prisma/client/runtime/library").Decimal;
-            deliveryAddress: string | null;
-            deliveryNotes: string | null;
-            closedAt: Date | null;
-            businessDate: Date;
             tableId: number | null;
             clientId: number | null;
             serverId: number | null;
             driverId: number | null;
+            deliveryAddress: string | null;
+            deliveryNotes: string | null;
+            closedAt: Date | null;
+            businessDate: Date;
         })[];
     } & {
+        name: string;
+        id: number;
+        createdAt: Date;
+        updatedAt: Date;
+        y: number | null;
+        status: import(".prisma/client").$Enums.TableStatus;
+        areaId: number;
+        x: number | null;
+        currentOrderId: number | null;
+    }>;
+    deleteTable(id: number): Promise<{
         name: string;
         id: number;
         createdAt: Date;
@@ -144,6 +195,44 @@ export declare class TableService {
         areaId: number;
         x: number | null;
         currentOrderId: number | null;
+    }>;
+    /**
+     * Opens a table by creating an empty order and marking table as OCCUPIED
+     */
+    openTableWithOrder(tableId: number, serverId: number, pax?: number): Promise<{
+        id: number;
+        createdAt: Date;
+        updatedAt: Date;
+        orderNumber: number;
+        channel: import(".prisma/client").$Enums.OrderChannel;
+        externalId: string | null;
+        peopleCount: number;
+        status: import(".prisma/client").$Enums.OrderStatus;
+        paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
+        subtotal: import("@prisma/client/runtime/library").Decimal;
+        discount: import("@prisma/client/runtime/library").Decimal;
+        tip: import("@prisma/client/runtime/library").Decimal;
+        total: import("@prisma/client/runtime/library").Decimal;
+        tableId: number | null;
+        clientId: number | null;
+        serverId: number | null;
+        driverId: number | null;
+        deliveryAddress: string | null;
+        deliveryNotes: string | null;
+        closedAt: Date | null;
+        businessDate: Date;
+    }>;
+    /**
+     * Closes a table by processing payment and freeing the table
+     */
+    closeTableWithPayment(tableId: number, serverId: number, payments: {
+        method: string;
+        amount: number;
+    }[]): Promise<{
+        orderId: number;
+        total: number;
+        paid: number;
+        status: import(".prisma/client").$Enums.PaymentStatus;
     }>;
 }
 export declare const tableService: TableService;

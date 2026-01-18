@@ -17,12 +17,39 @@ export const Receipt: React.FC<ReceiptProps> = ({ order, businessName = "Restaur
             <div className="border-b border-black my-2"></div>
             
             <div className="flex flex-col gap-1">
-                {order.items?.map((item: any, i: number) => (
-                    <div key={i} className="flex justify-between">
-                        <span>{item.quantity} x {item.product?.name || 'Item'}</span>
-                        <span>${Number(item.unitPrice * item.quantity).toFixed(2)}</span>
-                    </div>
-                ))}
+                {order.items?.map((item: any, i: number) => {
+                    // Handle both Backend (unitPrice/product snapshot) and Frontend Cart (product.price) structures
+                    const unitPrice = item.unitPrice !== undefined ? Number(item.unitPrice) : Number(item.product?.price || 0);
+                    const itemTotal = unitPrice * item.quantity;
+
+                    return (
+                        <div key={i} className="flex flex-col">
+                            <div className="flex justify-between font-semibold">
+                                <span>{item.quantity} x {item.product?.name || 'Item'}</span>
+                                <span>${itemTotal.toFixed(2)}</span>
+                            </div>
+                            {/* Modifiers */}
+                            {item.modifiers?.map((mod: any, j: number) => {
+                                // Handle Backend (modifierOption.name, priceCharged) vs Frontend (name, priceOverlay)
+                                const modName = mod.modifierOption?.name || mod.name || 'Extra';
+                                const modPrice = mod.priceCharged !== undefined ? Number(mod.priceCharged) : Number(mod.priceOverlay || 0);
+                                
+                                return (
+                                    <div key={j} className="flex justify-between pl-4 text-[10px] text-gray-600">
+                                        <span>+ {modName}</span>
+                                        <span>${modPrice.toFixed(2)}</span>
+                                    </div>
+                                );
+                            })}
+                            {/* Notes */}
+                            {item.notes && (
+                                <div className="pl-4 text-[10px] italic">
+                                    Nota: {item.notes}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
 
             <div className="border-b border-black my-2"></div>

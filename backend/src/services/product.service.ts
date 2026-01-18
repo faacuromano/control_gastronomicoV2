@@ -1,5 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
+import { NotFoundError, ValidationError } from '../utils/errors';
 
 const IngredientInput = z.object({
   ingredientId: z.number(),
@@ -15,17 +17,24 @@ const ProductSchema = z.object({
     isStockable: z.boolean().optional(),
     image: z.string().url().optional(),
     isActive: z.boolean().optional(),
-    ingredients: z.array(IngredientInput).optional()
+    ingredients: z.array(IngredientInput).optional(),
+    modifierIds: z.array(z.number()).optional()
 });
 
-export const getProducts = async (filters: { categoryId?: number; isActive?: boolean } = {}) => {
-    const where: any = {};
-    if (filters.categoryId) where.categoryId = filters.categoryId;
-    if (filters.isActive !== undefined) where.isActive = filters.isActive;
-
+export const getProducts = async (where: Prisma.ProductWhereInput = {}) => {
     return await prisma.product.findMany({
         where,
-        include: { category: true, ingredients: { include: { ingredient: true } } },
+        include: { 
+            category: true, 
+            ingredients: { include: { ingredient: true } },
+            modifiers: { // ProductModifierGroup
+                include: {
+                    modifierGroup: {
+                        include: { options: true }
+                    }
+                }
+            }
+        },
         orderBy: { name: 'asc' }
     });
 };
@@ -33,22 +42,32 @@ export const getProducts = async (filters: { categoryId?: number; isActive?: boo
 export const getProductById = async (id: number) => {
     const product = await prisma.product.findUnique({
         where: { id },
-        include: { category: true, ingredients: { include: { ingredient: true } }, modifiers: true }
+        include: { 
+            category: true, 
+            ingredients: { include: { ingredient: true } }, 
+            modifiers: {
+                include: {
+                    modifierGroup: {
+                        include: { options: true }
+                    }
+                }
+            } 
+        }
     });
-    if (!product) throw { code: 'NOT_FOUND', message: 'Product not found' };
+    if (!product) throw new NotFoundError('Product');
     return product;
 };
 
 export const createProduct = async (data: any) => {
     const validation = ProductSchema.safeParse(data);
     if (!validation.success) {
-        throw { code: 'VALIDATION_ERROR', message: 'Invalid data', details: validation.error.issues };
+        throw new ValidationError('Invalid data', validation.error.issues);
     }
 
     const category = await prisma.category.findUnique({ where: { id: validation.data.categoryId } });
-    if (!category) throw { code: 'VALIDATION_ERROR', message: 'Invalid Category ID' };
+    if (!category) throw new ValidationError('Invalid Category ID');
 
-    const { ingredients, ...productData } = validation.data;
+    const { ingredients, modifierIds, ...productData } = validation.data;
 
     const createData: any = {
         ...productData,
@@ -68,27 +87,35 @@ export const createProduct = async (data: any) => {
         };
     }
 
+    if (modifierIds && modifierIds.length > 0) {
+        createData.modifiers = {
+            create: modifierIds.map(groupId => ({
+                modifierGroupId: groupId
+            }))
+        };
+    }
+
     return await prisma.product.create({
         data: createData,
-        include: { ingredients: true }
+        include: { ingredients: true, modifiers: true }
     });
 };
 
 export const updateProduct = async (id: number, data: any) => {
     const validation = ProductSchema.partial().safeParse(data);
     if (!validation.success) {
-        throw { code: 'VALIDATION_ERROR', message: 'Invalid data', details: validation.error.issues };
+        throw new ValidationError('Invalid data', validation.error.issues);
     }
 
     const exists = await prisma.product.findUnique({ where: { id } });
-    if (!exists) throw { code: 'NOT_FOUND', message: 'Product not found' };
+    if (!exists) throw new NotFoundError('Product');
 
     if (validation.data.categoryId) {
         const category = await prisma.category.findUnique({ where: { id: validation.data.categoryId } });
-        if (!category) throw { code: 'VALIDATION_ERROR', message: 'Invalid Category ID' };
+        if (!category) throw new ValidationError('Invalid Category ID');
     }
 
-    const { ingredients, ...productData } = validation.data;
+    const { ingredients, modifierIds, ...productData } = validation.data;
     const updateData: any = { ...productData };
     if (productData.description === undefined && data.description === null) updateData.description = null; // Explicit null handling
     if (productData.image === undefined && data.image === null) updateData.image = null;
@@ -110,17 +137,29 @@ export const updateProduct = async (id: number, data: any) => {
             });
         }
 
+        if (modifierIds) {
+            // Delete existing modifiers
+            await tx.productModifierGroup.deleteMany({ where: { productId: id } });
+            // Create new
+            await tx.productModifierGroup.createMany({
+                 data: modifierIds.map(groupId => ({
+                    productId: id,
+                    modifierGroupId: groupId
+                }))
+            });
+        }
+
         return await tx.product.update({
             where: { id },
             data: updateData,
-            include: { ingredients: true }
+            include: { ingredients: true, modifiers: true }
         });
     });
 };
 
 export const toggleProductActive = async (id: number) => {
     const product = await prisma.product.findUnique({ where: { id } });
-    if (!product) throw { code: 'NOT_FOUND', message: 'Product not found' };
+    if (!product) throw new NotFoundError('Product');
 
     return await prisma.product.update({
         where: { id },
@@ -129,6 +168,10 @@ export const toggleProductActive = async (id: number) => {
 };
 
 export const deleteProduct = async (id: number) => {
+    // Check if exists
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) throw new NotFoundError('Product');
+
     return await prisma.product.update({
         where: { id },
         data: { isActive: false }

@@ -1,6 +1,7 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { z } from 'zod';
+import { asyncHandler } from '../middleware/asyncHandler';
 
 const createClientSchema = z.object({
   name: z.string().min(1),
@@ -10,8 +11,7 @@ const createClientSchema = z.object({
   taxId: z.string().optional()
 });
 
-export const searchClients = async (req: Request, res: Response, next: NextFunction) => {
-  try {
+export const searchClients = asyncHandler(async (req: Request, res: Response) => {
     const { q } = req.query;
     
     // If no query, return recent clients (e.g. last 20)
@@ -34,20 +34,15 @@ export const searchClients = async (req: Request, res: Response, next: NextFunct
     });
 
     res.json(clients);
-  } catch (error) {
-    next(error);
-  }
-};
+});
 
-export const createClient = async (req: Request, res: Response, next: NextFunction) => {
-  try {
+export const createClient = asyncHandler(async (req: Request, res: Response) => {
     const data = createClientSchema.parse(req.body);
     
     // Check if phone exists
     if (data.phone) {
         const existing = await prisma.client.findUnique({ where: { phone: data.phone } });
         if (existing) {
-             // Update existing? Or throw?
              // For POS convenience, let's update address if provided
              const updated = await prisma.client.update({
                  where: { id: existing.id },
@@ -71,7 +66,4 @@ export const createClient = async (req: Request, res: Response, next: NextFuncti
     });
 
     res.json(client);
-  } catch (error) {
-    next(error);
-  }
-};
+});

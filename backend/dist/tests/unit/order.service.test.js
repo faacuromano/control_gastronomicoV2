@@ -27,6 +27,14 @@ jest.mock('../../src/services/stockMovement.service', () => ({
         register: jest.fn().mockResolvedValue({ movement: {}, newStock: 10 })
     }))
 }));
+// Mock KDSService
+jest.mock('../../src/services/kds.service', () => ({
+    kdsService: {
+        broadcastNewOrder: jest.fn(),
+        broadcastOrderUpdate: jest.fn(),
+        calculatePrepTime: jest.fn().mockReturnValue(10)
+    }
+}));
 const prisma_1 = require("../../src/lib/prisma");
 const order_service_1 = require("../../src/services/order.service");
 describe('OrderService', () => {
@@ -79,6 +87,7 @@ describe('OrderService', () => {
             };
             mockTransaction.mockImplementation(async (fn) => fn(txMock));
             const orderData = {
+                userId: 1,
                 items: [{ productId: 1, quantity: 2 }],
                 channel: 'POS',
                 serverId: 1,
@@ -103,6 +112,7 @@ describe('OrderService', () => {
             };
             mockTransaction.mockImplementation(async (fn) => fn(txMock));
             const orderData = {
+                userId: 1,
                 items: [{ productId: 999, quantity: 1 }],
                 serverId: 1
             };
@@ -126,6 +136,7 @@ describe('OrderService', () => {
             };
             mockTransaction.mockImplementation(async (fn) => fn(txMock));
             const orderData = {
+                userId: 1,
                 items: [{ productId: 1, quantity: 1 }],
                 serverId: 1
             };
@@ -146,6 +157,7 @@ describe('OrderService', () => {
             };
             mockTransaction.mockImplementation(async (fn) => fn(txMock));
             const orderData = {
+                userId: 1,
                 items: [{ productId: 1, quantity: 1 }]
                 // Missing serverId
             };
@@ -166,6 +178,7 @@ describe('OrderService', () => {
             };
             mockTransaction.mockImplementation(async (fn) => fn(txMock));
             const orderData = {
+                userId: 1,
                 items: [{ productId: 1, quantity: 1 }],
                 serverId: 1
             };
@@ -205,6 +218,7 @@ describe('OrderService', () => {
             };
             mockTransaction.mockImplementation(async (fn) => fn(txMock));
             const orderData = {
+                userId: 1,
                 items: [
                     { productId: 1, quantity: 2 }, // 2 x 50 = 100
                     { productId: 2, quantity: 3 } // 3 x 75 = 225

@@ -98,7 +98,9 @@ export const POSPage: React.FC = () => {
       const items = cart.map(item => ({
         productId: item.product.id,
         quantity: item.quantity,
-        notes: item.notes
+        notes: item.notes,
+        modifiers: item.modifiers?.map(m => ({ id: m.modifierOptionId, price: m.priceOverlay })),
+        removedIngredientIds: item.removedIngredientIds
       }));
 
       if (existingOrderId) {
@@ -106,9 +108,12 @@ export const POSPage: React.FC = () => {
         clearCart();
         navigate('/tables');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Save failed", error);
-      alert("Error al guardar el pedido");
+      const errorMessage = error?.response?.data?.error?.message 
+          || error?.message 
+          || "Error al guardar el pedido";
+      alert(errorMessage);
     }
   };
 
@@ -133,60 +138,46 @@ export const POSPage: React.FC = () => {
     }
   };
 
-  const handleDeliveryConfirm = async (deliveryDetails: { address: string; notes?: string }) => {
-      try {
-          if (!selectedClient) return;
 
-          const items = cart.map(item => ({
-            productId: item.product.id,
-            quantity: item.quantity,
-            notes: item.notes
-          }));
+  /* New State for Delivery Flow */
+  const [pendingDeliveryData, setPendingDeliveryData] = useState<any>(null);
 
-          const deliveryData = {
-              address: deliveryDetails.address,
-              notes: deliveryDetails.notes,
-              phone: selectedClient.phone || '',
-              name: selectedClient.name
-          };
+  // Use Refs to ensure handleCheckout always accesses the latest state, avoiding stale closures
+  const isDeliveryModeRef = React.useRef(isDeliveryMode);
+  const pendingDeliveryDataRef = React.useRef(pendingDeliveryData);
 
-          await orderService.create({
-              items,
-              channel: 'DELIVERY_APP', // Type updated in service interface
-              deliveryData,
-              clientId: selectedClient.id,
-              paymentMethod: 'CASH', // Default, will be updated on payment? Or assumed PENDING?
-                                    // Delivery orders usually start unpaid or paid online. 
-                                    // For simple POS delivery, let's assume 'CASH' (Pending Payment) or 'CARD'.
-                                    // Delivery Dashboard will handle payment/status?
-                                    // Let's pass 'CASH' but status 'OPEN' (Unpaid).
-                                    // Actually backend sets paymentStatus based on coverage.
-                                    // We need to clarify if "Confirm Delivery" means "Send to Kitchen" (Unpaid) or "Pay & Send".
-                                    // Usually "Send to Kitchen". Payment happens on delivery or beforehand.
-                                    // Let's assume UNPAID for now.
-              payments: [] // No immediate payment
-          });
+  useEffect(() => {
+      isDeliveryModeRef.current = isDeliveryMode;
+  }, [isDeliveryMode]);
 
-          clearCart();
-          setIsDeliveryModalOpen(false);
-          setIsDeliveryMode(false);
-          setSelectedClient(null);
-          // navigate('/delivery-dashboard'); // TODO: Create this page
-          alert("Pedido de Delivery creado con éxito");
+  useEffect(() => {
+      pendingDeliveryDataRef.current = pendingDeliveryData;
+  }, [pendingDeliveryData]);
 
-      } catch (error) {
-          console.error("Delivery Order Failed", error);
-          alert("Error al crear pedido de delivery");
-      }
+  const handleDeliveryConfirm = (deliveryDetails: { address: string; notes?: string; driverId?: number }) => {
+      if (!selectedClient) return;
+
+      const deliveryData = {
+          address: deliveryDetails.address,
+          notes: deliveryDetails.notes,
+          phone: selectedClient.phone || '',
+          name: selectedClient.name,
+          driverId: deliveryDetails.driverId
+      };
+
+      setPendingDeliveryData(deliveryData);
+      setIsDeliveryModalOpen(false);
+      setIsCheckoutOpen(true); // Proceed to Checkout Modal
   };
 
   const handleCheckout = async (method: string, payments?: { method: string; amount: number }[]) => {
-    // 0. Handle completion signal from CheckoutModal (Order already created there)
+    // If modal sends COMPLETED, just close (legacy/unused?)
     if (method === 'COMPLETED') {
-        clearCart();
-        setIsCheckoutOpen(false);
-        return;
+         setIsCheckoutOpen(false);
+         return;
     }
+
+    const paymentData = payments || [{ method: method === 'cash' ? 'CASH' : 'CARD', amount: 0 }]; // Fallback if simple method string passed
 
     // If table checkout but cart has items, SAVE THEM first (Auto-save)
     if (existingOrderId && tableId && action === 'checkout' && cart.length > 0) {
@@ -194,11 +185,12 @@ export const POSPage: React.FC = () => {
              const newItems = cart.map(item => ({
                 productId: item.product.id,
                 quantity: item.quantity,
-                notes: item.notes
+                notes: item.notes,
+                modifiers: item.modifiers?.map(m => ({ id: m.modifierOptionId, price: m.priceOverlay })),
+                removedIngredientIds: item.removedIngredientIds
             }));
             await orderService.addItemsToOrder(existingOrderId, newItems);
             clearCart();
-            // Continue to close table...
         } catch (error) {
              console.error("Auto-save failed during checkout", error);
              alert("Error al guardar items nuevos antes de cerrar mesa");
@@ -206,41 +198,82 @@ export const POSPage: React.FC = () => {
         }
     }
 
-    if (cart.length === 0 && action !== 'checkout' && (!existingOrderId || action !== 'checkout')) return;
+    // CASE 1: Table checkout - Process payment (items already in order or just autosaved)
+    if (existingOrderId && tableId && action === 'checkout') {
+        try {
+            console.log('[POSPage] Closing table:', tableId, 'with payments:', paymentData);
+            const result = await tableService.closeTable(tableId, paymentData);
+            console.log('[POSPage] Table close result:', result);
+            clearCart();
+            setIsCheckoutOpen(false);
+            navigate('/tables');
+            return;
+        } catch (error) {
+            console.error("Table close failed", error);
+            alert("Error al cerrar la mesa");
+            return;
+        }
+    }
+
+    // For non-table orders: Require items in cart
+    if (cart.length === 0) {
+         setIsCheckoutOpen(false);
+         return; 
+    }
 
     try {
         const items = cart.map(item => ({
             productId: item.product.id,
             quantity: item.quantity,
-            notes: item.notes
+            notes: item.notes,
+            modifiers: item.modifiers?.map(m => ({ id: m.modifierOptionId, price: m.priceOverlay })),
+            removedIngredientIds: item.removedIngredientIds
         }));
 
-        // CASE 1: Table checkout - Process payment (items already in order)
-        if (existingOrderId && tableId && action === 'checkout') {
-          // NOTE: Items are already in the order (or just autosaved), don't send `items` again!
-          // Just process payment using tableService.closeTable
-          const paymentData = payments || [{ method: method === 'cash' ? 'CASH' : 'CARD', amount: 0 }];
-          await tableService.closeTable(tableId, paymentData);
-          
-          clearCart();
-          setIsCheckoutOpen(false);
-          navigate('/tables');
-          return;
-        }
+        // CASE 2: Direct sale OR Delivery (no table) - create and pay
+        // Read from REFS to guarantee latest state
+        const currentIsDeliveryMode = isDeliveryModeRef.current;
+        const currentPendingData = pendingDeliveryDataRef.current;
 
-        // CASE 2: Direct sale (no table) - create and pay immediately
-        const orderData = {
-            items,
-            channel: 'POS' as const,
-            paymentMethod: method === 'cash' ? 'CASH' : 'CARD'
+        // Robust Channel Detection: If we have delivery data, it IS a delivery app order, regardless of the toggle state at this specific moment
+        const isDelivery = currentIsDeliveryMode || !!currentPendingData;
+        const channel = (isDelivery ? 'DELIVERY_APP' : 'POS') as 'POS' | 'DELIVERY_APP';
+
+        const createPayload = {
+              items,
+              paymentMethod: paymentData.length === 1 ? paymentData[0].method : 'SPLIT',
+              payments: paymentData, // Pass full payment details (CASH/CARD/etc)
+              channel,
+              tableId: tableId ? Number(tableId) : undefined,
+              clientId: selectedClient?.id,
+              deliveryData: currentPendingData || undefined
         };
 
-        await orderService.create(orderData);
-        clearCart();
-        setIsCheckoutOpen(false);
-    } catch (error) {
+        const order = await orderService.create(createPayload);
+
+        // For delivery: clear and navigate
+        if (currentIsDeliveryMode) {
+            clearCart();
+            setIsCheckoutOpen(false);
+            setPendingDeliveryData(null);
+            setIsDeliveryMode(false);
+            setSelectedClient(null);
+            navigate('/delivery-dashboard');
+        } else {
+            // For direct POS sale: DON'T close modal - let CheckoutModal show success screen
+            // The modal will handle cleanup when user clicks "Nueva Orden"
+            setPendingDeliveryData(null);
+        }
+        
+        return order;
+
+    } catch (error: any) {
         console.error("Checkout failed", error);
-        alert("Error al procesar la orden");
+        // Extract actual error message from API response
+        const errorMessage = error?.response?.data?.error?.message 
+            || error?.message 
+            || "Error al procesar la orden";
+        alert(errorMessage);
     }
   };
 
@@ -308,9 +341,17 @@ export const POSPage: React.FC = () => {
         onClose={() => setIsCheckoutOpen(false)} 
         onConfirm={handleCheckout}
         tableMode={!!(tableId && action === 'checkout')}
+        tableId={tableId}
         totalAmount={
-            // Grand Total = Existing Items + Current Cart
-            existingItems.reduce((acc, item) => acc + (Number(item.unitPrice) * item.quantity), 0) + 
+            // Grand Total = Existing Items + Current Cart (fallback if backend fetch fails)
+            existingItems.reduce((acc, item) => {
+                const itemBase = Number(item.unitPrice) * item.quantity;
+                const modifiersPrice = (item.modifiers || []).reduce(
+                    (sum: number, mod: any) => sum + Number(mod.priceCharged || 0),
+                    0
+                ) * item.quantity;
+                return acc + itemBase + modifiersPrice;
+            }, 0) + 
             usePOSStore.getState().total()
         }
       />

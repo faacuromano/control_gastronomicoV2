@@ -90,6 +90,28 @@ export class InternalError extends ApiError {
 }
 
 /**
+ * 400 Insufficient Stock - Not enough ingredients to prepare the product
+ */
+export class InsufficientStockError extends ApiError {
+    constructor(
+        productName: string, 
+        ingredientName: string, 
+        required: number, 
+        available: number
+    ) {
+        const message = `No hay suficiente "${ingredientName}" para preparar "${productName}". ` +
+                        `Se necesitan ${required} pero solo hay ${available} disponibles.`;
+        super('INSUFFICIENT_STOCK', message, 400, {
+            productName,
+            ingredientName,
+            required,
+            available
+        });
+        this.name = 'InsufficientStockError';
+    }
+}
+
+/**
  * 503 Service Unavailable - Database or external service down
  */
 export class ServiceUnavailableError extends ApiError {

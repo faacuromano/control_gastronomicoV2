@@ -13,10 +13,13 @@ export const ShoppingCart: React.FC<ShoppingCartProps> = ({ onCheckout, checkout
   const { cart, removeFromCart, updateQuantity, total } = usePOSStore();
   const cartTotal = total();
   
-  // Calculate existing items total
+  // Calculate existing items total (including modifiers)
   const existingTotal = existingItems.reduce((sum, item) => {
       const price = item.product?.price ? Number(item.product.price) : (item.unitPrice ? Number(item.unitPrice) : 0);
-      return sum + (price * item.quantity);
+      const baseTotal = price * item.quantity;
+      const modifiersTotal = (item.modifiers || []).reduce((acc: number, m: any) => 
+          acc + Number(m.priceCharged || 0), 0) * item.quantity;
+      return sum + baseTotal + modifiersTotal;
   }, 0);
 
   const grandTotal = cartTotal + existingTotal;
@@ -39,24 +42,42 @@ export const ShoppingCart: React.FC<ShoppingCartProps> = ({ onCheckout, checkout
         {existingItems.length > 0 && (
             <div className="mb-4 pb-4 border-b border-dashed border-slate-200">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Ya Comandado</h3>
-                {existingItems.map((item, index) => (
+                {existingItems.map((item, index) => {
+                    const itemBasePrice = Number(item.unitPrice || item.product?.price || 0);
+                    const modifiersPrice = (item.modifiers || []).reduce((acc: number, m: any) => 
+                        acc + Number(m.priceCharged || 0), 0);
+                    const itemTotalPrice = (itemBasePrice + modifiersPrice) * item.quantity;
+                    
+                    return (
                     <div key={`existing-${item.id || index}`} className="flex justify-between items-start p-2 rounded-lg bg-slate-50 opacity-75">
                         <div className="flex-1">
                             <h4 className="font-medium text-slate-700 flex items-center gap-2">
                                 <Lock size={12} className="text-slate-400" />
                                 {item.product?.name || item.name || 'Producto'}
                             </h4>
-                            <p className="text-sm text-slate-500">
-                                ${Number(item.unitPrice || item.product?.price || 0).toFixed(2)} x {item.quantity}
+                            {/* Modifiers List */}
+                            {item.modifiers && item.modifiers.length > 0 && (
+                                <div className="flex flex-col gap-0.5 mt-1 ml-5">
+                                    {item.modifiers.map((mod: any, idx: number) => (
+                                        <span key={idx} className="text-xs text-blue-600 flex items-center gap-1">
+                                            + {mod.modifierOption?.name || mod.name}
+                                            {Number(mod.priceCharged || 0) > 0 && <span className="font-semibold">(+${Number(mod.priceCharged).toFixed(0)})</span>}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                            <p className="text-sm text-slate-500 mt-1">
+                                ${itemBasePrice.toFixed(2)} x {item.quantity}
+                                {modifiersPrice > 0 && <span className="text-blue-600"> (+${modifiersPrice.toFixed(0)} mods)</span>}
                             </p>
                         </div>
                         <div className="flex flex-col items-end gap-1">
                             <span className="font-bold text-slate-600">
-                                ${(Number(item.unitPrice || item.product?.price || 0) * item.quantity).toFixed(2)}
+                                ${itemTotalPrice.toFixed(2)}
                             </span>
                         </div>
                     </div>
-                ))}
+                )})}
             </div>
         )}
 
@@ -65,11 +86,35 @@ export const ShoppingCart: React.FC<ShoppingCartProps> = ({ onCheckout, checkout
              <h3 className="text-xs font-bold text-indigo-500 uppercase tracking-wider mb-2">Nuevos Items</h3>
         )}
 
-        {cart.map((item) => (
+        {cart.map((item) => {
+            const itemBasePrice = Number(item.product.price);
+            const modifiersPrice = item.modifiers?.reduce((acc, m) => acc + Number(m.priceOverlay), 0) || 0;
+            const itemTotalPrice = (itemBasePrice + modifiersPrice) * item.quantity;
+
+            return (
           <div key={item.id} className="flex justify-between items-start group p-2 rounded-lg hover:bg-slate-50 transition-colors border border-transparent hover:border-indigo-100">
             <div className="flex-1">
               <h4 className="font-medium text-slate-900">{item.product.name}</h4>
-              <p className="text-sm text-slate-500">${Number(item.product.price).toFixed(2)}</p>
+              {/* Modifiers List */}
+              {item.modifiers && item.modifiers.length > 0 && (
+                  <div className="flex flex-col gap-0.5 mt-1">
+                      {item.modifiers.map((mod, idx) => (
+                          <span key={idx} className="text-xs text-slate-500 flex items-center gap-1">
+                              + {mod.name} 
+                              {mod.priceOverlay > 0 && <span className="font-semibold text-slate-400">(${Number(mod.priceOverlay).toFixed(2)})</span>}
+                          </span>
+                      ))}
+                  </div>
+              )}
+               {/* Notes */}
+               {item.notes && (
+                  <p className="text-xs text-amber-600 italic mt-1">
+                      "{item.notes}"
+                  </p>
+              )}
+              <p className="text-sm text-slate-500 mt-1">
+                  ${itemBasePrice.toFixed(2)} {modifiersPrice > 0 && `(+ $${modifiersPrice.toFixed(2)})`}
+              </p>
             </div>
             
             <div className="flex flex-col items-end gap-2">
@@ -90,7 +135,7 @@ export const ShoppingCart: React.FC<ShoppingCartProps> = ({ onCheckout, checkout
                     </button>
                 </div>
                 <div className="flex items-center gap-4">
-                     <span className="font-bold text-slate-800">${(Number(item.product.price) * item.quantity).toFixed(2)}</span>
+                     <span className="font-bold text-slate-800">${itemTotalPrice.toFixed(2)}</span>
                      <button 
                         onClick={() => removeFromCart(item.id)}
                         className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1"
@@ -100,7 +145,7 @@ export const ShoppingCart: React.FC<ShoppingCartProps> = ({ onCheckout, checkout
                 </div>
             </div>
           </div>
-        ))}
+        )})}
         
         {cart.length === 0 && existingItems.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-50">

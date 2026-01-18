@@ -97,12 +97,10 @@ export const CashPage = () => {
                         Operador: {shift.userName} • Duración: {hours}h {minutes}m
                     </p>
                 </div>
-                <button
-                    onClick={() => setShowCloseModal(true)}
-                    className="px-6 py-3 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-xl font-semibold shadow-lg transition-all"
-                >
-                    Cerrar Turno
-                </button>
+                {/* Note: Cerrar Turno button is in Header for global access */}
+                <div className="text-right text-sm text-muted-foreground">
+                    <p>Usa el botón <strong>"Cerrar Turno"</strong> en el header</p>
+                </div>
             </div>
 
             {/* Stats Grid */}

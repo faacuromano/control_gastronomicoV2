@@ -12,7 +12,7 @@ interface ClientLookupProps {
 export const ClientLookup: React.FC<ClientLookupProps> = ({ onSelect, selectedClient }) => {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<Client[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [, setLoading] = useState(false);
     const [isCreating, setIsCreating] = useState(false);
     const [newClient, setNewClient] = useState({ name: '', phone: '', address: '' });
 

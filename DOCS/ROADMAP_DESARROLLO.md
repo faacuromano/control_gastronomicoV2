@@ -33,13 +33,16 @@
 - **Sprint 3: Inventory (Backend)** (Ingredientes, StockMovements).
 - **Sprint 4: Orders (Backend)** (Servicio de Órdenes, Integración Stock, Pagos).
 - **Sprint 5: Finance/Caja (Backend)** (CashShift, Arqueo Ciego, businessDate).
+- **Sprint 5: Tables (Backend/Frontend)** (Gestión de salón, Drag & Drop, batch updates).
+- **Sprint 8: KDS (Backend/Frontend)** (Cocina, WebSocket, Kanban).
 - **Sprint F3: POS Interface** (Layout, Grid, Carrito, Modal Pago, Integración Backend).
 - **Sprint F4: Caja (Frontend)** (OpenShiftModal, CloseShiftModal con Arqueo Ciego).
+- **Technical Debt:** Type Safety Audit & Fix (28+ `as any` eliminados).
+- **Sprint: Modifiers UI:** Interfaz de selección en POS y visualización en KDS.
 
 ### 🚧 En Progreso
 
-- **Sprint 5: Tables (Backend):** Gestión de salón en progreso.
-- **Sprint F4.5: Dashboard de Caja:** Stats en tiempo real (mejora opcional).
+- **Sprint: Printing:** Integración con impresoras térmicas.
 
 ---
 

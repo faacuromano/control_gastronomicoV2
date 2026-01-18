@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { z } from 'zod';
+import { NotFoundError, ValidationError, ConflictError } from '../utils/errors';
 
 const CategorySchema = z.object({
     name: z.string().min(1, "Name is required"),
@@ -32,14 +33,14 @@ export const getCategoryById = async (id: number) => {
         where: { id },
         include: { products: true }
     });
-    if (!category) throw { code: 'NOT_FOUND', message: 'Category not found' };
+    if (!category) throw new NotFoundError('Category');
     return category;
 };
 
 export const createCategory = async (data: any) => {
     const validation = CategorySchema.safeParse(data);
     if (!validation.success) {
-        throw { code: 'VALIDATION_ERROR', message: 'Invalid data', details: validation.error.issues };
+        throw new ValidationError('Invalid data', validation.error.issues);
     }
 
     return await prisma.category.create({
@@ -53,11 +54,11 @@ export const createCategory = async (data: any) => {
 export const updateCategory = async (id: number, data: any) => {
     const validation = CategorySchema.partial().safeParse(data);
     if (!validation.success) {
-        throw { code: 'VALIDATION_ERROR', message: 'Invalid data', details: validation.error.issues };
+        throw new ValidationError('Invalid data', validation.error.issues);
     }
 
     const exists = await prisma.category.findUnique({ where: { id } });
-    if (!exists) throw { code: 'NOT_FOUND', message: 'Category not found' };
+    if (!exists) throw new NotFoundError('Category');
 
     const updateData: any = { ...validation.data };
     if (validation.data.printerId === undefined) delete updateData.printerId;
@@ -74,13 +75,13 @@ export const deleteCategory = async (id: number) => {
         include: { products: { select: { isActive: true } } } 
     });
 
-    if (!category) throw { code: 'NOT_FOUND', message: 'Category not found' };
+    if (!category) throw new NotFoundError('Category');
 
     const activeProducts = category.products.filter(p => p.isActive);
     const inactiveProducts = category.products.filter(p => !p.isActive);
 
     if (activeProducts.length > 0) {
-        throw { code: 'CONFLICT', message: 'Cannot delete category with active products' };
+        throw new ConflictError('Cannot delete category with active products');
     }
 
     // If we have inactive products, delete them first to allow category deletion

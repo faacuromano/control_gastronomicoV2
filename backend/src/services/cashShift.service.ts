@@ -244,6 +244,32 @@ export class CashShiftService {
             take: limit
         });
     }
+
+    /**
+     * Get all shifts with optional filters
+     * Used by Dashboard analytics
+     */
+    async getAll(filters?: { fromDate?: string; userId?: number }) {
+        const where: Prisma.CashShiftWhereInput = {};
+
+        if (filters?.fromDate) {
+            where.businessDate = {
+                gte: new Date(filters.fromDate)
+            };
+        }
+
+        if (filters?.userId) {
+            where.userId = filters.userId;
+        }
+
+        return await prisma.cashShift.findMany({
+            where,
+            orderBy: { startTime: 'desc' },
+            include: {
+                user: { select: { name: true } }
+            }
+        });
+    }
 }
 
 export const cashShiftService = new CashShiftService();

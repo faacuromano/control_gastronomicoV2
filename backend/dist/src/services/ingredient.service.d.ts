@@ -40,6 +40,7 @@ export declare class IngredientService {
         unit?: string;
         cost?: number;
         minStock?: number;
+        stock?: number;
     }): Promise<{
         name: string;
         id: number;

@@ -38,6 +38,8 @@ export interface CreateOrderData {
         productId: number;
         quantity: number;
         notes?: string;
+        modifiers?: { id: number; price: number }[];
+        removedIngredientIds?: number[];
     }[];
     paymentMethod?: string;
     payments?: { method: string; amount: number }[];
@@ -98,6 +100,13 @@ export const orderService = {
     assignDriver: async (orderId: number, driverId: number): Promise<OrderResponse> => {
         const response = await api.patch(`/delivery/${orderId}/assign`, { driverId });
         return response.data.data;
+    },
+
+    /**
+     * Mark all items in an order as SERVED (for table orders when kitchen marks as ready)
+     */
+    markAllItemsServed: async (orderId: number): Promise<void> => {
+        await api.post(`/orders/${orderId}/items/served`);
     }
 };
 

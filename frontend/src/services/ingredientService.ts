@@ -9,9 +9,23 @@ export interface Ingredient {
     cost: number;
 }
 
+export interface StockMovement {
+    id: number;
+    ingredientId: number;
+    type: 'PURCHASE' | 'SALE' | 'WASTE' | 'ADJUSTMENT';
+    quantity: number;
+    reason?: string;
+    createdAt: string;
+}
+
 export const ingredientService = {
     getAll: async () => {
         const response = await api.get<{ success: boolean; data: Ingredient[] }>('/ingredients');
+        return response.data.data;
+    },
+
+    getHistory: async (id: number) => {
+        const response = await api.get<{ success: boolean; data: StockMovement[] }>(`/stock-movements?ingredientId=${id}`);
         return response.data.data;
     },
 

@@ -38,18 +38,24 @@ const auth_1 = require("../middleware/auth");
 const categoryController = __importStar(require("../controllers/category.controller"));
 const productController = __importStar(require("../controllers/product.controller"));
 const router = (0, express_1.Router)();
+// All routes require authentication
+router.use(auth_1.authenticateToken);
 // Categories
-router.get('/categories', auth_1.authenticateToken, categoryController.listCategories);
-router.get('/categories/:id', auth_1.authenticateToken, categoryController.getCategory);
-router.post('/categories', auth_1.authenticateToken, categoryController.createCategory);
-router.put('/categories/:id', auth_1.authenticateToken, categoryController.updateCategory);
-router.delete('/categories/:id', auth_1.authenticateToken, categoryController.deleteCategory);
+// GET - Read access for anyone with products:read (for POS)
+router.get('/categories', (0, auth_1.requirePermission)('products', 'read'), categoryController.listCategories);
+router.get('/categories/:id', (0, auth_1.requirePermission)('products', 'read'), categoryController.getCategory);
+// CUD - Admin operations require products:create/update/delete
+router.post('/categories', (0, auth_1.requirePermission)('products', 'create'), categoryController.createCategory);
+router.put('/categories/:id', (0, auth_1.requirePermission)('products', 'update'), categoryController.updateCategory);
+router.delete('/categories/:id', (0, auth_1.requirePermission)('products', 'delete'), categoryController.deleteCategory);
 // Products
-router.get('/products', auth_1.authenticateToken, productController.listProducts);
-router.get('/products/:id', auth_1.authenticateToken, productController.getProduct);
-router.post('/products', auth_1.authenticateToken, productController.createProduct);
-router.put('/products/:id', auth_1.authenticateToken, productController.updateProduct);
-router.delete('/products/:id', auth_1.authenticateToken, productController.deleteProduct); // Soft Delete
-router.patch('/products/:id/toggle', auth_1.authenticateToken, productController.toggleActive);
+// GET - Read access for anyone with products:read (for POS)
+router.get('/products', (0, auth_1.requirePermission)('products', 'read'), productController.listProducts);
+router.get('/products/:id', (0, auth_1.requirePermission)('products', 'read'), productController.getProduct);
+// CUD - Admin operations require products:create/update/delete
+router.post('/products', (0, auth_1.requirePermission)('products', 'create'), productController.createProduct);
+router.put('/products/:id', (0, auth_1.requirePermission)('products', 'update'), productController.updateProduct);
+router.delete('/products/:id', (0, auth_1.requirePermission)('products', 'delete'), productController.deleteProduct);
+router.patch('/products/:id/toggle', (0, auth_1.requirePermission)('products', 'update'), productController.toggleActive);
 exports.default = router;
 //# sourceMappingURL=menu.routes.js.map
