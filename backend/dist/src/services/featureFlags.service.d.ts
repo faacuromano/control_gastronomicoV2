@@ -25,7 +25,7 @@ export declare function executeIfEnabled<T>(flag: keyof Omit<TenantConfig, 'id' 
 /**
  * Update tenant configuration
  */
-export declare function updateTenantConfig(updates: Partial<Omit<TenantConfig, 'id'>>): Promise<TenantConfig>;
+export declare function updateTenantConfig(updates: Record<string, any>): Promise<TenantConfig>;
 /**
  * Clear the config cache (useful for testing)
  */

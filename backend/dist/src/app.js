@@ -47,6 +47,9 @@ const analytics_routes_1 = __importDefault(require("./routes/analytics.routes"))
 const paymentMethod_routes_1 = __importDefault(require("./routes/paymentMethod.routes"));
 const invoice_routes_1 = __importDefault(require("./routes/invoice.routes"));
 const loyalty_routes_1 = __importDefault(require("./routes/loyalty.routes"));
+const printRouting_routes_1 = __importDefault(require("./routes/printRouting.routes"));
+const stockAlert_routes_1 = __importDefault(require("./routes/stockAlert.routes"));
+const discount_routes_1 = __importDefault(require("./routes/discount.routes"));
 // Register all routes under /api/v1 for versioning
 app.use('/api/v1/auth', auth_routes_1.default);
 app.use('/api/v1/users', user_routes_1.default);
@@ -60,6 +63,7 @@ app.use('/api/v1/cash-shifts', cashShift_routes_1.default);
 app.use('/api/v1', config_routes_1.default); // /config
 app.use('/api/v1', table_routes_1.tableRouter); // /tables, /areas
 app.use('/api/v1/print', printer_routes_1.default); // /print
+app.use('/api/v1/print-routing', printRouting_routes_1.default); // Print routing config
 app.use('/api/v1/modifiers', modifier_routes_1.default);
 app.use('/api/v1', supplier_routes_1.default); // /suppliers
 app.use('/api/v1', purchaseOrder_routes_1.default); // /purchase-orders
@@ -67,6 +71,15 @@ app.use('/api/v1', analytics_routes_1.default); // /analytics/*
 app.use('/api/v1/payment-methods', paymentMethod_routes_1.default);
 app.use('/api/v1/invoices', invoice_routes_1.default);
 app.use('/api/v1/loyalty', loyalty_routes_1.default);
+app.use('/api/v1/stock-alerts', stockAlert_routes_1.default);
+app.use('/api/v1/discounts', discount_routes_1.default);
+const bulkPriceUpdate_routes_1 = __importDefault(require("./routes/bulkPriceUpdate.routes"));
+app.use('/api/v1/bulk-prices', bulkPriceUpdate_routes_1.default);
+const sync_routes_1 = __importDefault(require("./routes/sync.routes"));
+app.use('/api/v1/sync', sync_routes_1.default);
+const qr_routes_1 = require("./routes/qr.routes");
+app.use('/api/v1/qr', qr_routes_1.qrPublicRouter); // Public: /api/v1/qr/:code
+app.use('/api/v1/admin/qr', qr_routes_1.qrAdminRouter); // Admin: /api/v1/admin/qr/...
 // Health Check
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });

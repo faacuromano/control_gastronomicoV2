@@ -82,6 +82,14 @@ class PrinterService {
   }
 
   /**
+   * Print pre-account (cuenta) - ticket for customer before payment
+   * Shows items and total without payment info
+   */
+  async printPreAccount(orderId: number, printerId: number): Promise<void> {
+    await api.post(`/print/${orderId}/preaccount/${printerId}`);
+  }
+
+  /**
    * Generate ticket buffer for preview/local printing
    */
   async generateTicket(orderId: number): Promise<string> {

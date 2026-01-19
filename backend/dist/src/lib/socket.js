@@ -42,6 +42,11 @@ const initSocket = (httpServer) => {
             socket.join(room);
             logger_1.logger.debug(`Socket joined room: ${room}`, { socketId: socket.id });
         });
+        // Admin stock alerts room
+        socket.on('join:admin:stock', () => {
+            socket.join('admin:stock');
+            logger_1.logger.debug('Socket joined room: admin:stock', { socketId: socket.id });
+        });
     });
     return io;
 };

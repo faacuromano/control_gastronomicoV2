@@ -28,6 +28,10 @@ import { CashPage } from './pages/CashPage';
 import { CashShiftHistoryPage } from './modules/admin/cash/CashShiftHistoryPage';
 import { RouteGuard } from './components/auth/RouteGuard';
 import AdminLayout from './modules/admin/AdminLayout';
+import { QrAdminPage } from './pages/QrAdminPage';
+import { MenuPublicPage } from './pages/MenuPublicPage';
+import { DeliveryPlatformsPage } from './pages/DeliveryPlatformsPage';
+import { DeliveryDriversPage } from './pages/DeliveryDriversPage';
 import './App.css';
 
 const ProtectedRoute = () => {
@@ -41,6 +45,9 @@ function App() {
             <BrowserRouter>
                 <Routes>
                     <Route path="/login" element={<LoginPage />} />
+                    
+                    {/* Public QR Menu Route */}
+                    <Route path="/menu/:code" element={<MenuPublicPage />} />
                     
                     <Route element={<ProtectedRoute />}>
                         <Route element={<Layout />}>
@@ -119,6 +126,21 @@ function App() {
                                     </RouteGuard>
                                 } />
                                 <Route path="settings" element={<SettingsPage />} />
+                                <Route path="qr" element={
+                                    <RouteGuard permission={{ resource: 'settings', action: 'read' }}>
+                                        <QrAdminPage />
+                                    </RouteGuard>
+                                } />
+                                <Route path="delivery-platforms" element={
+                                    <RouteGuard flag="enableDelivery">
+                                        <DeliveryPlatformsPage />
+                                    </RouteGuard>
+                                } />
+                                <Route path="delivery-drivers" element={
+                                    <RouteGuard flag="enableDelivery">
+                                        <DeliveryDriversPage />
+                                    </RouteGuard>
+                                } />
                             </Route>
                         </Route>
                     </Route>

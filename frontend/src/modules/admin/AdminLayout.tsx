@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Users, Coffee, Grid, Package, Archive, Settings, ListPlus, Truck, ShoppingCart, BarChart3, ChevronDown, Shield, CreditCard, Wrench, Printer } from 'lucide-react';
+import { Users, Coffee, Grid, Package, Archive, Settings, ListPlus, Truck, ShoppingCart, BarChart3, ChevronDown, Shield, CreditCard, Wrench, Printer, QrCode, Bike } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useFeatureFlags, type FeatureFlags } from '../../hooks/useFeatureFlags';
 import { useState } from 'react';
@@ -45,6 +45,8 @@ const sidebarGroups: SidebarGroup[] = [
         items: [
             { icon: Grid, label: 'Mesas y Áreas', href: '/admin/tables', isImplemented: true },
             { icon: Users, label: 'Personal', href: '/admin/users', isImplemented: true },
+            { icon: Truck, label: 'Plataformas Delivery', href: '/admin/delivery-platforms', isImplemented: true, requiredFlag: 'enableDelivery' },
+            { icon: Bike, label: 'Conductores', href: '/admin/delivery-drivers', isImplemented: true, requiredFlag: 'enableDelivery' },
         ]
     },
     {
@@ -61,6 +63,7 @@ const sidebarGroups: SidebarGroup[] = [
         title: 'Configuración',
         icon: Settings,
         items: [
+            { icon: QrCode, label: 'Menú QR', href: '/admin/qr', isImplemented: true },
             { icon: CreditCard, label: 'Métodos de Pago', href: '/admin/payment-methods', isImplemented: true },
             { icon: Shield, label: 'Roles y Permisos', href: '/admin/roles', isImplemented: true },
             { icon: Printer, label: 'Impresoras', href: '/admin/printers', isImplemented: true },

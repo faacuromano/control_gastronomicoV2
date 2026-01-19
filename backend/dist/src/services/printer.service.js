@@ -43,6 +43,7 @@ const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const os = __importStar(require("os"));
 const execAsync = (0, util_1.promisify)(child_process_1.exec);
+const logger_1 = require("../utils/logger");
 class PrinterService {
     /**
      * Create a printer instance configured for a specific target
@@ -134,12 +135,12 @@ class PrinterService {
             const escapedFilePath = tempFile.replace(/\\/g, '\\\\');
             // Execute the raw printer script - use double quotes for params with spaces
             const command = `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -PrinterName "${escapedPrinterName}" -FilePath "${escapedFilePath}"`;
-            console.log(`[PrinterService] Sending raw data to printer: ${printerName}`);
+            logger_1.logger.info('Sending raw data to printer', { printerName });
             const { stdout, stderr } = await execAsync(command, { timeout: 30000 });
             if (stderr && stderr.includes('ERROR')) {
                 throw new Error(stderr);
             }
-            console.log(`[PrinterService] Print result: ${stdout.trim()}`);
+            logger_1.logger.info('Print result', { result: stdout.trim() });
         }
         catch (error) {
             console.error('[PrinterService] Raw print error:', error);

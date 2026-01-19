@@ -62,6 +62,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodConfig[]>([]);
   const [printers, setPrinters] = useState<PrinterConfig[]>([]);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
+  const [cachedOrder, setCachedOrder] = useState<OrderResponse | null>(null); // Cache order for print after table close
   
   // Loyalty state
   const selectedClientId = usePOSStore((state) => state.selectedClientId);
@@ -105,6 +107,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
           setManualDiscountValue(0);
           setManualDiscountApplied(0);
           setShowDiscountSection(false);
+          setCachedOrder(null); // Reset cached order
           
        // Load payment methods from API
           loadPaymentMethods();
@@ -136,6 +139,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
               const orderTotal = Number(order.total);
               console.log('[CheckoutModal] Fetched fresh order total:', orderTotal);
               setBackendTotal(orderTotal);
+              setCurrentOrderId(order.id); // Save orderId for printing
+              setCachedOrder(order); // Cache full order for print after close
           }
       } catch (err) {
           console.error('Failed to load order total:', err);
@@ -286,19 +291,20 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
         const totalPaidCheck = finalPayments.reduce((sum, p) => sum + p.amount, 0);
 
         // Check for underpayment (tolerance 0.01)
-        if (totalPaidCheck < total - 0.01) {
+        // IMPORTANT: Use effectiveTotal (after discounts) not raw total
+        if (totalPaidCheck < effectiveTotal - 0.01) {
              setError('El total no ha sido cubierto completamente.');
              setLoading(false);
              return;
         }
         
         // Handle Overpayment (Change)
-        if (totalPaidCheck > total + 0.01) {
+        if (totalPaidCheck > effectiveTotal + 0.01) {
             // Find CASH payment to reduce
             const cashIndex = finalPayments.findIndex(p => p.method === 'CASH');
             if (cashIndex >= 0) {
                 // Calculate how much we need to reduce to match total exactly
-                const overpaidAmount = totalPaidCheck - total;
+                const overpaidAmount = totalPaidCheck - effectiveTotal;
                 // Reduce the registered payment amount to match the exact cost
                 // The 'change' is implicit physically, but system records exact revenue.
                 finalPayments[cashIndex].amount -= overpaidAmount;
@@ -309,7 +315,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
                 // Simple approach: Clamp the last payment to make sum == total
                  const lastIdx = finalPayments.length - 1;
                  const othersSum = finalPayments.reduce((acc, p, idx) => idx === lastIdx ? acc : acc + p.amount, 0);
-                 finalPayments[lastIdx].amount = total - othersSum;
+                 finalPayments[lastIdx].amount = effectiveTotal - othersSum;
             }
         }
 
@@ -319,9 +325,20 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
         }));
 
         // Table mode: pass payments to parent to handle table close
+        // But now we show success screen with print option!
         if (tableMode) {
-            onConfirm('SPLIT', paymentData);
-            handleClose();
+            try {
+                await onConfirm('SPLIT', paymentData);
+                // Show success screen with cached order (since table is now free)
+                if (cachedOrder) {
+                    setCompletedOrder(cachedOrder);
+                } else {
+                    handleClose();
+                }
+            } catch (err: any) {
+                setError(err.response?.data?.error?.message || err.message || 'Error al cerrar mesa');
+                setLoading(false);
+            }
             return;
         }
 
@@ -383,6 +400,22 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
           setPrinters(allPrinters);
       } catch (error) {
           console.error('Failed to load printers:', error);
+      }
+  };
+
+  const handlePrintPreAccount = async () => {
+      if (!currentOrderId || printers.length === 0) {
+          console.warn('[CheckoutModal] Cannot print pre-account: missing orderId or printers');
+          return;
+      }
+      setIsPrinting(true);
+      try {
+          await printerService.printPreAccount(currentOrderId, printers[0].id);
+          console.log('[CheckoutModal] Pre-account printed successfully');
+      } catch (error) {
+          console.error('[CheckoutModal] Failed to print pre-account:', error);
+      } finally {
+          setIsPrinting(false);
       }
   };
 
@@ -471,6 +504,29 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
                              <p className="text-blue-600 font-bold mt-1">Su Vuelto: ${(totalPaid - effectiveTotal).toFixed(2)}</p>
                         )}
                     </div>
+
+                    {/* Print Pre-Account Button - Only for table orders */}
+                    {tableMode && currentOrderId && printers.length > 0 && (
+                        <div className="mb-4">
+                            <button
+                                onClick={handlePrintPreAccount}
+                                disabled={isPrinting}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl border border-slate-200 transition-colors disabled:opacity-50"
+                            >
+                                {isPrinting ? (
+                                    <>
+                                        <Loader2 size={18} className="animate-spin" />
+                                        Imprimiendo...
+                                    </>
+                                ) : (
+                                    <>
+                                        <FileText size={18} />
+                                        Imprimir Cuenta (Pre-Cobro)
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    )}
 
                     {/* Loyalty Points Section */}
                     {loyaltyBalance && loyaltyConfig && !redeemedDiscount && (

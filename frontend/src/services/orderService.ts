@@ -1,5 +1,7 @@
 
 import api from '../lib/api';
+import { offlineDb, type PendingOrderItem } from '../lib/offlineDb';
+import { isOnline } from '../lib/connectivity';
 
 /**
  * Order item as returned from the API
@@ -31,6 +33,9 @@ export interface OrderResponse {
     createdAt: string;
     closedAt?: string | null;
     items: OrderItemResponse[];
+    // Offline fields
+    tempId?: string;
+    isOffline?: boolean;
 }
 
 export interface CreateOrderData {
@@ -56,9 +61,71 @@ export interface CreateOrderData {
 }
 
 export const orderService = {
+    /**
+     * Create order - with offline fallback
+     * If online: sends to API
+     * If offline: stores in IndexedDB queue
+     */
     create: async (data: CreateOrderData): Promise<OrderResponse> => {
-        const response = await api.post('/orders', data);
-        return response.data.data;
+        // Try online first
+        if (isOnline()) {
+            try {
+                const response = await api.post('/orders', data);
+                return response.data.data;
+            } catch (error: any) {
+                // If network error, fall through to offline mode
+                if (!error.response) {
+                    console.warn('[OrderService] Network error, falling back to offline mode');
+                } else {
+                    throw error; // Re-throw API errors (validation, etc.)
+                }
+            }
+        }
+
+        // Offline mode: store in IndexedDB
+        console.log('[OrderService] Creating order offline');
+        const tempId = offlineDb.generateTempId();
+        
+        const pendingOrder = {
+            tempId,
+            items: data.items.map(item => ({
+                productId: item.productId,
+                quantity: item.quantity,
+                notes: item.notes,
+                modifiers: item.modifiers,
+                removedIngredientIds: item.removedIngredientIds
+            } as PendingOrderItem)),
+            channel: data.channel || 'POS',
+            tableId: data.tableId,
+            clientId: data.clientId,
+            createdAt: new Date(),
+            status: 'pending' as const
+        };
+
+        await offlineDb.pendingOrders.add(pendingOrder);
+
+        // Return a fake response for UI
+        const offlineResponse: OrderResponse = {
+            id: -1, // Negative ID indicates offline
+            orderNumber: 0, // Will be assigned on sync
+            channel: data.channel || 'POS',
+            status: 'PENDING',
+            paymentStatus: 'PENDING',
+            subtotal: '0',
+            total: '0',
+            createdAt: new Date().toISOString(),
+            items: data.items.map((item, index) => ({
+                id: -(index + 1),
+                productId: item.productId,
+                quantity: item.quantity,
+                unitPrice: '0',
+                notes: item.notes
+            })),
+            tempId,
+            isOffline: true
+        };
+
+        return offlineResponse;
     },
     
     getRecent: async (): Promise<OrderResponse[]> => {
@@ -98,7 +165,7 @@ export const orderService = {
     },
 
     assignDriver: async (orderId: number, driverId: number): Promise<OrderResponse> => {
-        const response = await api.patch(`/delivery/${orderId}/assign`, { driverId });
+        const response = await api.patch(`/delivery/orders/${orderId}/assign`, { driverId });
         return response.data.data;
     },
 

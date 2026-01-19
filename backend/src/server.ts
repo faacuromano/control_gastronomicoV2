@@ -13,8 +13,22 @@ const httpServer = http.createServer(app);
 // Initialize Socket.IO
 initSocket(httpServer);
 
+// Initialize Webhook Processor (BullMQ Worker)
+// Solo inicializar si Redis está disponible
+if (process.env.REDIS_HOST || process.env.ENABLE_QUEUE_WORKERS === 'true') {
+    import('./integrations/delivery').then(({ initWebhookProcessor }) => {
+        initWebhookProcessor();
+        logger.info('Webhook queue processor initialized');
+    }).catch((err) => {
+        logger.warn('Failed to initialize webhook processor (Redis may not be available)', {
+            error: err.message,
+        });
+    });
+}
+
 httpServer.listen(PORT, () => {
     logger.info('Server started', { port: PORT });
     logger.info('WebSocket server initialized');
 });
+
 

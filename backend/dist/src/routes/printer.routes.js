@@ -48,6 +48,7 @@ router.delete('/printers/:id', printerController.deletePrinter);
 // Printing operations
 router.get('/:id', printerController.printTicket); // Generate buffer
 router.post('/:orderId/device/:printerId', printerController.printToDevice); // Print to device
+router.post('/:orderId/preaccount/:printerId', printerController.printPreAccount); // Print pre-account (cuenta)
 router.post('/test/:printerId', printerController.printTestPage); // Test print
 exports.default = router;
 //# sourceMappingURL=printer.routes.js.map

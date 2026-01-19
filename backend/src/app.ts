@@ -79,6 +79,16 @@ app.use('/api/v1/stock-alerts', stockAlertRoutes);
 app.use('/api/v1/discounts', discountRoutes);
 import bulkPriceRoutes from './routes/bulkPriceUpdate.routes';
 app.use('/api/v1/bulk-prices', bulkPriceRoutes);
+import syncRoutes from './routes/sync.routes';
+app.use('/api/v1/sync', syncRoutes);
+import { qrPublicRouter, qrAdminRouter } from './routes/qr.routes';
+app.use('/api/v1/qr', qrPublicRouter);        // Public: /api/v1/qr/:code
+app.use('/api/v1/admin/qr', qrAdminRouter);   // Admin: /api/v1/admin/qr/...
+
+// Delivery Platform Webhooks (Rappi, Glovo, PedidosYa)
+// NOTA: Estas rutas usan express.raw() internamente para validación HMAC
+import { webhookRoutes } from './integrations/delivery';
+app.use('/api/v1/webhooks', webhookRoutes);
 
 // Health Check
 app.get('/health', (req, res) => {

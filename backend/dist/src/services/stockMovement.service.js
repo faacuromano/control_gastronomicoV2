@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.StockMovementService = void 0;
 const prisma_1 = require("../lib/prisma");
+const stockAlert_service_1 = require("./stockAlert.service");
 class StockMovementService {
     /**
      * Register a stock movement and update the ingredient stock in a transaction.
@@ -51,12 +52,16 @@ class StockMovementService {
             });
             return { movement, newStock: ingredient.stock };
         };
+        let result;
         if (externalTx) {
-            return await performMove(externalTx);
+            result = await performMove(externalTx);
         }
         else {
-            return await prisma_1.prisma.$transaction(async (tx) => performMove(tx));
+            result = await prisma_1.prisma.$transaction(async (tx) => performMove(tx));
         }
+        // Check for low stock alert after movement
+        stockAlert_service_1.stockAlertService.checkAndAlert(ingredientId, Number(result.newStock));
+        return result;
     }
     async getHistory(ingredientId) {
         const where = ingredientId ? { ingredientId } : {};

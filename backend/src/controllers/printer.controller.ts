@@ -37,6 +37,24 @@ export const printToDevice = asyncHandler(async (req: Request, res: Response) =>
 });
 
 /**
+ * Print pre-account (cuenta) to a thermal printer
+ * This prints the order WITHOUT payment info - for customer before paying
+ * POST /print/:orderId/preaccount/:printerId
+ */
+export const printPreAccount = asyncHandler(async (req: Request, res: Response) => {
+    const orderId = parseInt(req.params.orderId as string);
+    const printerId = parseInt(req.params.printerId as string);
+    
+    // Use same print method - it already only shows payments if they exist
+    // The pre-account is just printing an order before payment is made
+    await printerService.printOrderToDevice(orderId, printerId);
+    
+    sendSuccess(res, { 
+        message: 'Pre-cuenta enviada a impresora exitosamente'
+    });
+});
+
+/**
  * Print test page to verify printer connection
  * POST /print/test/:printerId
  */

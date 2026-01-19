@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deletePrinter = exports.updatePrinter = exports.createPrinter = exports.getSystemPrinters = exports.getPrinters = exports.printTestPage = exports.printToDevice = exports.printTicket = void 0;
+exports.deletePrinter = exports.updatePrinter = exports.createPrinter = exports.getSystemPrinters = exports.getPrinters = exports.printTestPage = exports.printPreAccount = exports.printToDevice = exports.printTicket = void 0;
 const printer_service_1 = require("../services/printer.service");
 const response_1 = require("../utils/response");
 const asyncHandler_1 = require("../middleware/asyncHandler");
@@ -29,6 +29,21 @@ exports.printToDevice = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
     await printerService.printOrderToDevice(orderId, printerId);
     (0, response_1.sendSuccess)(res, {
         message: 'Ticket sent to printer successfully'
+    });
+});
+/**
+ * Print pre-account (cuenta) to a thermal printer
+ * This prints the order WITHOUT payment info - for customer before paying
+ * POST /print/:orderId/preaccount/:printerId
+ */
+exports.printPreAccount = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
+    const orderId = parseInt(req.params.orderId);
+    const printerId = parseInt(req.params.printerId);
+    // Use same print method - it already only shows payments if they exist
+    // The pre-account is just printing an order before payment is made
+    await printerService.printOrderToDevice(orderId, printerId);
+    (0, response_1.sendSuccess)(res, {
+        message: 'Pre-cuenta enviada a impresora exitosamente'
     });
 });
 /**

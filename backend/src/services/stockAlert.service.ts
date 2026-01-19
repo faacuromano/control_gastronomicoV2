@@ -83,11 +83,11 @@ class StockAlertService {
             minStock: number;
             unit: string;
         }[]>`
-            SELECT id, name, CAST(stock AS FLOAT) as stock, 
-                   CAST("minStock" AS FLOAT) as "minStock", unit
-            FROM "Ingredient"
-            WHERE stock <= "minStock" AND "minStock" > 0
-            ORDER BY (stock / NULLIF("minStock", 0)) ASC
+            SELECT id, name, CAST(stock AS DECIMAL(10,2)) as stock, 
+                   CAST(minStock AS DECIMAL(10,2)) as minStock, unit
+            FROM Ingredient
+            WHERE stock <= minStock AND minStock > 0
+            ORDER BY (stock / NULLIF(minStock, 0)) ASC
         `;
 
         return ingredients.map(ing => ({

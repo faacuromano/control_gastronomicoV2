@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Play, FileText, CheckSquare, Loader2, Clock, ChefHat, CheckCircle, X } from 'lucide-react';
+import { Users, Play, FileText, CheckSquare, Loader2, Clock, ChefHat, CheckCircle, X, Printer } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { Table } from './TableMap';
 import { tableService } from '../../../../services/tableService';
 import { orderService } from '../../../../services/orderService';
+import { printerService, type Printer as PrinterConfig } from '../../../../services/printerService';
 
 interface OrderItem {
     id: number;
@@ -41,11 +42,14 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({ table, onClo
     const [loadingItems, setLoadingItems] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
+    const [printers, setPrinters] = useState<PrinterConfig[]>([]);
+    const [isPrinting, setIsPrinting] = useState(false);
 
     // Load order items when modal opens for occupied table
     useEffect(() => {
         if (table?.status === 'OCCUPIED' && table.currentOrderId) {
             loadOrderItems(table.id);
+            loadPrinters();
         }
     }, [table]);
 
@@ -60,6 +64,31 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({ table, onClo
             console.error('Failed to load order items:', err);
         } finally {
             setLoadingItems(false);
+        }
+    };
+
+    const loadPrinters = async () => {
+        try {
+            const allPrinters = await printerService.getAll();
+            setPrinters(allPrinters);
+        } catch (err) {
+            console.error('Failed to load printers:', err);
+        }
+    };
+
+    const handlePrintPreAccount = async () => {
+        if (!table?.currentOrderId || printers.length === 0) {
+            console.warn('[TableDetailModal] Cannot print: missing orderId or printers');
+            return;
+        }
+        setIsPrinting(true);
+        try {
+            await printerService.printPreAccount(table.currentOrderId, printers[0].id);
+            console.log('[TableDetailModal] Pre-account printed');
+        } catch (err) {
+            console.error('Failed to print pre-account:', err);
+        } finally {
+            setIsPrinting(false);
         }
     };
 
@@ -309,6 +338,21 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({ table, onClo
 
                             {/* Action Buttons */}
                             <div className="space-y-2 pt-2">
+                                {/* Print Pre-Account Button */}
+                                {printers.length > 0 && (
+                                    <button 
+                                        onClick={handlePrintPreAccount}
+                                        disabled={isPrinting}
+                                        className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-slate-400 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"
+                                    >
+                                        {isPrinting ? (
+                                            <><Loader2 className="animate-spin" size={20} /> Imprimiendo...</>
+                                        ) : (
+                                            <><Printer size={20} /> Imprimir Cuenta</>
+                                        )}
+                                    </button>
+                                )}
+
                                 <button 
                                     onClick={handleResumeTable}
                                     className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors"

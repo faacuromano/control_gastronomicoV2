@@ -17,6 +17,13 @@ model TenantConfig {
   enableDigital    Boolean @default(false)
   enableBlindCount Boolean @default(false)  // Arqueo ciego: oculta monto esperado al cerrar turno
   currencySymbol   String  @default("$")
+  // QR Menu Configuration
+  qrMenuEnabled      Boolean     @default(false)
+  qrMenuMode         QrMenuMode  @default(INTERACTIVE)
+  qrSelfOrderEnabled Boolean     @default(false)  // Permitir pedidos desde celular
+  qrMenuPdfUrl       String?     // URL del PDF si mode=STATIC
+  qrMenuBannerUrl    String?     // Banner opcional para menú
+  qrMenuTheme        Json?       // Colores, tipografía personalizada
 }
 
 // Dedicated sequence table for order numbers
@@ -99,6 +106,7 @@ model Product {
   modifiers   ProductModifierGroup[]
   isActive    Boolean                @default(true)
   orderItems  OrderItem[]
+  channelPrices ProductChannelPrice[]  // Precios específicos por plataforma de delivery
   createdAt   DateTime               @default(now())
   updatedAt   DateTime               @updatedAt
 
@@ -277,6 +285,7 @@ model Order {
   orderNumber     Int           @unique
   channel         OrderChannel  @default(POS)
   externalId      String?
+  externalPayload Json?         // Payload raw del webhook para debugging/auditoría
   peopleCount     Int           @default(1)
   status          OrderStatus   @default(OPEN)
   paymentStatus   PaymentStatus @default(PENDING)
@@ -294,6 +303,15 @@ model Order {
   driver          User?         @relation("OrderDriver", fields: [driverId], references: [id])
   deliveryAddress String?       // Dirección específica de esta entrega
   deliveryNotes   String?       // Notas de entrega ("Tocar timbre 2B")
+  // Delivery Integration fields
+  fulfillmentType       FulfillmentType   @default(DINE_IN)
+  deliveryPlatformId    Int?              // Plataforma externa (Rappi, PedidosYa, etc.)
+  deliveryPlatform      DeliveryPlatform? @relation("PlatformOrders", fields: [deliveryPlatformId], references: [id])
+  deliveryDriverId      Int?              // Driver de flota propia
+  deliveryDriver        DeliveryDriver?   @relation("DeliveryDriverOrders", fields: [deliveryDriverId], references: [id])
+  estimatedDeliveryAt   DateTime?         // Hora estimada de entrega
+  deliveryFee           Decimal?          @db.Decimal(10,2)  // Costo de envío
+  platformCommission    Decimal?          @db.Decimal(10,2)  // Comisión pagada a plataforma
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
   closedAt        DateTime?
@@ -306,8 +324,11 @@ model Order {
   @@index([clientId])
   @@index([serverId])
   @@index([driverId])
+  @@index([deliveryPlatformId])
+  @@index([deliveryDriverId])
   @@index([businessDate])
   @@index([createdAt])
+  @@index([externalId])  // Para búsquedas rápidas por ID externo (Rappi, Glovo)
 }
 
 enum OrderChannel {
@@ -408,6 +429,7 @@ model Table {
   status         TableStatus @default(FREE)
   currentOrderId Int?
   orders         Order[]
+  qrCodes        QrCode[]    // QR codes asociados a esta mesa
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -534,4 +556,109 @@ enum AuditAction {
   USER_DELETED
   ROLE_CHANGED
   CONFIG_CHANGED
+}
+
+// ============================================================================
+// QR MENU
+// ============================================================================
+
+enum QrMenuMode {
+  INTERACTIVE   // Menú dinámico desde DB
+  STATIC        // PDF o imagen subida
+}
+
+model QrCode {
+  id              Int       @id @default(autoincrement())
+  code            String    @unique @db.VarChar(12)  // UUID corto para URL
+  tableId         Int?      // null = QR genérico (no asociado a mesa)
+  table           Table?    @relation(fields: [tableId], references: [id])
+  isActive        Boolean   @default(true)
+  scansCount      Int       @default(0)
+  lastScannedAt   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([tableId])
+}
+
+// ============================================================================
+// DELIVERY INTEGRATION
+// ============================================================================
+
+enum FulfillmentType {
+  DINE_IN              // Mesa en local
+  TAKEAWAY             // Para llevar (retira cliente)
+  PLATFORM_DELIVERY    // Delivery por plataforma externa (Rappi envía)
+  SELF_DELIVERY        // Delivery con flota propia del local
+}
+
+model DeliveryPlatform {
+  id              Int       @id @default(autoincrement())
+  code            String    @unique  // PEDIDOSYA, RAPPI, GLOVO, etc.
+  name            String
+  isEnabled       Boolean   @default(false)
+  apiKey          String?   @db.VarChar(500)  // Encrypted API key
+  webhookSecret   String?   @db.VarChar(500)  // Para validar webhooks entrantes
+  storeId         String?   // ID del local en la plataforma
+  menuSyncEnabled Boolean   @default(false)   // Sincronizar menú automáticamente
+  lastSyncAt      DateTime?
+  commissionRate  Decimal?  @db.Decimal(5,2)  // Porcentaje de comisión (ej: 15.00)
+  // ============ SAFETY LOCK (Margin Warning Protocol) ============
+  // Campos para el protocolo de consentimiento de margen.
+  // El usuario DEBE aceptar el riesgo de usar precios base antes de activar.
+  defaultMarkup           Decimal?  @db.Decimal(5,2)  // Markup automático sugerido (ej: 25.00 = +25%)
+  marginConsentAcceptedAt DateTime?                   // Timestamp cuando el usuario aceptó el riesgo
+  marginConsentAcceptedBy Int?                        // ID del usuario que aceptó
+  useFallbackPricing      Boolean   @default(false)   // Si true, usa precio base + markup cuando no hay precio específico
+  // ================================================================
+  config          Json?     // Configuración adicional específica
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  orders          Order[]   @relation("PlatformOrders")
+  productPrices   ProductChannelPrice[]  // Precios específicos por producto
+}
+
+model DeliveryDriver {
+  id              Int       @id @default(autoincrement())
+  name            String
+  phone           String
+  email           String?
+  vehicleType     VehicleType @default(MOTORCYCLE)
+  licensePlate    String?
+  isActive        Boolean   @default(true)
+  isAvailable     Boolean   @default(true)
+  currentOrderId  Int?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  orders          Order[]   @relation("DeliveryDriverOrders")
+}
+
+enum VehicleType {
+  MOTORCYCLE
+  BICYCLE
+  CAR
+  WALKING
+}
+
+// ============================================================================
+// MULTI-CHANNEL PRICING
+// Permite definir precios diferentes por producto y plataforma de delivery.
+// Ejemplo: Pizza = $500 en local, $650 en Rappi, $600 en Glovo.
+// ============================================================================
+
+model ProductChannelPrice {
+  id                  Int               @id @default(autoincrement())
+  productId           Int
+  product             Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  deliveryPlatformId  Int
+  deliveryPlatform    DeliveryPlatform  @relation(fields: [deliveryPlatformId], references: [id], onDelete: Cascade)
+  price               Decimal           @db.Decimal(10, 2)  // Precio específico para este canal
+  externalSku         String?           @db.VarChar(100)    // SKU/PLU en la plataforma externa
+  isAvailable         Boolean           @default(true)      // Disponibilidad en este canal
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@unique([productId, deliveryPlatformId])  // Un precio por producto por plataforma
+  @@index([deliveryPlatformId])
+  @@index([productId])
 }

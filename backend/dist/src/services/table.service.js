@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.tableService = exports.TableService = void 0;
 const prisma_1 = require("../lib/prisma");
 const errors_1 = require("../utils/errors");
+const logger_1 = require("../utils/logger");
 class TableService {
     // --- AREAS ---
     async getAreas() {
@@ -277,7 +278,7 @@ class TableService {
                     return PaymentMethod.QR_INTEGRATED;
                 }
                 // Default to CASH for unknown codes
-                console.warn(`Unknown payment code "${code}" - defaulting to CASH`);
+                logger_1.logger.warn('Unknown payment code, defaulting to CASH', { code });
                 return PaymentMethod.CASH;
             };
             const paymentInputs = payments.map(p => ({
@@ -286,8 +287,8 @@ class TableService {
             }));
             const paymentResult = paymentService.processPayments(Number(order.total), shift.id, undefined, paymentInputs);
             // DEBUG: Log payment calculation details
-            console.log(`[CloseTable] Order #${order.id} - Total: ${order.total}, Paid: ${paymentResult.totalPaid}, isFullyPaid: ${paymentResult.isFullyPaid}, Status: ${paymentResult.paymentStatus}`);
-            console.log(`[CloseTable] Payments received:`, paymentInputs);
+            logger_1.logger.debug('CloseTable payment calculation', { orderId: order.id, total: order.total, paid: paymentResult.totalPaid, isFullyPaid: paymentResult.isFullyPaid, status: paymentResult.paymentStatus });
+            logger_1.logger.debug('CloseTable payments received', { payments: paymentInputs });
             // 4. Register payments
             if (paymentResult.paymentsToCreate.length > 0) {
                 await tx.payment.createMany({
@@ -308,7 +309,7 @@ class TableService {
             });
             // 6. Free table only if fully paid
             if (paymentResult.isFullyPaid) {
-                console.log(`[CloseTable] Freeing table ${tableId}`);
+                logger_1.logger.info('Freeing table after full payment', { tableId });
                 await tx.table.update({
                     where: { id: tableId },
                     data: {
@@ -318,7 +319,7 @@ class TableService {
                 });
             }
             else {
-                console.log(`[CloseTable] Table ${tableId} NOT freed - payment incomplete`);
+                logger_1.logger.debug('Table NOT freed - payment incomplete', { tableId });
             }
             return {
                 orderId: order.id,

@@ -142,6 +142,10 @@ export class OrderService {
       const createData: OrderCreateData = {
         orderNumber,
         channel: data.channel ?? 'POS',
+        // Set fulfillmentType for delivery orders so they appear in dashboard
+        ...(data.channel === 'DELIVERY_APP' || data.deliveryData ? {
+          fulfillmentType: 'SELF_DELIVERY'
+        } : {}),
         status: paymentResult.isFullyPaid ? 'CONFIRMED' : 'OPEN',
         paymentStatus: paymentResult.paymentStatus,
         subtotal,
@@ -391,17 +395,19 @@ export class OrderService {
         include: { items: { include: { product: true } } }
       });
 
-      // 5. Update Stock
-      const stockService = new StockMovementService();
-      for (const update of stockUpdates) {
-        await stockService.register(
-          update.ingredientId,
-          StockMoveType.SALE,
-          update.quantity,
-          `Order #${order.orderNumber}`,
-          tx
-        );
-      }
+      // 5. Update Stock (if module enabled)
+      await executeIfEnabled('enableStock', async () => {
+        const stockService = new StockMovementService();
+        for (const update of stockUpdates) {
+          await stockService.register(
+            update.ingredientId,
+            StockMoveType.SALE,
+            update.quantity,
+            `Order #${order.orderNumber}`,
+            tx
+          );
+        }
+      });
 
       return updatedOrder;
     });

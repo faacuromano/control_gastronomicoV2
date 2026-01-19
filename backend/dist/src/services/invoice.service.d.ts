@@ -62,6 +62,12 @@ export declare function generateInvoice(data: GenerateInvoiceData): Promise<{
         driverId: number | null;
         deliveryAddress: string | null;
         deliveryNotes: string | null;
+        fulfillmentType: import(".prisma/client").$Enums.FulfillmentType;
+        deliveryPlatformId: number | null;
+        deliveryDriverId: number | null;
+        estimatedDeliveryAt: Date | null;
+        deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
+        platformCommission: import("@prisma/client/runtime/library").Decimal | null;
         closedAt: Date | null;
         businessDate: Date;
     };
@@ -147,6 +153,12 @@ export declare function getByOrderId(orderId: number): Promise<{
         driverId: number | null;
         deliveryAddress: string | null;
         deliveryNotes: string | null;
+        fulfillmentType: import(".prisma/client").$Enums.FulfillmentType;
+        deliveryPlatformId: number | null;
+        deliveryDriverId: number | null;
+        estimatedDeliveryAt: Date | null;
+        deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
+        platformCommission: import("@prisma/client/runtime/library").Decimal | null;
         closedAt: Date | null;
         businessDate: Date;
     };
@@ -232,6 +244,12 @@ export declare function getByInvoiceNumber(invoiceNumber: string): Promise<{
         driverId: number | null;
         deliveryAddress: string | null;
         deliveryNotes: string | null;
+        fulfillmentType: import(".prisma/client").$Enums.FulfillmentType;
+        deliveryPlatformId: number | null;
+        deliveryDriverId: number | null;
+        estimatedDeliveryAt: Date | null;
+        deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
+        platformCommission: import("@prisma/client/runtime/library").Decimal | null;
         closedAt: Date | null;
         businessDate: Date;
     };

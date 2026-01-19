@@ -12,6 +12,7 @@ const order_service_1 = require("../services/order.service");
 const client_1 = require("@prisma/client");
 const asyncHandler_1 = require("../middleware/asyncHandler");
 const errors_1 = require("../utils/errors");
+const logger_1 = require("../utils/logger");
 const orderService = new order_service_1.OrderService();
 /**
  * Zod schema for order creation validation.
@@ -178,9 +179,9 @@ exports.addItemsToOrder = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
  * Get active delivery orders.
  */
 exports.getDeliveryOrders = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
-    console.log(`[OrderController] getDeliveryOrders requested by User ${req.user?.id}`);
+    logger_1.logger.debug('getDeliveryOrders requested', { userId: req.user?.id });
     const orders = await orderService.getDeliveryOrders();
-    console.log(`[OrderController] Found ${orders.length} delivery orders`);
+    logger_1.logger.debug('getDeliveryOrders result', { count: orders.length });
     res.json({ success: true, data: orders });
 });
 /**

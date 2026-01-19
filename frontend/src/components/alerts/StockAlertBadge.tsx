@@ -66,7 +66,6 @@ export const StockAlertBadge: React.FC = () => {
     }, [socket, isConnected]);
 
     const criticalCount = alerts.filter(a => a.severity === 'critical').length;
-    const warningCount = alerts.filter(a => a.severity === 'warning').length;
     const totalCount = alerts.length;
 
     if (loading || totalCount === 0) return null;

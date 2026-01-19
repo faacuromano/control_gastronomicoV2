@@ -88,6 +88,12 @@ export declare class OrderDeliveryService {
         driverId: number | null;
         deliveryAddress: string | null;
         deliveryNotes: string | null;
+        fulfillmentType: import(".prisma/client").$Enums.FulfillmentType;
+        deliveryPlatformId: number | null;
+        deliveryDriverId: number | null;
+        estimatedDeliveryAt: Date | null;
+        deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
+        platformCommission: import("@prisma/client/runtime/library").Decimal | null;
         closedAt: Date | null;
         businessDate: Date;
     }>;
@@ -181,6 +187,12 @@ export declare class OrderDeliveryService {
         driverId: number | null;
         deliveryAddress: string | null;
         deliveryNotes: string | null;
+        fulfillmentType: import(".prisma/client").$Enums.FulfillmentType;
+        deliveryPlatformId: number | null;
+        deliveryDriverId: number | null;
+        estimatedDeliveryAt: Date | null;
+        deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
+        platformCommission: import("@prisma/client/runtime/library").Decimal | null;
         closedAt: Date | null;
         businessDate: Date;
     })[]>;

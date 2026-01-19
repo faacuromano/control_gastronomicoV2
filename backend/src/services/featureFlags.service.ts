@@ -90,7 +90,7 @@ export async function executeIfEnabled<T>(
  * Update tenant configuration
  */
 export async function updateTenantConfig(
-    updates: Partial<Omit<TenantConfig, 'id'>>
+    updates: Record<string, any>
 ): Promise<TenantConfig> {
     const config = await getTenantConfig();
     

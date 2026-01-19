@@ -10,6 +10,12 @@ export declare const printTicket: (req: Request, res: Response, next: import("ex
  */
 export declare const printToDevice: (req: Request, res: Response, next: import("express").NextFunction) => void;
 /**
+ * Print pre-account (cuenta) to a thermal printer
+ * This prints the order WITHOUT payment info - for customer before paying
+ * POST /print/:orderId/preaccount/:printerId
+ */
+export declare const printPreAccount: (req: Request, res: Response, next: import("express").NextFunction) => void;
+/**
  * Print test page to verify printer connection
  * POST /print/test/:printerId
  */

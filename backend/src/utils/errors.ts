@@ -30,6 +30,16 @@ export class ValidationError extends ApiError {
 }
 
 /**
+ * 400 Bad Request - Generic bad request error
+ */
+export class BadRequestError extends ApiError {
+    constructor(message: string = 'Bad request', details?: unknown) {
+        super('BAD_REQUEST', message, 400, details);
+        this.name = 'BadRequestError';
+    }
+}
+
+/**
  * 401 Unauthorized - Authentication required or failed
  */
 export class UnauthorizedError extends ApiError {

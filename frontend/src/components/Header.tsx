@@ -8,6 +8,7 @@ import { CloseShiftModal } from './cash/CloseShiftModal';
 import { useSocket } from '../context/SocketContext';
 import { useCashStore } from '../store/cash.store';
 import { StockAlertBadge } from './alerts/StockAlertBadge';
+import { OfflineIndicator } from './OfflineIndicator';
 
 export default function Header() {
     const location = useLocation();
@@ -200,6 +201,9 @@ export default function Header() {
                     {features?.enableStock && hasPermission('ingredients', 'read') && (
                         <StockAlertBadge />
                     )}
+
+                    {/* Offline Indicator */}
+                    <OfflineIndicator />
 
                     {/* Notifications */}
                     <div className="relative">
