@@ -1,0 +1,71 @@
+{
+  "remediations": [
+    {
+      "audit_id": "RC-001",
+      "severity": "P0-CATASTROPHIC",
+      "file": "backend/src/integrations/delivery/jobs/webhookProcessor.ts",
+      "line_range": "L440-445 → L190-200",
+      "description": "Race condition on OrderSequence fixed via Transaction isolation",
+      "before_snapshot": "// Outside transaction - VULNERABLE\nconst orderNumber = await getNextOrderNumber();\n\nconst createdOrder = await prisma.$transaction(async (tx) => {\n  const order = await tx.order.create({\n    data: { orderNumber, ... }\n  });\n});\n\nasync function getNextOrderNumber(): Promise<number> {\n  const result = await prisma.orderSequence.update({\n    where: { id: 1 },\n    data: { lastNumber: { increment: 1 } },\n  });\n  return result.lastNumber;\n}",
+      "after_snapshot": "// Inside transaction - FIXED\nconst createdOrder = await prisma.$transaction(async (tx) => {\n  const sequence = await tx.orderSequence.update({\n    where: { id: 1 },\n    data: { lastNumber: { increment: 1 } },\n  });\n  const orderNumber = sequence.lastNumber;\n\n  const order = await tx.order.create({\n    data: { orderNumber, ... }\n  });\n  return order;\n});",
+      "verification_logic": "Order number generation now occurs INSIDE prisma.$transaction using the transaction client (tx), not the global prisma client. This ensures atomicity: if order creation fails, the sequence increment is rolled back. Prevents 'burned' order numbers and eliminates the race window where two concurrent webhooks could receive the same number."
+    },
+    {
+      "audit_id": "RC-002",
+      "severity": "P0-CATASTROPHIC",
+      "file": "backend/src/integrations/delivery/jobs/webhookProcessor.ts",
+      "line_range": "L133-143 → REMOVED + P2002 catch",
+      "description": "TOCTOU deduplication vulnerability fixed via unique constraint handling",
+      "before_snapshot": "// TOCTOU VULNERABLE - Check BEFORE transaction\nconst existingOrder = await prisma.order.findFirst({\n  where: { externalId },\n});\n\nif (existingOrder) {\n  logger.warn('Duplicate order received, skipping', { externalId });\n  return;\n}\n\n// Transaction starts AFTER check - race window exists\nawait prisma.$transaction(async (tx) => { ... });",
+      "after_snapshot": "// FIXED - Deduplication via unique constraint violation\ntry {\n  createdOrder = await prisma.$transaction(async (tx) => {\n    // Create order directly - externalId has unique constraint\n    const order = await tx.order.create({ data: { externalId, ... } });\n    return order;\n  });\n} catch (error: unknown) {\n  if (error instanceof Error && 'code' in error && \n      (error as { code: string }).code === 'P2002') {\n    // Unique constraint violation = duplicate\n    const existingOrder = await prisma.order.findFirst({ where: { externalId } });\n    logger.warn('Duplicate order detected via constraint', { externalId });\n    return; // Idempotent success\n  }\n  throw error;\n}",
+      "verification_logic": "Replaced Time-of-Check-to-Time-of-Use pattern with database-level enforcement. The externalId column has a @unique constraint in Prisma schema. Attempting to insert a duplicate throws P2002 error, which we catch and treat as idempotent success. This is race-condition-proof because the database enforces uniqueness atomically."
+    },
+    {
+      "audit_id": "ES-003",
+      "severity": "P0-CATASTROPHIC",
+      "file": "backend/src/integrations/delivery/webhooks/webhook.controller.ts",
+      "line_range": "L118-124",
+      "description": "Silent order loss prevented by returning 500 on webhook errors",
+      "before_snapshot": "} catch (error) {\n  logger.error('Error handling webhook', { error, requestId });\n\n  // Aún respondemos 200 para evitar reintentos de la plataforma\n  return res.status(200).json({\n    success: false,\n    requestId,\n    message: 'Webhook received but processing failed. Will retry internally.',\n  });\n}",
+      "after_snapshot": "} catch (error) {\n  logger.error('Error handling webhook', { error, requestId });\n\n  // FIX ES-003: Return 500 so platform will retry the webhook\n  return res.status(500).json({\n    error: 'PROCESSING_FAILED',\n    requestId,\n    message: 'Internal error processing webhook. Platform should retry.',\n  });\n}",
+      "verification_logic": "Delivery platforms (Rappi, Glovo, etc.) use HTTP status codes to determine retry behavior. Status 200 = success, no retry. Status 5xx = failure, platform retries. By returning 500 on internal errors, we leverage the platform's built-in retry mechanism instead of losing orders silently. The 'success: false' in the JSON body was being ignored by platforms."
+    },
+    {
+      "audit_id": "P1-003",
+      "severity": "P0-CATASTROPHIC",
+      "file": "backend/src/middleware/auth.ts",
+      "line_range": "L21",
+      "description": "JWT Algorithm Confusion Attack prevented by explicit algorithm specification",
+      "before_snapshot": "jwt.verify(token, JWT_SECRET, (err, decoded) => {\n    if (err) {\n        return sendError(res, 'AUTH_INVALID', 'Invalid token', null, 403);\n    }\n    req.user = decoded as JwtPayload;\n    next();\n});",
+      "after_snapshot": "// FIX P1-003: Explicit algorithm to prevent \"alg: none\" attack\njwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }, (err, decoded) => {\n    if (err) {\n        return sendError(res, 'AUTH_INVALID', 'Invalid token', null, 403);\n    }\n    req.user = decoded as JwtPayload;\n    next();\n});",
+      "verification_logic": "Without explicit algorithm specification, jsonwebtoken library may accept tokens with 'alg: none' header, which bypasses signature verification entirely. An attacker could forge a token with arbitrary claims. By specifying { algorithms: ['HS256'] }, we whitelist only the expected algorithm and reject tokens using 'none', 'RS256' (asymmetric confusion), or any other unexpected algorithm."
+    },
+    {
+      "audit_id": "NL-004",
+      "severity": "P0-CATASTROPHIC",
+      "file": "frontend/src/modules/orders/tables/components/TableDetailModal.tsx",
+      "line_range": "L277",
+      "description": "Frontend crash prevented by adding optional chaining to nullable relation",
+      "before_snapshot": "{item.modifiers.map((mod) => (\n  <p key={mod.id} className=\"text-xs text-blue-600\">\n    + {mod.modifierOption.name}\n    {Number(mod.priceCharged) > 0 && ` (+$${...})`}\n  </p>\n))}",
+      "after_snapshot": "{item.modifiers.map((mod) => (\n  <p key={mod.id} className=\"text-xs text-blue-600\">\n    + {mod.modifierOption?.name ?? 'Modificador'}\n    {Number(mod.priceCharged) > 0 && ` (+$${...})`}\n  </p>\n))}",
+      "verification_logic": "The modifierOption relation is populated via Prisma include, which may be omitted from certain API endpoints. Without optional chaining (?.), accessing .name on undefined throws 'TypeError: Cannot read property name of undefined', crashing the React component tree. With ?. and nullish coalescing (??), we gracefully handle missing data with a fallback string."
+    }
+  ],
+  "metadata": {
+    "agent": "Claude Opus 4.5",
+    "agent_version": "Senior Forensic Software Architect Mode",
+    "audit_protocol": "CLAUDE OPUS 4.5 - Adversarial Simulation",
+    "date": "2026-01-19",
+    "time": "02:14:12-03:00",
+    "git_branch": "fix/audit-p0-critical",
+    "total_remediations": 5,
+    "typescript_backend_check": "PASS",
+    "typescript_frontend_check": "PASS",
+    "source_documents": [
+      "audit_results/PHASE_1_RISK_MAP.md",
+      "audit_results/PHASE_2_P0_FINDINGS.md",
+      "audit_results/PHASE_3_CONTRACT_INTEGRITY.md",
+      "audit_results/PRODUCTION_RELEASE_CERTIFICATE.md"
+    ]
+  }
+}

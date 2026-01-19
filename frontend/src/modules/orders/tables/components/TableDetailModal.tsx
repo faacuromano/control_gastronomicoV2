@@ -274,7 +274,7 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({ table, onClo
                                                     <div className="ml-6 mt-1 space-y-0.5">
                                                         {item.modifiers.map((mod) => (
                                                             <p key={mod.id} className="text-xs text-blue-600">
-                                                                + {mod.modifierOption.name}
+                                                                + {mod.modifierOption?.name ?? 'Modificador'}
                                                                 {Number(mod.priceCharged) > 0 && ` (+$${Number(mod.priceCharged).toFixed(0)})`}
                                                             </p>
                                                         ))}

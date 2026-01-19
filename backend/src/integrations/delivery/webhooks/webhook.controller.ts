@@ -115,12 +115,12 @@ class WebhookController {
         durationMs: duration,
       });
 
-      // Aún respondemos 200 para evitar reintentos de la plataforma
-      // El error se manejará internamente
-      return res.status(200).json({
-        success: false,
+      // FIX ES-003: Return 500 so platform will retry the webhook
+      // Previously returned 200 which caused silent order loss
+      return res.status(500).json({
+        error: 'PROCESSING_FAILED',
         requestId,
-        message: 'Webhook received but processing failed. Will retry internally.',
+        message: 'Internal error processing webhook. Platform should retry.',
       });
     }
   }

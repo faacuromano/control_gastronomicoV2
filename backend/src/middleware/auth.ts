@@ -18,7 +18,8 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
         return sendError(res, 'CONFIG_ERROR', 'Server configuration error', null, 500);
     }
 
-    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    // FIX P1-003: Explicit algorithm to prevent "alg: none" attack
+    jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }, (err, decoded) => {
         if (err) {
             return sendError(res, 'AUTH_INVALID', 'Invalid token', null, 403);
         }

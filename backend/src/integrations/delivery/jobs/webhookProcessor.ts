@@ -129,20 +129,7 @@ async function processNewOrder(
 ): Promise<void> {
   const { externalId, platform, items } = normalizedOrder;
 
-  // 1. Verificar si el pedido ya existe (deduplicación)
-  const existingOrder = await prisma.order.findFirst({
-    where: { externalId },
-  });
-
-  if (existingOrder) {
-    logger.warn('Duplicate order received, skipping', {
-      externalId,
-      existingOrderId: existingOrder.id,
-    });
-    return;
-  }
-
-  // 2. Obtener plataforma de DB
+  // 1. Obtener plataforma de DB (fuera de transacción - solo lectura)
   const deliveryPlatform = await prisma.deliveryPlatform.findUnique({
     where: { code: platform },
   });
@@ -151,10 +138,10 @@ async function processNewOrder(
     throw new Error(`Platform ${platform} not found in database`);
   }
 
-  // 3. Mapear productos externos a internos
+  // 2. Mapear productos externos a internos (fuera de transacción - solo lectura)
   const mappedItems = await mapExternalItemsToInternal(items, deliveryPlatform.id);
 
-  // 4. Calcular totales usando precios del canal
+  // 3. Calcular totales usando precios del canal
   let subtotal = 0;
   const orderItems: Array<{
     productId: number;
@@ -189,53 +176,82 @@ async function processNewOrder(
     });
   }
 
-  // 5. Obtener número de orden
-  const orderNumber = await getNextOrderNumber();
+  // 4. ATOMIC TRANSACTION: Deduplication + Sequence + Create
+  // FIX RC-001: orderNumber now generated INSIDE transaction
+  // FIX RC-002: Deduplication via unique constraint, not TOCTOU check
+  let createdOrder;
+  try {
+    createdOrder = await prisma.$transaction(async (tx) => {
+      // Generate order number atomically within transaction
+      const sequence = await tx.orderSequence.update({
+        where: { id: 1 },
+        data: { lastNumber: { increment: 1 } },
+      });
+      const orderNumber = sequence.lastNumber;
 
-  // 6. Crear orden en transacción
-  const createdOrder = await prisma.$transaction(async (tx) => {
-    const order = await tx.order.create({
-      data: {
-        orderNumber,
-        channel: 'DELIVERY_APP',
-        externalId,
-        externalPayload: normalizedOrder.rawPayload as object,
-        status: 'CONFIRMED',
-        paymentStatus: normalizedOrder.isPrepaid ? 'PAID' : 'PENDING',
-        subtotal,
-        discount: normalizedOrder.discount,
-        tip: normalizedOrder.tip,
-        total: normalizedOrder.total,
-        fulfillmentType: 'PLATFORM_DELIVERY',
-        deliveryPlatformId: deliveryPlatform.id,
-        deliveryAddress: normalizedOrder.deliveryAddress?.fullAddress ?? null,
-        deliveryNotes: normalizedOrder.notes ?? null,
-        deliveryFee: normalizedOrder.deliveryFee,
-        platformCommission: normalizedOrder.platformCommission ?? null,
-        estimatedDeliveryAt: normalizedOrder.estimatedDeliveryAt ?? null,
-        businessDate: new Date(),
-        items: {
-          create: orderItems.map((item) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            notes: item.notes,
-            status: 'PENDING',
-          })),
-        },
-      },
-      include: {
-        items: {
-          include: {
-            product: true,
+      // Create order - if externalId already exists, P2002 is thrown
+      const order = await tx.order.create({
+        data: {
+          orderNumber,
+          channel: 'DELIVERY_APP',
+          externalId,
+          externalPayload: normalizedOrder.rawPayload as object,
+          status: 'CONFIRMED',
+          paymentStatus: normalizedOrder.isPrepaid ? 'PAID' : 'PENDING',
+          subtotal,
+          discount: normalizedOrder.discount,
+          tip: normalizedOrder.tip,
+          total: normalizedOrder.total,
+          fulfillmentType: 'PLATFORM_DELIVERY',
+          deliveryPlatformId: deliveryPlatform.id,
+          deliveryAddress: normalizedOrder.deliveryAddress?.fullAddress ?? null,
+          deliveryNotes: normalizedOrder.notes ?? null,
+          deliveryFee: normalizedOrder.deliveryFee,
+          platformCommission: normalizedOrder.platformCommission ?? null,
+          estimatedDeliveryAt: normalizedOrder.estimatedDeliveryAt ?? null,
+          businessDate: new Date(),
+          items: {
+            create: orderItems.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              notes: item.notes,
+              status: 'PENDING',
+            })),
           },
         },
-        deliveryPlatform: true,
-      },
-    });
+        include: {
+          items: {
+            include: {
+              product: true,
+            },
+          },
+          deliveryPlatform: true,
+        },
+      });
 
-    return order;
-  });
+      return order;
+    });
+  } catch (error: unknown) {
+    // FIX RC-002: Handle duplicate via unique constraint violation (P2002)
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      (error as { code: string }).code === 'P2002'
+    ) {
+      // Duplicate order - this is expected for webhook retries
+      const existingOrder = await prisma.order.findFirst({
+        where: { externalId },
+      });
+      logger.warn('Duplicate order detected via constraint, skipping', {
+        externalId,
+        existingOrderId: existingOrder?.id,
+        requestId,
+      });
+      return; // Idempotent success - order already exists
+    }
+    throw error; // Re-throw other errors
+  }
 
   logger.info('Order created from external platform', {
     orderId: createdOrder.id,
@@ -434,16 +450,8 @@ async function mapExternalItemsToInternal(
   return result;
 }
 
-/**
- * Obtiene el siguiente número de orden.
- */
-async function getNextOrderNumber(): Promise<number> {
-  const result = await prisma.orderSequence.update({
-    where: { id: 1 },
-    data: { lastNumber: { increment: 1 } },
-  });
-  return result.lastNumber;
-}
+// getNextOrderNumber() REMOVED - now inlined in transaction (FIX RC-001)
+// Order number generation is now atomic with order creation to prevent race conditions
 
 /**
  * Mapea estado normalizado a estado interno de Order.
