@@ -64,22 +64,39 @@ export function sanitizeBody(req: Request, res: Response, next: NextFunction): v
   try {
     // Sanitize body
     if (req.body && typeof req.body === 'object') {
-      req.body = sanitizeObject(req.body);
+      req.body = sanitizeObject(req.body) as typeof req.body;
     }
 
-    // Sanitize query parameters
+    // Sanitize query parameters (Express parses these as strings/arrays)
+    // We need to be careful not to break Express's query parsing
     if (req.query && typeof req.query === 'object') {
-      req.query = sanitizeObject(req.query) as typeof req.query;
+      const sanitized = sanitizeObject(req.query);
+      // Only apply if sanitization succeeded and returned an object
+      if (sanitized && typeof sanitized === 'object') {
+        req.query = sanitized as typeof req.query;
+      }
     }
 
-    // Sanitize route params
+    // Sanitize route params (Express parses these as strings)
     if (req.params && typeof req.params === 'object') {
-      req.params = sanitizeObject(req.params) as typeof req.params;
+      const sanitized = sanitizeObject(req.params);
+      // Only apply if sanitization succeeded and returned an object
+      if (sanitized && typeof sanitized === 'object') {
+        req.params = sanitized as typeof req.params;
+      }
     }
 
     next();
   } catch (error) {
-    logger.error('Error in sanitizeBody middleware', { error });
+    // Log detailed error information
+    logger.error('Error in sanitizeBody middleware', { 
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      body: req.body,
+      path: req.path,
+      method: req.method
+    });
+    
     // On error, reject the request to be safe
     return res.status(400).json({
       error: 'INVALID_REQUEST',
