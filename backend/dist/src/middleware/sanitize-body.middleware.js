@@ -55,22 +55,45 @@ function sanitizeObject(obj) {
  */
 function sanitizeBody(req, res, next) {
     try {
-        // Sanitize body
+        // Sanitize body (can be reassigned)
         if (req.body && typeof req.body === 'object') {
             req.body = sanitizeObject(req.body);
         }
-        // Sanitize query parameters
+        // Sanitize query parameters IN-PLACE (req.query is a getter-only property)
         if (req.query && typeof req.query === 'object') {
-            req.query = sanitizeObject(req.query);
+            const sanitized = sanitizeObject(req.query);
+            if (sanitized && typeof sanitized === 'object') {
+                // Clear existing keys
+                for (const key in req.query) {
+                    delete req.query[key];
+                }
+                // Copy sanitized keys
+                Object.assign(req.query, sanitized);
+            }
         }
-        // Sanitize route params
+        // Sanitize route params IN-PLACE (req.params is a getter-only property)
         if (req.params && typeof req.params === 'object') {
-            req.params = sanitizeObject(req.params);
+            const sanitized = sanitizeObject(req.params);
+            if (sanitized && typeof sanitized === 'object') {
+                // Clear existing keys
+                for (const key in req.params) {
+                    delete req.params[key];
+                }
+                // Copy sanitized keys
+                Object.assign(req.params, sanitized);
+            }
         }
         next();
     }
     catch (error) {
-        logger_1.logger.error('Error in sanitizeBody middleware', { error });
+        // Log detailed error information
+        logger_1.logger.error('Error in sanitizeBody middleware', {
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            body: req.body,
+            path: req.path,
+            method: req.method
+        });
         // On error, reject the request to be safe
         return res.status(400).json({
             error: 'INVALID_REQUEST',

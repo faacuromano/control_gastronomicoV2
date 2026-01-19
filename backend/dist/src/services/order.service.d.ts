@@ -83,9 +83,9 @@ export declare class OrderService {
             notes: string | null;
         })[];
         payments: {
+            method: import(".prisma/client").$Enums.PaymentMethod;
             id: number;
             createdAt: Date;
-            method: import(".prisma/client").$Enums.PaymentMethod;
             orderId: number;
             tip: Prisma.Decimal;
             amount: Prisma.Decimal;
@@ -468,9 +468,9 @@ export declare class OrderService {
             notes: string | null;
         })[];
         payments: {
+            method: import(".prisma/client").$Enums.PaymentMethod;
             id: number;
             createdAt: Date;
-            method: import(".prisma/client").$Enums.PaymentMethod;
             orderId: number;
             tip: Prisma.Decimal;
             amount: Prisma.Decimal;
@@ -562,9 +562,9 @@ export declare class OrderService {
             notes: string | null;
         })[];
         payments: {
+            method: import(".prisma/client").$Enums.PaymentMethod;
             id: number;
             createdAt: Date;
-            method: import(".prisma/client").$Enums.PaymentMethod;
             orderId: number;
             tip: Prisma.Decimal;
             amount: Prisma.Decimal;

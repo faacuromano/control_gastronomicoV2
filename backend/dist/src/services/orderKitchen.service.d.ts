@@ -125,9 +125,9 @@ export declare class OrderKitchenService {
             notes: string | null;
         })[];
         payments: {
+            method: import(".prisma/client").$Enums.PaymentMethod;
             id: number;
             createdAt: Date;
-            method: import(".prisma/client").$Enums.PaymentMethod;
             orderId: number;
             tip: import("@prisma/client/runtime/library").Decimal;
             amount: import("@prisma/client/runtime/library").Decimal;

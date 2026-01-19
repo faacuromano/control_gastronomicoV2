@@ -62,27 +62,34 @@ function sanitizeObject(obj: unknown): unknown {
  */
 export function sanitizeBody(req: Request, res: Response, next: NextFunction): void | Response {
   try {
-    // Sanitize body
+    // Sanitize body (can be reassigned)
     if (req.body && typeof req.body === 'object') {
       req.body = sanitizeObject(req.body) as typeof req.body;
     }
 
-    // Sanitize query parameters (Express parses these as strings/arrays)
-    // We need to be careful not to break Express's query parsing
+    // Sanitize query parameters IN-PLACE (req.query is a getter-only property)
     if (req.query && typeof req.query === 'object') {
       const sanitized = sanitizeObject(req.query);
-      // Only apply if sanitization succeeded and returned an object
       if (sanitized && typeof sanitized === 'object') {
-        req.query = sanitized as typeof req.query;
+        // Clear existing keys
+        for (const key in req.query) {
+          delete req.query[key];
+        }
+        // Copy sanitized keys
+        Object.assign(req.query, sanitized);
       }
     }
 
-    // Sanitize route params (Express parses these as strings)
+    // Sanitize route params IN-PLACE (req.params is a getter-only property)
     if (req.params && typeof req.params === 'object') {
       const sanitized = sanitizeObject(req.params);
-      // Only apply if sanitization succeeded and returned an object
       if (sanitized && typeof sanitized === 'object') {
-        req.params = sanitized as typeof req.params;
+        // Clear existing keys
+        for (const key in req.params) {
+          delete req.params[key];
+        }
+        // Copy sanitized keys
+        Object.assign(req.params, sanitized);
       }
     }
 

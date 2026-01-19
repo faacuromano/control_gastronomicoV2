@@ -33,9 +33,9 @@ export declare function generateInvoice(data: GenerateInvoiceData): Promise<{
             notes: string | null;
         })[];
         payments: {
+            method: import(".prisma/client").$Enums.PaymentMethod;
             id: number;
             createdAt: Date;
-            method: import(".prisma/client").$Enums.PaymentMethod;
             orderId: number;
             tip: import("@prisma/client/runtime/library").Decimal;
             amount: import("@prisma/client/runtime/library").Decimal;
@@ -125,9 +125,9 @@ export declare function getByOrderId(orderId: number): Promise<{
             notes: string | null;
         })[];
         payments: {
+            method: import(".prisma/client").$Enums.PaymentMethod;
             id: number;
             createdAt: Date;
-            method: import(".prisma/client").$Enums.PaymentMethod;
             orderId: number;
             tip: import("@prisma/client/runtime/library").Decimal;
             amount: import("@prisma/client/runtime/library").Decimal;
@@ -217,9 +217,9 @@ export declare function getByInvoiceNumber(invoiceNumber: string): Promise<{
             notes: string | null;
         })[];
         payments: {
+            method: import(".prisma/client").$Enums.PaymentMethod;
             id: number;
             createdAt: Date;
-            method: import(".prisma/client").$Enums.PaymentMethod;
             orderId: number;
             tip: import("@prisma/client/runtime/library").Decimal;
             amount: import("@prisma/client/runtime/library").Decimal;
