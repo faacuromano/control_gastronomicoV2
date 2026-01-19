@@ -49,23 +49,65 @@
       "before_snapshot": "{item.modifiers.map((mod) => (\n  <p key={mod.id} className=\"text-xs text-blue-600\">\n    + {mod.modifierOption.name}\n    {Number(mod.priceCharged) > 0 && ` (+$${...})`}\n  </p>\n))}",
       "after_snapshot": "{item.modifiers.map((mod) => (\n  <p key={mod.id} className=\"text-xs text-blue-600\">\n    + {mod.modifierOption?.name ?? 'Modificador'}\n    {Number(mod.priceCharged) > 0 && ` (+$${...})`}\n  </p>\n))}",
       "verification_logic": "The modifierOption relation is populated via Prisma include, which may be omitted from certain API endpoints. Without optional chaining (?.), accessing .name on undefined throws 'TypeError: Cannot read property name of undefined', crashing the React component tree. With ?. and nullish coalescing (??), we gracefully handle missing data with a fallback string."
+    },
+    {
+      "audit_id": "RC-004",
+      "severity": "P1-BLOCKER",
+      "file": "backend/src/services/cashShift.service.ts",
+      "line_range": "L42-71",
+      "description": "Race condition on openShift() fixed via Serializable transaction",
+      "before_snapshot": "async openShift(userId: number, startAmount: number) {\n    const existingShift = await prisma.cashShift.findFirst({\n        where: { userId, endTime: null }\n    });\n    if (existingShift) throw new ConflictError('...');\n    return await prisma.cashShift.create({ data: {...} });\n}",
+      "after_snapshot": "async openShift(userId: number, startAmount: number) {\n    return await prisma.$transaction(async (tx) => {\n        const existingShift = await tx.cashShift.findFirst({\n            where: { userId, endTime: null }\n        });\n        if (existingShift) throw new ConflictError('...');\n        return await tx.cashShift.create({ data: {...} });\n    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });\n}",
+      "verification_logic": "The findFirst + create pattern was vulnerable to race conditions where two concurrent requests could both pass the check and create duplicate shifts. Wrapping in $transaction with Serializable isolation ensures atomicity and prevents double shift opening."
+    },
+    {
+      "audit_id": "RC-005",
+      "severity": "P1-BLOCKER",
+      "file": "backend/src/services/cashShift.service.ts",
+      "line_range": "L73-132",
+      "description": "Race condition on closeShift()/closeShiftWithCount() fixed via Serializable transaction",
+      "before_snapshot": "async closeShift(userId: number, endAmount: number) {\n    const currentShift = await this.getCurrentShift(userId);\n    const openTables = await prisma.table.count({ where: {...} });\n    return await prisma.cashShift.update({ where: {...}, data: {...} });\n}",
+      "after_snapshot": "async closeShift(userId: number, endAmount: number) {\n    return await prisma.$transaction(async (tx) => {\n        const currentShift = await tx.cashShift.findFirst({...});\n        const openTables = await tx.table.count({...});\n        return await tx.cashShift.update({...});\n    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });\n}",
+      "verification_logic": "Multiple concurrent close requests could overwrite each other's endAmount values. Serializable transaction ensures only one close succeeds, others see already-closed shift and fail gracefully."
+    },
+    {
+      "audit_id": "ES-001",
+      "severity": "P1-BLOCKER",
+      "file": "backend/src/integrations/delivery/jobs/webhookProcessor.ts",
+      "line_range": "L265-310",
+      "description": "Stock deduction failure now flagged for reconciliation instead of silent swallow",
+      "before_snapshot": "catch (stockError) {\n  logger.warn('Stock deduction failed', {...});\n  // Error swallowed silently\n}",
+      "after_snapshot": "catch (stockError) {\n  stockSyncFailed = true;\n  logger.error('STOCK_SYNC_FAILED', {..., stack: error.stack});\n}\nif (stockSyncFailed) {\n  await prisma.order.update({ data: { deliveryNotes: '[STOCK_SYNC_FAILED]...' }});\n}",
+      "verification_logic": "Stock deduction failures were logged as warnings and silently ignored, causing inventory desync. Now failures are escalated to error level with stack trace, and orders are flagged with [STOCK_SYNC_FAILED] in deliveryNotes for manual reconciliation."
+    },
+    {
+      "audit_id": "ES-002",
+      "severity": "P1-BLOCKER",
+      "file": "backend/src/integrations/delivery/jobs/webhookProcessor.ts",
+      "line_range": "L320-370",
+      "description": "Platform acceptance failure now retries with backoff and flags order",
+      "before_snapshot": "try {\n  await adapter.acceptOrder(externalId, 20);\n} catch (acceptError) {\n  logger.error('Failed to accept', {...});\n  // Error swallowed - order created but not accepted in platform\n}",
+      "after_snapshot": "for (let attempt = 1; attempt <= MAX_ACCEPT_RETRIES; attempt++) {\n  try {\n    await adapter.acceptOrder(externalId, 20);\n    break;\n  } catch {\n    await sleep(1000 * 2^(attempt-1)); // Exponential backoff\n  }\n}\nif (!platformAccepted) {\n  await prisma.order.update({ data: { deliveryNotes: '[PLATFORM_ACCEPT_FAILED]...' }});\n}",
+      "verification_logic": "Platform acceptance failures caused customer to receive cancellation while kitchen prepared food. Now we retry 3 times with exponential backoff (1s, 2s, 4s). If all retries fail, order is flagged with [PLATFORM_ACCEPT_FAILED] warning for manual intervention."
     }
   ],
   "metadata": {
-    "agent": "Claude Opus 4.5",
-    "agent_version": "Senior Forensic Software Architect Mode",
-    "audit_protocol": "CLAUDE OPUS 4.5 - Adversarial Simulation",
+    "agent": "Antigravity",
+    "agent_version": "QA Forensic Validator Mode",
+    "audit_protocol": "Gap Analysis + Remediation Batch 2",
     "date": "2026-01-19",
-    "time": "02:14:12-03:00",
-    "git_branch": "fix/audit-p0-critical",
-    "total_remediations": 5,
+    "time": "02:32:05-03:00",
+    "git_branch": "fix/audit-p1-blocker",
+    "total_remediations": 9,
     "typescript_backend_check": "PASS",
     "typescript_frontend_check": "PASS",
     "source_documents": [
       "audit_results/PHASE_1_RISK_MAP.md",
       "audit_results/PHASE_2_P0_FINDINGS.md",
       "audit_results/PHASE_3_CONTRACT_INTEGRITY.md",
-      "audit_results/PRODUCTION_RELEASE_CERTIFICATE.md"
+      "audit_results/PRODUCTION_RELEASE_CERTIFICATE.md",
+      "VERDICT_REPORT.md",
+      "P1_REMEDIATION_PLAN.md"
     ]
   }
 }
