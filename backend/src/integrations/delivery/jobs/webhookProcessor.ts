@@ -263,7 +263,8 @@ async function processNewOrder(
   });
 
   // 7. Descuento de Stock (si módulo habilitado)
-  // Se ejecuta FUERA de la transacción - si falla, el pedido ya existe (preferible a perderlo)
+  // FIX ES-001: Track stock sync failures and flag order for reconciliation
+  let stockSyncFailed = false;
   await executeIfEnabled('enableStock', async () => {
     const stockService = new StockMovementService();
     
@@ -282,22 +283,40 @@ async function processNewOrder(
             `Delivery Order #${createdOrder.orderNumber} (${platform})`
           );
         } catch (stockError) {
-          // Log pero no fallar - el pedido ya está creado
-          logger.warn('Stock deduction failed for delivery order item', {
+          // FIX ES-001: Flag as failed, escalate to error level
+          stockSyncFailed = true;
+          logger.error('STOCK_SYNC_FAILED: Stock deduction failed for delivery order item', {
             orderId: createdOrder.id,
+            orderNumber: createdOrder.orderNumber,
             ingredientId: pi.ingredientId,
-            error: stockError instanceof Error ? stockError.message : String(stockError),
+            error: stockError instanceof Error ? stockError.stack : String(stockError),
           });
         }
       }
     }
     
-    logger.info('Stock updated for delivery order', {
+    if (!stockSyncFailed) {
+      logger.info('Stock updated for delivery order', {
+        orderId: createdOrder.id,
+        orderNumber: createdOrder.orderNumber,
+        platform,
+      });
+    }
+  });
+
+  // FIX ES-001: Flag order if stock sync failed
+  if (stockSyncFailed) {
+    await prisma.order.update({
+      where: { id: createdOrder.id },
+      data: {
+        deliveryNotes: `${createdOrder.deliveryNotes ?? ''}\n[STOCK_SYNC_FAILED] Manual reconciliation required.`.trim(),
+      }
+    });
+    logger.warn('Order flagged for stock reconciliation', {
       orderId: createdOrder.id,
       orderNumber: createdOrder.orderNumber,
-      platform,
     });
-  });
+  }
 
   // 8. Notificar a cocina
   kdsService.broadcastNewOrder({
@@ -306,24 +325,57 @@ async function processNewOrder(
     platformName: deliveryPlatform.name,
   });
 
-  // 8. Aceptar pedido en la plataforma
-  try {
-    // Usar tiempo estimado por defecto
-    const estimatedPrepTime = 20; // 20 minutos por defecto
-    await adapter.acceptOrder(externalId, estimatedPrepTime);
-    
-    logger.info('Order accepted in platform', {
+  // 9. Aceptar pedido en la plataforma
+  // FIX ES-002: Retry with exponential backoff, flag on failure
+  const MAX_ACCEPT_RETRIES = 3;
+  let platformAccepted = false;
+
+  for (let attempt = 1; attempt <= MAX_ACCEPT_RETRIES; attempt++) {
+    try {
+      const estimatedPrepTime = 20; // 20 minutos por defecto
+      await adapter.acceptOrder(externalId, estimatedPrepTime);
+      platformAccepted = true;
+      
+      logger.info('Order accepted in platform', {
+        externalId,
+        platform,
+        estimatedPrepTime,
+        attempt,
+      });
+      break; // Success, exit loop
+    } catch (acceptError) {
+      logger.warn('Platform acceptance attempt failed', {
+        externalId,
+        platform,
+        orderId: createdOrder.id,
+        attempt,
+        maxRetries: MAX_ACCEPT_RETRIES,
+        error: acceptError instanceof Error ? acceptError.message : String(acceptError),
+      });
+
+      if (attempt < MAX_ACCEPT_RETRIES) {
+        // Exponential backoff: 1s, 2s, 4s
+        const backoffMs = 1000 * Math.pow(2, attempt - 1);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      }
+    }
+  }
+
+  // FIX ES-002: Flag order if platform acceptance failed after all retries
+  if (!platformAccepted) {
+    logger.error('CRITICAL: Platform acceptance failed after all retries', {
       externalId,
       platform,
-      estimatedPrepTime,
+      orderId: createdOrder.id,
+      orderNumber: createdOrder.orderNumber,
     });
-  } catch (acceptError) {
-    logger.error('Failed to accept order in platform', {
-      externalId,
-      platform,
-      error: acceptError instanceof Error ? acceptError.message : String(acceptError),
+
+    await prisma.order.update({
+      where: { id: createdOrder.id },
+      data: {
+        deliveryNotes: `${createdOrder.deliveryNotes ?? ''}\n[PLATFORM_ACCEPT_FAILED] Customer may receive cancellation! Manual intervention required.`.trim(),
+      }
     });
-    // No lanzamos error aquí - el pedido ya está creado
   }
 }
 

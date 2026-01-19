@@ -39,59 +39,84 @@ export class CashShiftService {
         return businessDate;
     }
 
+    /**
+     * Open a new cash shift for a user.
+     * FIX RC-004: Atomic transaction prevents double shift opening under concurrent requests.
+     */
     async openShift(userId: number, startAmount: number) {
-        // Verify user exists to avoid cryptic FK error
+        // Verify user exists outside transaction (read-only, no race impact)
         const user = await prisma.user.findUnique({ where: { id: userId } });
         if (!user) {
             throw new NotFoundError('User not found. Please log in again.');
         }
 
-        // Check if user already has an open shift
-        const existingShift = await prisma.cashShift.findFirst({
-            where: {
-                userId,
-                endTime: null
-            }
-        });
-
-        if (existingShift) {
-            throw new ConflictError('User already has an open shift');
-        }
-
         const businessDate = this.getBusinessDate(new Date());
 
-        return await prisma.cashShift.create({
-            data: {
-                userId,
-                startAmount,
-                businessDate,
-                startTime: new Date()
+        // FIX RC-004: Wrap check + create in atomic transaction
+        return await prisma.$transaction(async (tx) => {
+            // Check inside transaction - prevents race condition
+            const existingShift = await tx.cashShift.findFirst({
+                where: {
+                    userId,
+                    endTime: null
+                }
+            });
+
+            if (existingShift) {
+                throw new ConflictError('User already has an open shift');
             }
+
+            return await tx.cashShift.create({
+                data: {
+                    userId,
+                    startAmount,
+                    businessDate,
+                    startTime: new Date()
+                }
+            });
+        }, {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+            timeout: 5000
         });
     }
 
+    /**
+     * Close the current shift for a user.
+     * FIX RC-005: Atomic transaction prevents double closing under concurrent requests.
+     */
     async closeShift(userId: number, endAmount: number) {
-        const currentShift = await this.getCurrentShift(userId);
+        // FIX RC-005: Entire operation in atomic transaction
+        return await prisma.$transaction(async (tx) => {
+            const currentShift = await tx.cashShift.findFirst({
+                where: {
+                    userId,
+                    endTime: null
+                }
+            });
 
-        if (!currentShift) {
-            throw new NotFoundError('No open shift found for this user');
-        }
-
-        // Check for open tables
-        const openTables = await prisma.table.count({
-            where: { status: 'OCCUPIED' }
-        });
-
-        if (openTables > 0) {
-            throw new ConflictError(`Cannot close shift. There are ${openTables} occupied tables. Please close them first.`);
-        }
-
-        return await prisma.cashShift.update({
-            where: { id: currentShift.id },
-            data: {
-                endTime: new Date(),
-                endAmount
+            if (!currentShift) {
+                throw new NotFoundError('No open shift found for this user');
             }
+
+            // Check for open tables inside transaction
+            const openTables = await tx.table.count({
+                where: { status: 'OCCUPIED' }
+            });
+
+            if (openTables > 0) {
+                throw new ConflictError(`Cannot close shift. There are ${openTables} occupied tables. Please close them first.`);
+            }
+
+            return await tx.cashShift.update({
+                where: { id: currentShift.id },
+                data: {
+                    endTime: new Date(),
+                    endAmount
+                }
+            });
+        }, {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+            timeout: 5000
         });
     }
 
@@ -99,36 +124,50 @@ export class CashShiftService {
      * Close shift with blind count (arqueo ciego)
      * The cashier counts cash without seeing expected amount first
      */
+    /**
+     * Close shift with blind count (arqueo ciego).
+     * FIX RC-005: Atomic transaction prevents double closing under concurrent requests.
+     */
     async closeShiftWithCount(userId: number, countedCash: number) {
-        const currentShift = await this.getCurrentShift(userId);
+        // FIX RC-005: Wrap in transaction for atomicity
+        const closedShiftId = await prisma.$transaction(async (tx) => {
+            const currentShift = await tx.cashShift.findFirst({
+                where: {
+                    userId,
+                    endTime: null
+                }
+            });
 
-        if (!currentShift) {
-            throw new NotFoundError('No open shift found for this user');
-        }
-
-        // Check for open tables
-        const openTables = await prisma.table.count({
-            where: { status: 'OCCUPIED' }
-        });
-
-        if (openTables > 0) {
-            throw new ConflictError(`Cannot close shift. There are ${openTables} occupied tables. Please close them first.`);
-        }
-
-        // Calculate expected cash from shift payments
-        const expectedCash = await this.calculateExpectedCash(currentShift.id);
-
-        // Close the shift
-        const closedShift = await prisma.cashShift.update({
-            where: { id: currentShift.id },
-            data: {
-                endTime: new Date(),
-                endAmount: countedCash
+            if (!currentShift) {
+                throw new NotFoundError('No open shift found for this user');
             }
+
+            // Check for open tables inside transaction
+            const openTables = await tx.table.count({
+                where: { status: 'OCCUPIED' }
+            });
+
+            if (openTables > 0) {
+                throw new ConflictError(`Cannot close shift. There are ${openTables} occupied tables. Please close them first.`);
+            }
+
+            // Close the shift
+            const closedShift = await tx.cashShift.update({
+                where: { id: currentShift.id },
+                data: {
+                    endTime: new Date(),
+                    endAmount: countedCash
+                }
+            });
+
+            return closedShift.id;
+        }, {
+            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+            timeout: 5000
         });
 
-        // Return report with difference
-        return await this.getShiftReport(closedShift.id);
+        // Return report (outside transaction - read-only)
+        return await this.getShiftReport(closedShiftId);
     }
 
     /**

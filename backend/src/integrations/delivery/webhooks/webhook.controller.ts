@@ -50,7 +50,23 @@ class WebhookController {
   async handleWebhook(req: Request, res: Response) {
     const startTime = Date.now();
     const requestId = `wh_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const platformCode = String(req.params.platform || '').toUpperCase() as DeliveryPlatformCode;
+    const rawPlatform = String(req.params.platform || '').toUpperCase();
+
+    // FIX IP-002: Validate platform against whitelist to prevent prototype pollution
+    const VALID_PLATFORMS: readonly string[] = Object.values(DeliveryPlatformCode);
+    if (!VALID_PLATFORMS.includes(rawPlatform)) {
+      logger.warn('Unknown delivery platform attempted', {
+        requestId,
+        rawPlatform,
+        ip: req.ip,
+      });
+      return res.status(400).json({
+        error: 'UNKNOWN_PLATFORM',
+        message: `Platform "${rawPlatform}" is not supported. Valid: ${VALID_PLATFORMS.join(', ')}`,
+        requestId,
+      });
+    }
+    const platformCode = rawPlatform as DeliveryPlatformCode;
 
     try {
       // @ts-expect-error - parsedBody viene del HMAC middleware
