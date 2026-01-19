@@ -126,10 +126,12 @@ async function processNewOrder(normalizedOrder, adapter, requestId) {
             notes: mappedItem.notes ?? null,
         });
     }
-    // 4. ATOMIC TRANSACTION: Deduplication + Sequence + Create
+    //4. ATOMIC TRANSACTION: Deduplication + Sequence + Create + Stock Update
     // FIX RC-001: orderNumber now generated INSIDE transaction
     // FIX RC-002: Deduplication via unique constraint, not TOCTOU check
+    // FIX RC-006: Stock updates now inside transaction for consistency
     let createdOrder;
+    let stockSyncFailed = false;
     try {
         createdOrder = await prisma_1.prisma.$transaction(async (tx) => {
             // Generate order number atomically within transaction
@@ -178,6 +180,34 @@ async function processNewOrder(normalizedOrder, adapter, requestId) {
                     deliveryPlatform: true,
                 },
             });
+            // FIX RC-006: Stock deduction inside transaction
+            // This ensures stock is rolled back if order creation fails
+            await (0, featureFlags_service_1.executeIfEnabled)('enableStock', async () => {
+                const stockService = new stockMovement_service_1.StockMovementService();
+                for (const item of orderItems) {
+                    // Get product ingredients
+                    const productIngredients = await tx.productIngredient.findMany({
+                        where: { productId: item.productId }
+                    });
+                    for (const pi of productIngredients) {
+                        try {
+                            await stockService.register(pi.ingredientId, client_1.StockMoveType.SALE, Number(pi.quantity) * item.quantity, `Delivery Order #${order.orderNumber} (${platform})`, tx // Pass transaction context
+                            );
+                        }
+                        catch (stockError) {
+                            stockSyncFailed = true;
+                            logger_1.logger.error('STOCK_SYNC_FAILED: Stock deduction failed for delivery order item', {
+                                orderId: order.id,
+                                orderNumber: order.orderNumber,
+                                ingredientId: pi.ingredientId,
+                                error: stockError instanceof Error ? stockError.stack : String(stockError),
+                            });
+                            // Re-throw to rollback transaction
+                            throw stockError;
+                        }
+                    }
+                }
+            });
             return order;
         });
     }
@@ -207,53 +237,9 @@ async function processNewOrder(normalizedOrder, adapter, requestId) {
         itemCount: orderItems.length,
         total: createdOrder.total,
     });
-    // 7. Descuento de Stock (si módulo habilitado)
-    // FIX ES-001: Track stock sync failures and flag order for reconciliation
-    let stockSyncFailed = false;
-    await (0, featureFlags_service_1.executeIfEnabled)('enableStock', async () => {
-        const stockService = new stockMovement_service_1.StockMovementService();
-        for (const item of orderItems) {
-            // Obtener ingredientes del producto
-            const productIngredients = await prisma_1.prisma.productIngredient.findMany({
-                where: { productId: item.productId }
-            });
-            for (const pi of productIngredients) {
-                try {
-                    await stockService.register(pi.ingredientId, client_1.StockMoveType.SALE, Number(pi.quantity) * item.quantity, `Delivery Order #${createdOrder.orderNumber} (${platform})`);
-                }
-                catch (stockError) {
-                    // FIX ES-001: Flag as failed, escalate to error level
-                    stockSyncFailed = true;
-                    logger_1.logger.error('STOCK_SYNC_FAILED: Stock deduction failed for delivery order item', {
-                        orderId: createdOrder.id,
-                        orderNumber: createdOrder.orderNumber,
-                        ingredientId: pi.ingredientId,
-                        error: stockError instanceof Error ? stockError.stack : String(stockError),
-                    });
-                }
-            }
-        }
-        if (!stockSyncFailed) {
-            logger_1.logger.info('Stock updated for delivery order', {
-                orderId: createdOrder.id,
-                orderNumber: createdOrder.orderNumber,
-                platform,
-            });
-        }
-    });
-    // FIX ES-001: Flag order if stock sync failed
-    if (stockSyncFailed) {
-        await prisma_1.prisma.order.update({
-            where: { id: createdOrder.id },
-            data: {
-                deliveryNotes: `${createdOrder.deliveryNotes ?? ''}\n[STOCK_SYNC_FAILED] Manual reconciliation required.`.trim(),
-            }
-        });
-        logger_1.logger.warn('Order flagged for stock reconciliation', {
-            orderId: createdOrder.id,
-            orderNumber: createdOrder.orderNumber,
-        });
-    }
+    // FIX RC-006: Stock deduction now happens inside transaction
+    // If stock sync failed, it would have thrown and rolled back the entire transaction
+    // This code path only executes if ALL operations succeeded
     // 8. Notificar a cocina
     kds_service_1.kdsService.broadcastNewOrder({
         ...createdOrder,
