@@ -207,7 +207,20 @@ export class OrderService {
       await this.processStockUpdates(tx, stockUpdates, orderNumber);
 
       // 8. Update Table Status
+      // FIX RC-003: Verify table is FREE before occupying to prevent race condition
       if (data.tableId) {
+        const table = await tx.table.findUnique({
+          where: { id: data.tableId }
+        });
+
+        if (!table) {
+          throw new Error(`INVALID_TABLE: Table with ID ${data.tableId} not found`);
+        }
+
+        if (table.status !== 'FREE') {
+          throw new Error(`TABLE_OCCUPIED: Table "${table.name}" is already occupied (currentOrderId: ${table.currentOrderId})`);
+        }
+
         await tx.table.update({
           where: { id: data.tableId },
           data: { status: 'OCCUPIED', currentOrderId: order.id }
