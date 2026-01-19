@@ -28,12 +28,29 @@ export default function Header() {
     const [showNotifications, setShowNotifications] = useState(false);
     const [readyOrders, setReadyOrders] = useState<{ id: number; orderNumber: number; tableId?: number }[]>([]);
 
+    // Define loadFeatureFlags BEFORE the useEffect that uses it
+    const loadFeatureFlags = async () => {
+        try {
+            const config = await configService.getConfig();
+            setFeatures(config.features);
+        } catch (_err) {
+            // Default to showing all if config fails
+            setFeatures({
+                enableStock: true,
+                enableDelivery: true,
+                enableKDS: true,
+                enableFiscal: false,
+                enableDigital: false
+            });
+        }
+    };
+
     useEffect(() => {
         checkShiftStatus();
         loadFeatureFlags();
         
         if (socket) {
-            socket.on('order:update', (order: any) => {
+            socket.on('order:update', (order: { id: number; orderNumber: number; tableId?: number; status: string }) => {
                 if (order.status === 'PREPARED') {
                     setReadyCount(prev => prev + 1);
                     setReadyOrders(prev => [
@@ -49,23 +66,7 @@ export default function Header() {
                 socket.off('order:update');
             };
         }
-    }, [socket]);
-
-    const loadFeatureFlags = async () => {
-        try {
-            const config = await configService.getConfig();
-            setFeatures(config.features);
-        } catch (err) {
-            // Default to showing all if config fails
-            setFeatures({
-                enableStock: true,
-                enableDelivery: true,
-                enableKDS: true,
-                enableFiscal: false,
-                enableDigital: false
-            });
-        }
-    };
+    }, [socket, checkShiftStatus]);
 
     const handleBellClick = () => {
         setShowNotifications(prev => !prev);
