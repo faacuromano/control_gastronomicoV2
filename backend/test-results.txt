@@ -1,0 +1,780 @@
+­ƒÜÇ P1-001 OrderSequence Date-Based Sharding Load Test
+
+============================================================
+
+­ƒº¬ Starting load test with 50 concurrent order number requests...
+
+{"timestamp":"2026-01-19T07:30:34.457Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.458Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.459Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.460Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.461Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.461Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.462Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.462Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.463Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.464Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.464Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.465Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.465Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.466Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 6 failed: Could not generate order number. Please try again.
+ÔØî Request 13 failed: Could not generate order number. Please try again.
+ÔØî Request 7 failed: Could not generate order number. Please try again.
+ÔØî Request 5 failed: Could not generate order number. Please try again.
+ÔØî Request 18 failed: Could not generate order number. Please try again.
+ÔØî Request 8 failed: Could not generate order number. Please try again.
+ÔØî Request 21 failed: Could not generate order number. Please try again.
+ÔØî Request 15 failed: Could not generate order number. Please try again.
+ÔØî Request 16 failed: Could not generate order number. Please try again.
+ÔØî Request 4 failed: Could not generate order number. Please try again.
+ÔØî Request 9 failed: Could not generate order number. Please try again.
+ÔØî Request 1 failed: Could not generate order number. Please try again.
+ÔØî Request 2 failed: Could not generate order number. Please try again.
+ÔØî Request 3 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.472Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.473Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.473Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.474Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.474Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.475Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.475Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.476Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.476Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.477Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.478Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.478Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.479Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.479Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.480Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.480Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.481Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 10 failed: Could not generate order number. Please try again.
+ÔØî Request 14 failed: Could not generate order number. Please try again.
+ÔØî Request 12 failed: Could not generate order number. Please try again.
+ÔØî Request 17 failed: Could not generate order number. Please try again.
+ÔØî Request 22 failed: Could not generate order number. Please try again.
+ÔØî Request 23 failed: Could not generate order number. Please try again.
+ÔØî Request 25 failed: Could not generate order number. Please try again.
+ÔØî Request 24 failed: Could not generate order number. Please try again.
+ÔØî Request 26 failed: Could not generate order number. Please try again.
+ÔØî Request 20 failed: Could not generate order number. Please try again.
+ÔØî Request 11 failed: Could not generate order number. Please try again.
+ÔØî Request 27 failed: Could not generate order number. Please try again.
+ÔØî Request 28 failed: Could not generate order number. Please try again.
+ÔØî Request 33 failed: Could not generate order number. Please try again.
+ÔØî Request 34 failed: Could not generate order number. Please try again.
+ÔØî Request 30 failed: Could not generate order number. Please try again.
+ÔØî Request 35 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.487Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.488Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.488Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.489Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.489Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.490Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.490Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.490Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.491Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.491Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.492Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.492Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.493Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.493Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.494Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.494Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.494Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 29 failed: Could not generate order number. Please try again.
+ÔØî Request 32 failed: Could not generate order number. Please try again.
+ÔØî Request 37 failed: Could not generate order number. Please try again.
+ÔØî Request 31 failed: Could not generate order number. Please try again.
+ÔØî Request 36 failed: Could not generate order number. Please try again.
+ÔØî Request 19 failed: Could not generate order number. Please try again.
+ÔØî Request 38 failed: Could not generate order number. Please try again.
+ÔØî Request 39 failed: Could not generate order number. Please try again.
+ÔØî Request 40 failed: Could not generate order number. Please try again.
+ÔØî Request 41 failed: Could not generate order number. Please try again.
+ÔØî Request 42 failed: Could not generate order number. Please try again.
+ÔØî Request 43 failed: Could not generate order number. Please try again.
+ÔØî Request 44 failed: Could not generate order number. Please try again.
+ÔØî Request 45 failed: Could not generate order number. Please try again.
+ÔØî Request 46 failed: Could not generate order number. Please try again.
+ÔØî Request 47 failed: Could not generate order number. Please try again.
+ÔØî Request 49 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.497Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.498Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 48 failed: Could not generate order number. Please try again.
+ÔØî Request 50 failed: Could not generate order number. Please try again.
+
+­ƒôè Load Test Results:
+   Total Duration: 96ms
+   Successful: 0
+   Failed: 50
+   Order Numbers Generated: 0
+   Unique Numbers: 0
+   Duplicates: 0 Ô£à
+
+ÔÅ▒´©Å  Latency Statistics:
+   Average: 81.68ms
+   p50: 82ms
+   p95: 94ms Ô£à
+   p99: 95ms
+   Min: 65ms
+   Max: 95ms
+
+­ƒöó Sequence Validation:
+   Range: undefined to undefined
+   Sequential: ÔØî GAPS DETECTED
+
+­ƒº¬ Starting load test with 100 concurrent order number requests...
+
+{"timestamp":"2026-01-19T07:30:34.505Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.505Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.506Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.506Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.507Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.507Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.508Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.508Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.509Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.509Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.510Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.511Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.511Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.512Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.513Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.513Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.514Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 3 failed: Could not generate order number. Please try again.
+ÔØî Request 5 failed: Could not generate order number. Please try again.
+ÔØî Request 2 failed: Could not generate order number. Please try again.
+ÔØî Request 4 failed: Could not generate order number. Please try again.
+ÔØî Request 1 failed: Could not generate order number. Please try again.
+ÔØî Request 15 failed: Could not generate order number. Please try again.
+ÔØî Request 8 failed: Could not generate order number. Please try again.
+ÔØî Request 7 failed: Could not generate order number. Please try again.
+ÔØî Request 6 failed: Could not generate order number. Please try again.
+ÔØî Request 9 failed: Could not generate order number. Please try again.
+ÔØî Request 12 failed: Could not generate order number. Please try again.
+ÔØî Request 11 failed: Could not generate order number. Please try again.
+ÔØî Request 14 failed: Could not generate order number. Please try again.
+ÔØî Request 10 failed: Could not generate order number. Please try again.
+ÔØî Request 13 failed: Could not generate order number. Please try again.
+ÔØî Request 17 failed: Could not generate order number. Please try again.
+ÔØî Request 16 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.520Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.521Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.521Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.522Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.523Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.523Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.524Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.525Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.525Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.526Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.526Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.527Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.527Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.528Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.528Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.529Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.529Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 18 failed: Could not generate order number. Please try again.
+ÔØî Request 19 failed: Could not generate order number. Please try again.
+ÔØî Request 20 failed: Could not generate order number. Please try again.
+ÔØî Request 21 failed: Could not generate order number. Please try again.
+ÔØî Request 22 failed: Could not generate order number. Please try again.
+ÔØî Request 23 failed: Could not generate order number. Please try again.
+ÔØî Request 24 failed: Could not generate order number. Please try again.
+ÔØî Request 28 failed: Could not generate order number. Please try again.
+ÔØî Request 26 failed: Could not generate order number. Please try again.
+ÔØî Request 30 failed: Could not generate order number. Please try again.
+ÔØî Request 25 failed: Could not generate order number. Please try again.
+ÔØî Request 27 failed: Could not generate order number. Please try again.
+ÔØî Request 31 failed: Could not generate order number. Please try again.
+ÔØî Request 33 failed: Could not generate order number. Please try again.
+ÔØî Request 32 failed: Could not generate order number. Please try again.
+ÔØî Request 29 failed: Could not generate order number. Please try again.
+ÔØî Request 34 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.536Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.537Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.538Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.538Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.539Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.539Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.540Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.540Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.541Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.541Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.542Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.542Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.543Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.544Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.544Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.545Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.545Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 35 failed: Could not generate order number. Please try again.
+ÔØî Request 36 failed: Could not generate order number. Please try again.
+ÔØî Request 37 failed: Could not generate order number. Please try again.
+ÔØî Request 39 failed: Could not generate order number. Please try again.
+ÔØî Request 40 failed: Could not generate order number. Please try again.
+ÔØî Request 41 failed: Could not generate order number. Please try again.
+ÔØî Request 42 failed: Could not generate order number. Please try again.
+ÔØî Request 43 failed: Could not generate order number. Please try again.
+ÔØî Request 44 failed: Could not generate order number. Please try again.
+ÔØî Request 38 failed: Could not generate order number. Please try again.
+ÔØî Request 45 failed: Could not generate order number. Please try again.
+ÔØî Request 46 failed: Could not generate order number. Please try again.
+ÔØî Request 47 failed: Could not generate order number. Please try again.
+ÔØî Request 49 failed: Could not generate order number. Please try again.
+ÔØî Request 48 failed: Could not generate order number. Please try again.
+ÔØî Request 51 failed: Could not generate order number. Please try again.
+ÔØî Request 50 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.551Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.552Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.553Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.553Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.554Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.554Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.555Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.555Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.556Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.556Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.557Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.557Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.558Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.558Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.559Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.559Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.560Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 52 failed: Could not generate order number. Please try again.
+ÔØî Request 53 failed: Could not generate order number. Please try again.
+ÔØî Request 55 failed: Could not generate order number. Please try again.
+ÔØî Request 54 failed: Could not generate order number. Please try again.
+ÔØî Request 56 failed: Could not generate order number. Please try again.
+ÔØî Request 57 failed: Could not generate order number. Please try again.
+ÔØî Request 58 failed: Could not generate order number. Please try again.
+ÔØî Request 59 failed: Could not generate order number. Please try again.
+ÔØî Request 61 failed: Could not generate order number. Please try again.
+ÔØî Request 60 failed: Could not generate order number. Please try again.
+ÔØî Request 62 failed: Could not generate order number. Please try again.
+ÔØî Request 63 failed: Could not generate order number. Please try again.
+ÔØî Request 64 failed: Could not generate order number. Please try again.
+ÔØî Request 66 failed: Could not generate order number. Please try again.
+ÔØî Request 65 failed: Could not generate order number. Please try again.
+ÔØî Request 67 failed: Could not generate order number. Please try again.
+ÔØî Request 68 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.565Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.566Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.566Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.567Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.567Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.568Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.568Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.569Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.569Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.570Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.570Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.571Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.571Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.572Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.572Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.573Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.574Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 71 failed: Could not generate order number. Please try again.
+ÔØî Request 69 failed: Could not generate order number. Please try again.
+ÔØî Request 70 failed: Could not generate order number. Please try again.
+ÔØî Request 72 failed: Could not generate order number. Please try again.
+ÔØî Request 73 failed: Could not generate order number. Please try again.
+ÔØî Request 75 failed: Could not generate order number. Please try again.
+ÔØî Request 74 failed: Could not generate order number. Please try again.
+ÔØî Request 76 failed: Could not generate order number. Please try again.
+ÔØî Request 77 failed: Could not generate order number. Please try again.
+ÔØî Request 78 failed: Could not generate order number. Please try again.
+ÔØî Request 79 failed: Could not generate order number. Please try again.
+ÔØî Request 82 failed: Could not generate order number. Please try again.
+ÔØî Request 81 failed: Could not generate order number. Please try again.
+ÔØî Request 83 failed: Could not generate order number. Please try again.
+ÔØî Request 80 failed: Could not generate order number. Please try again.
+ÔØî Request 84 failed: Could not generate order number. Please try again.
+ÔØî Request 85 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.581Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.581Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.582Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.582Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.583Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.583Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.583Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.584Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.584Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.585Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.585Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.586Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.586Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.587Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.587Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 87 failed: Could not generate order number. Please try again.
+ÔØî Request 86 failed: Could not generate order number. Please try again.
+ÔØî Request 88 failed: Could not generate order number. Please try again.
+ÔØî Request 89 failed: Could not generate order number. Please try again.
+ÔØî Request 90 failed: Could not generate order number. Please try again.
+ÔØî Request 91 failed: Could not generate order number. Please try again.
+ÔØî Request 92 failed: Could not generate order number. Please try again.
+ÔØî Request 93 failed: Could not generate order number. Please try again.
+ÔØî Request 95 failed: Could not generate order number. Please try again.
+ÔØî Request 94 failed: Could not generate order number. Please try again.
+ÔØî Request 96 failed: Could not generate order number. Please try again.
+ÔØî Request 97 failed: Could not generate order number. Please try again.
+ÔØî Request 99 failed: Could not generate order number. Please try again.
+ÔØî Request 98 failed: Could not generate order number. Please try again.
+ÔØî Request 100 failed: Could not generate order number. Please try again.
+
+­ƒôè Load Test Results:
+   Total Duration: 89ms
+   Successful: 0
+   Failed: 100
+   Order Numbers Generated: 0
+   Unique Numbers: 0
+   Duplicates: 0 Ô£à
+
+ÔÅ▒´©Å  Latency Statistics:
+   Average: 54.09ms
+   p50: 51ms
+   p95: 89ms Ô£à
+   p99: 89ms
+   Min: 15ms
+   Max: 89ms
+
+­ƒöó Sequence Validation:
+   Range: undefined to undefined
+   Sequential: ÔØî GAPS DETECTED
+
+­ƒº¬ Starting load test with 200 concurrent order number requests...
+
+{"timestamp":"2026-01-19T07:30:34.595Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.595Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.596Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.596Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.597Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.597Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.598Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.598Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.598Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.599Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.599Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.600Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.600Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.601Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.602Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.602Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.602Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 1 failed: Could not generate order number. Please try again.
+ÔØî Request 5 failed: Could not generate order number. Please try again.
+ÔØî Request 6 failed: Could not generate order number. Please try again.
+ÔØî Request 4 failed: Could not generate order number. Please try again.
+ÔØî Request 8 failed: Could not generate order number. Please try again.
+ÔØî Request 2 failed: Could not generate order number. Please try again.
+ÔØî Request 9 failed: Could not generate order number. Please try again.
+ÔØî Request 3 failed: Could not generate order number. Please try again.
+ÔØî Request 14 failed: Could not generate order number. Please try again.
+ÔØî Request 10 failed: Could not generate order number. Please try again.
+ÔØî Request 13 failed: Could not generate order number. Please try again.
+ÔØî Request 11 failed: Could not generate order number. Please try again.
+ÔØî Request 12 failed: Could not generate order number. Please try again.
+ÔØî Request 7 failed: Could not generate order number. Please try again.
+ÔØî Request 16 failed: Could not generate order number. Please try again.
+ÔØî Request 15 failed: Could not generate order number. Please try again.
+ÔØî Request 19 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.608Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.609Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.609Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.610Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.610Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.611Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.612Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.612Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.612Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.613Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.614Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.614Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.615Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.615Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.616Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.616Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.617Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 17 failed: Could not generate order number. Please try again.
+ÔØî Request 18 failed: Could not generate order number. Please try again.
+ÔØî Request 20 failed: Could not generate order number. Please try again.
+ÔØî Request 21 failed: Could not generate order number. Please try again.
+ÔØî Request 22 failed: Could not generate order number. Please try again.
+ÔØî Request 24 failed: Could not generate order number. Please try again.
+ÔØî Request 23 failed: Could not generate order number. Please try again.
+ÔØî Request 25 failed: Could not generate order number. Please try again.
+ÔØî Request 26 failed: Could not generate order number. Please try again.
+ÔØî Request 28 failed: Could not generate order number. Please try again.
+ÔØî Request 29 failed: Could not generate order number. Please try again.
+ÔØî Request 30 failed: Could not generate order number. Please try again.
+ÔØî Request 27 failed: Could not generate order number. Please try again.
+ÔØî Request 31 failed: Could not generate order number. Please try again.
+ÔØî Request 33 failed: Could not generate order number. Please try again.
+ÔØî Request 32 failed: Could not generate order number. Please try again.
+ÔØî Request 34 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.622Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.623Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.623Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.624Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.624Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.625Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.625Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.626Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.626Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.627Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.627Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.628Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.628Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.629Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.629Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.630Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.630Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 35 failed: Could not generate order number. Please try again.
+ÔØî Request 36 failed: Could not generate order number. Please try again.
+ÔØî Request 38 failed: Could not generate order number. Please try again.
+ÔØî Request 39 failed: Could not generate order number. Please try again.
+ÔØî Request 37 failed: Could not generate order number. Please try again.
+ÔØî Request 41 failed: Could not generate order number. Please try again.
+ÔØî Request 40 failed: Could not generate order number. Please try again.
+ÔØî Request 42 failed: Could not generate order number. Please try again.
+ÔØî Request 43 failed: Could not generate order number. Please try again.
+ÔØî Request 44 failed: Could not generate order number. Please try again.
+ÔØî Request 45 failed: Could not generate order number. Please try again.
+ÔØî Request 46 failed: Could not generate order number. Please try again.
+ÔØî Request 47 failed: Could not generate order number. Please try again.
+ÔØî Request 49 failed: Could not generate order number. Please try again.
+ÔØî Request 48 failed: Could not generate order number. Please try again.
+ÔØî Request 50 failed: Could not generate order number. Please try again.
+ÔØî Request 51 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.636Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.637Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.637Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.638Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.638Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.638Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.639Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.640Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.640Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.641Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.641Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.642Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.642Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.643Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.643Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.644Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.644Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 52 failed: Could not generate order number. Please try again.
+ÔØî Request 53 failed: Could not generate order number. Please try again.
+ÔØî Request 54 failed: Could not generate order number. Please try again.
+ÔØî Request 55 failed: Could not generate order number. Please try again.
+ÔØî Request 56 failed: Could not generate order number. Please try again.
+ÔØî Request 58 failed: Could not generate order number. Please try again.
+ÔØî Request 57 failed: Could not generate order number. Please try again.
+ÔØî Request 59 failed: Could not generate order number. Please try again.
+ÔØî Request 60 failed: Could not generate order number. Please try again.
+ÔØî Request 61 failed: Could not generate order number. Please try again.
+ÔØî Request 63 failed: Could not generate order number. Please try again.
+ÔØî Request 62 failed: Could not generate order number. Please try again.
+ÔØî Request 66 failed: Could not generate order number. Please try again.
+ÔØî Request 65 failed: Could not generate order number. Please try again.
+ÔØî Request 68 failed: Could not generate order number. Please try again.
+ÔØî Request 64 failed: Could not generate order number. Please try again.
+ÔØî Request 69 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.650Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.651Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.651Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.652Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.652Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.653Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.653Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.654Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.654Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.655Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.655Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.656Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.656Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.657Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.657Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.657Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.658Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 67 failed: Could not generate order number. Please try again.
+ÔØî Request 70 failed: Could not generate order number. Please try again.
+ÔØî Request 72 failed: Could not generate order number. Please try again.
+ÔØî Request 71 failed: Could not generate order number. Please try again.
+ÔØî Request 73 failed: Could not generate order number. Please try again.
+ÔØî Request 75 failed: Could not generate order number. Please try again.
+ÔØî Request 74 failed: Could not generate order number. Please try again.
+ÔØî Request 76 failed: Could not generate order number. Please try again.
+ÔØî Request 77 failed: Could not generate order number. Please try again.
+ÔØî Request 78 failed: Could not generate order number. Please try again.
+ÔØî Request 79 failed: Could not generate order number. Please try again.
+ÔØî Request 81 failed: Could not generate order number. Please try again.
+ÔØî Request 80 failed: Could not generate order number. Please try again.
+ÔØî Request 83 failed: Could not generate order number. Please try again.
+ÔØî Request 82 failed: Could not generate order number. Please try again.
+ÔØî Request 84 failed: Could not generate order number. Please try again.
+ÔØî Request 85 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.665Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.666Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.667Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.667Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.667Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.668Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.668Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.669Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.669Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.670Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.670Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.671Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.671Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.672Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.672Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.673Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.673Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 87 failed: Could not generate order number. Please try again.
+ÔØî Request 89 failed: Could not generate order number. Please try again.
+ÔØî Request 88 failed: Could not generate order number. Please try again.
+ÔØî Request 86 failed: Could not generate order number. Please try again.
+ÔØî Request 90 failed: Could not generate order number. Please try again.
+ÔØî Request 91 failed: Could not generate order number. Please try again.
+ÔØî Request 92 failed: Could not generate order number. Please try again.
+ÔØî Request 93 failed: Could not generate order number. Please try again.
+ÔØî Request 95 failed: Could not generate order number. Please try again.
+ÔØî Request 94 failed: Could not generate order number. Please try again.
+ÔØî Request 96 failed: Could not generate order number. Please try again.
+ÔØî Request 97 failed: Could not generate order number. Please try again.
+ÔØî Request 98 failed: Could not generate order number. Please try again.
+ÔØî Request 99 failed: Could not generate order number. Please try again.
+ÔØî Request 100 failed: Could not generate order number. Please try again.
+ÔØî Request 101 failed: Could not generate order number. Please try again.
+ÔØî Request 102 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.678Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.679Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.679Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.680Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.680Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.681Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.681Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.682Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.682Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.683Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.683Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.684Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.684Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.685Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.685Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.685Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 104 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.686Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 103 failed: Could not generate order number. Please try again.
+ÔØî Request 105 failed: Could not generate order number. Please try again.
+ÔØî Request 107 failed: Could not generate order number. Please try again.
+ÔØî Request 106 failed: Could not generate order number. Please try again.
+ÔØî Request 109 failed: Could not generate order number. Please try again.
+ÔØî Request 108 failed: Could not generate order number. Please try again.
+ÔØî Request 110 failed: Could not generate order number. Please try again.
+ÔØî Request 111 failed: Could not generate order number. Please try again.
+ÔØî Request 112 failed: Could not generate order number. Please try again.
+ÔØî Request 113 failed: Could not generate order number. Please try again.
+ÔØî Request 114 failed: Could not generate order number. Please try again.
+ÔØî Request 115 failed: Could not generate order number. Please try again.
+ÔØî Request 117 failed: Could not generate order number. Please try again.
+ÔØî Request 118 failed: Could not generate order number. Please try again.
+ÔØî Request 119 failed: Could not generate order number. Please try again.
+ÔØî Request 121 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.691Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.692Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.692Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.693Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.693Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.694Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.694Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.695Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.695Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.696Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.696Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.697Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.697Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.698Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.698Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.699Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.699Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 116 failed: Could not generate order number. Please try again.
+ÔØî Request 122 failed: Could not generate order number. Please try again.
+ÔØî Request 120 failed: Could not generate order number. Please try again.
+ÔØî Request 123 failed: Could not generate order number. Please try again.
+ÔØî Request 125 failed: Could not generate order number. Please try again.
+ÔØî Request 126 failed: Could not generate order number. Please try again.
+ÔØî Request 124 failed: Could not generate order number. Please try again.
+ÔØî Request 128 failed: Could not generate order number. Please try again.
+ÔØî Request 129 failed: Could not generate order number. Please try again.
+ÔØî Request 130 failed: Could not generate order number. Please try again.
+ÔØî Request 131 failed: Could not generate order number. Please try again.
+ÔØî Request 127 failed: Could not generate order number. Please try again.
+ÔØî Request 132 failed: Could not generate order number. Please try again.
+ÔØî Request 133 failed: Could not generate order number. Please try again.
+ÔØî Request 134 failed: Could not generate order number. Please try again.
+ÔØî Request 135 failed: Could not generate order number. Please try again.
+ÔØî Request 137 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.705Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.705Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.706Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.706Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.707Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.707Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.708Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.708Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.709Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.709Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.710Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.710Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.711Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.711Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.712Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.712Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.713Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 136 failed: Could not generate order number. Please try again.
+ÔØî Request 138 failed: Could not generate order number. Please try again.
+ÔØî Request 139 failed: Could not generate order number. Please try again.
+ÔØî Request 140 failed: Could not generate order number. Please try again.
+ÔØî Request 141 failed: Could not generate order number. Please try again.
+ÔØî Request 143 failed: Could not generate order number. Please try again.
+ÔØî Request 142 failed: Could not generate order number. Please try again.
+ÔØî Request 144 failed: Could not generate order number. Please try again.
+ÔØî Request 145 failed: Could not generate order number. Please try again.
+ÔØî Request 146 failed: Could not generate order number. Please try again.
+ÔØî Request 147 failed: Could not generate order number. Please try again.
+ÔØî Request 148 failed: Could not generate order number. Please try again.
+ÔØî Request 149 failed: Could not generate order number. Please try again.
+ÔØî Request 150 failed: Could not generate order number. Please try again.
+ÔØî Request 151 failed: Could not generate order number. Please try again.
+ÔØî Request 152 failed: Could not generate order number. Please try again.
+ÔØî Request 154 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.718Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.719Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.719Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.720Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.720Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.721Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.721Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.722Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.722Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.723Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.723Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.724Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.724Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.725Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.725Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.725Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.726Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 155 failed: Could not generate order number. Please try again.
+ÔØî Request 156 failed: Could not generate order number. Please try again.
+ÔØî Request 157 failed: Could not generate order number. Please try again.
+ÔØî Request 158 failed: Could not generate order number. Please try again.
+ÔØî Request 153 failed: Could not generate order number. Please try again.
+ÔØî Request 159 failed: Could not generate order number. Please try again.
+ÔØî Request 160 failed: Could not generate order number. Please try again.
+ÔØî Request 161 failed: Could not generate order number. Please try again.
+ÔØî Request 163 failed: Could not generate order number. Please try again.
+ÔØî Request 164 failed: Could not generate order number. Please try again.
+ÔØî Request 165 failed: Could not generate order number. Please try again.
+ÔØî Request 162 failed: Could not generate order number. Please try again.
+ÔØî Request 166 failed: Could not generate order number. Please try again.
+ÔØî Request 167 failed: Could not generate order number. Please try again.
+ÔØî Request 168 failed: Could not generate order number. Please try again.
+ÔØî Request 170 failed: Could not generate order number. Please try again.
+ÔØî Request 173 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.732Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.732Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.733Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.733Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.734Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.734Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.735Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.735Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.736Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.737Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.737Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.738Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.738Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.739Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.739Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.740Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.740Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 171 failed: Could not generate order number. Please try again.
+ÔØî Request 169 failed: Could not generate order number. Please try again.
+ÔØî Request 172 failed: Could not generate order number. Please try again.
+ÔØî Request 174 failed: Could not generate order number. Please try again.
+ÔØî Request 175 failed: Could not generate order number. Please try again.
+ÔØî Request 176 failed: Could not generate order number. Please try again.
+ÔØî Request 177 failed: Could not generate order number. Please try again.
+ÔØî Request 178 failed: Could not generate order number. Please try again.
+ÔØî Request 179 failed: Could not generate order number. Please try again.
+ÔØî Request 180 failed: Could not generate order number. Please try again.
+ÔØî Request 182 failed: Could not generate order number. Please try again.
+ÔØî Request 183 failed: Could not generate order number. Please try again.
+ÔØî Request 181 failed: Could not generate order number. Please try again.
+ÔØî Request 184 failed: Could not generate order number. Please try again.
+ÔØî Request 185 failed: Could not generate order number. Please try again.
+ÔØî Request 186 failed: Could not generate order number. Please try again.
+ÔØî Request 188 failed: Could not generate order number. Please try again.
+{"timestamp":"2026-01-19T07:30:34.747Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.748Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.748Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.749Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.749Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.750Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.750Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.751Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.751Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.752Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.752Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.753Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+{"timestamp":"2026-01-19T07:30:34.753Z","level":"error","message":"Failed to generate order number","error":{"code":"P2011","meta":{"modelName":"OrderSequence","constraint":["id"]},"clientVersion":"6.19.2","name":"PrismaClientKnownRequestError"}}
+ÔØî Request 189 failed: Could not generate order number. Please try again.
+ÔØî Request 187 failed: Could not generate order number. Please try again.
+ÔØî Request 192 failed: Could not generate order number. Please try again.
+ÔØî Request 190 failed: Could not generate order number. Please try again.
+ÔØî Request 191 failed: Could not generate order number. Please try again.
+ÔØî Request 193 failed: Could not generate order number. Please try again.
+ÔØî Request 194 failed: Could not generate order number. Please try again.
+ÔØî Request 195 failed: Could not generate order number. Please try again.
+ÔØî Request 196 failed: Could not generate order number. Please try again.
+ÔØî Request 197 failed: Could not generate order number. Please try again.
+ÔØî Request 198 failed: Could not generate order number. Please try again.
+ÔØî Request 199 failed: Could not generate order number. Please try again.
+ÔØî Request 200 failed: Could not generate order number. Please try again.
+
+­ƒôè Load Test Results:
+   Total Duration: 166ms
+   Successful: 0
+   Failed: 200
+   Order Numbers Generated: 0
+   Unique Numbers: 0
+   Duplicates: 0 Ô£à
+
+ÔÅ▒´©Å  Latency Statistics:
+   Average: 91.45ms
+   p50: 90ms
+   p95: 165ms ÔØî Target: <100ms
+   p99: 166ms
+   Min: 15ms
+   Max: 166ms
+
+­ƒöó Sequence Validation:
+   Range: undefined to undefined
+   Sequential: ÔØî GAPS DETECTED
+
+============================================================
+Ô£à Load test completed successfully!
+
+Success Criteria:
+  Ô£ô Zero duplicates
+  Ô£ô p95 latency <100ms
+  Ô£ô Zero failures

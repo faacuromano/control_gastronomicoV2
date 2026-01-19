@@ -26,9 +26,9 @@ export declare class PurchaseOrderService {
         updatedAt: Date;
         orderNumber: number;
         status: import(".prisma/client").$Enums.PurchaseStatus;
+        notes: string | null;
         subtotal: Prisma.Decimal;
         total: Prisma.Decimal;
-        notes: string | null;
         orderedAt: Date;
         receivedAt: Date | null;
         supplierId: number;
@@ -67,9 +67,9 @@ export declare class PurchaseOrderService {
         updatedAt: Date;
         orderNumber: number;
         status: import(".prisma/client").$Enums.PurchaseStatus;
+        notes: string | null;
         subtotal: Prisma.Decimal;
         total: Prisma.Decimal;
-        notes: string | null;
         orderedAt: Date;
         receivedAt: Date | null;
         supplierId: number;
@@ -117,9 +117,9 @@ export declare class PurchaseOrderService {
         updatedAt: Date;
         orderNumber: number;
         status: import(".prisma/client").$Enums.PurchaseStatus;
+        notes: string | null;
         subtotal: Prisma.Decimal;
         total: Prisma.Decimal;
-        notes: string | null;
         orderedAt: Date;
         receivedAt: Date | null;
         supplierId: number;
@@ -133,9 +133,9 @@ export declare class PurchaseOrderService {
         updatedAt: Date;
         orderNumber: number;
         status: import(".prisma/client").$Enums.PurchaseStatus;
+        notes: string | null;
         subtotal: Prisma.Decimal;
         total: Prisma.Decimal;
-        notes: string | null;
         orderedAt: Date;
         receivedAt: Date | null;
         supplierId: number;
@@ -179,9 +179,9 @@ export declare class PurchaseOrderService {
         updatedAt: Date;
         orderNumber: number;
         status: import(".prisma/client").$Enums.PurchaseStatus;
+        notes: string | null;
         subtotal: Prisma.Decimal;
         total: Prisma.Decimal;
-        notes: string | null;
         orderedAt: Date;
         receivedAt: Date | null;
         supplierId: number;
@@ -195,9 +195,9 @@ export declare class PurchaseOrderService {
         updatedAt: Date;
         orderNumber: number;
         status: import(".prisma/client").$Enums.PurchaseStatus;
+        notes: string | null;
         subtotal: Prisma.Decimal;
         total: Prisma.Decimal;
-        notes: string | null;
         orderedAt: Date;
         receivedAt: Date | null;
         supplierId: number;

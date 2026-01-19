@@ -64,8 +64,7 @@ class OrderNumberService {
                 },
                 create: {
                     sequenceKey,
-                    currentValue: 1,
-                    lastNumber: 0 // Legacy field, not used in sharded mode
+                    currentValue: 1
                 }
             });
             logger_1.logger.info('Order number generated', {
@@ -85,29 +84,37 @@ class OrderNumberService {
      *
      * @returns The current maximum order number
      */
+    /**
+     * DEPRECATED: This method no longer works with date-based sharding.
+     * Use the current day's sequence instead.
+     */
     async getCurrentMaxOrderNumber() {
+        // Return today's sequence
+        const now = new Date();
+        const businessDate = new Date(now);
+        if (businessDate.getHours() < 6) {
+            businessDate.setDate(businessDate.getDate() - 1);
+        }
+        const year = businessDate.getFullYear();
+        const month = String(businessDate.getMonth() + 1).padStart(2, '0');
+        const day = String(businessDate.getDate()).padStart(2, '0');
+        const sequenceKey = `${year}${month}${day}`;
         const sequence = await prisma_1.prisma.orderSequence.findUnique({
-            where: { id: 1 }
+            where: { sequenceKey }
         });
-        return sequence?.lastNumber ?? 0;
+        return sequence?.currentValue ?? 0;
     }
     /**
      * Initialize the sequence from existing orders (migration helper).
      * Call this once after migrating to set the sequence to the correct value.
      */
+    /**
+     * DEPRECATED: Legacy initialization method.
+     * With date-based sharding, sequences are created automatically.
+     */
     async initializeFromExistingOrders() {
-        const lastOrder = await prisma_1.prisma.order.findFirst({
-            orderBy: { orderNumber: 'desc' },
-            select: { orderNumber: true }
-        });
-        const maxNumber = lastOrder?.orderNumber ?? 0;
-        await prisma_1.prisma.orderSequence.upsert({
-            where: { id: 1 },
-            update: { lastNumber: maxNumber },
-            create: { id: 1, lastNumber: maxNumber }
-        });
-        logger_1.logger.info('OrderSequence initialized', { lastNumber: maxNumber });
-        return maxNumber;
+        logger_1.logger.warn('initializeFromExistingOrders is deprecated with date-based sharding');
+        return 0;
     }
 }
 exports.OrderNumberService = OrderNumberService;

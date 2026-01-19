@@ -50,10 +50,18 @@ export declare class OrderNumberService {
      *
      * @returns The current maximum order number
      */
+    /**
+     * DEPRECATED: This method no longer works with date-based sharding.
+     * Use the current day's sequence instead.
+     */
     getCurrentMaxOrderNumber(): Promise<number>;
     /**
      * Initialize the sequence from existing orders (migration helper).
      * Call this once after migrating to set the sequence to the correct value.
+     */
+    /**
+     * DEPRECATED: Legacy initialization method.
+     * With date-based sharding, sequences are created automatically.
      */
     initializeFromExistingOrders(): Promise<number>;
 }

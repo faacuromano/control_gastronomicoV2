@@ -29,11 +29,11 @@ model TenantConfig {
 // FIX P1-001: Date-based sharding to eliminate single-row bottleneck
 // Each business day gets its own sequence row, preventing deadlocks
 // under high concurrency (>10 concurrent order requests)
+// CLEAN SLATE: No legacy fields, sequenceKey is always present
 model OrderSequence {
   id           Int      @id @default(autoincrement())
-  sequenceKey  String?  @unique @db.VarChar(8) // Format: "YYYYMMDD" (e.g., "20260119")
+  sequenceKey  String   @unique @db.VarChar(8)  // Format: "YYYYMMDD" (e.g., "20260119")
   currentValue Int      @default(0)
-  lastNumber   Int      @default(0) // Legacy field for backward compatibility
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

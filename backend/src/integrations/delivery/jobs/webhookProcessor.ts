@@ -185,12 +185,27 @@ async function processNewOrder(
   
   try {
     createdOrder = await prisma.$transaction(async (tx) => {
-      // Generate order number atomically within transaction
-      const sequence = await tx.orderSequence.update({
-        where: { id: 1 },
-        data: { lastNumber: { increment: 1 } },
+      // FIX P1-001: Use date-based sharding for order numbers
+      // Calculate business date (6 AM cutoff)
+      const now = new Date();
+      const businessDate = new Date(now);
+      if (businessDate.getHours() < 6) {
+        businessDate.setDate(businessDate.getDate() - 1);
+      }
+      
+      // Format as YYYYMMDD
+      const year = businessDate.getFullYear();
+      const month = String(businessDate.getMonth() + 1).padStart(2, '0');
+      const day = String(businessDate.getDate()).padStart(2, '0');
+      const sequenceKey = `${year}${month}${day}`;
+      
+      // Upsert: create today's sequence or increment
+      const sequence = await tx.orderSequence.upsert({
+        where: { sequenceKey },
+        update: { currentValue: { increment: 1 } },
+        create: { sequenceKey, currentValue: 1 },
       });
-      const orderNumber = sequence.lastNumber;
+      const orderNumber = sequence.currentValue;
 
       // Create order - if externalId already exists, P2002 is thrown
       const order = await tx.order.create({
