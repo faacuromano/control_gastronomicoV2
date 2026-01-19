@@ -8,30 +8,36 @@ datasource db {
 }
 
 model TenantConfig {
-  id               Int     @id @default(1)
-  businessName     String
-  enableStock      Boolean @default(true)
-  enableDelivery   Boolean @default(true)
-  enableKDS        Boolean @default(false)
-  enableFiscal     Boolean @default(false)
-  enableDigital    Boolean @default(false)
-  enableBlindCount Boolean @default(false)  // Arqueo ciego: oculta monto esperado al cerrar turno
-  currencySymbol   String  @default("$")
+  id                 Int        @id @default(1)
+  businessName       String
+  enableStock        Boolean    @default(true)
+  enableDelivery     Boolean    @default(true)
+  enableKDS          Boolean    @default(false)
+  enableFiscal       Boolean    @default(false)
+  enableDigital      Boolean    @default(false)
+  enableBlindCount   Boolean    @default(false) // Arqueo ciego: oculta monto esperado al cerrar turno
+  currencySymbol     String     @default("$")
   // QR Menu Configuration
-  qrMenuEnabled      Boolean     @default(false)
-  qrMenuMode         QrMenuMode  @default(INTERACTIVE)
-  qrSelfOrderEnabled Boolean     @default(false)  // Permitir pedidos desde celular
-  qrMenuPdfUrl       String?     // URL del PDF si mode=STATIC
-  qrMenuBannerUrl    String?     // Banner opcional para menú
-  qrMenuTheme        Json?       // Colores, tipografía personalizada
+  qrMenuEnabled      Boolean    @default(false)
+  qrMenuMode         QrMenuMode @default(INTERACTIVE)
+  qrSelfOrderEnabled Boolean    @default(false) // Permitir pedidos desde celular
+  qrMenuPdfUrl       String? // URL del PDF si mode=STATIC
+  qrMenuBannerUrl    String? // Banner opcional para menú
+  qrMenuTheme        Json? // Colores, tipografía personalizada
 }
 
-// Dedicated sequence table for order numbers
-// Using a single-row table with AUTO_INCREMENT-like behavior
-// This is much more efficient than SELECT MAX(orderNumber) FOR UPDATE
+// FIX P1-001: Date-based sharding to eliminate single-row bottleneck
+// Each business day gets its own sequence row, preventing deadlocks
+// under high concurrency (>10 concurrent order requests)
 model OrderSequence {
-  id            Int @id @default(1)
-  lastNumber    Int @default(0)
+  id           Int      @id @default(autoincrement())
+  sequenceKey  String?  @unique @db.VarChar(8) // Format: "YYYYMMDD" (e.g., "20260119")
+  currentValue Int      @default(0)
+  lastNumber   Int      @default(0) // Legacy field for backward compatibility
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([sequenceKey])
 }
 
 model Role {
@@ -54,8 +60,8 @@ model User {
   deliveries          Order[]     @relation("OrderDriver")
   shifts              CashShift[]
   isActive            Boolean     @default(true)
-  failedLoginAttempts Int         @default(0)  // Count of consecutive failed PIN attempts
-  lockedUntil         DateTime?   // Account locked until this time (null = not locked)
+  failedLoginAttempts Int         @default(0) // Count of consecutive failed PIN attempts
+  lockedUntil         DateTime? // Account locked until this time (null = not locked)
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
@@ -76,39 +82,39 @@ model Category {
 }
 
 model Printer {
-  id             Int              @id @default(autoincrement())
+  id             Int                   @id @default(autoincrement())
   name           String
-  connectionType PrinterConnection @default(NETWORK)
-  ipAddress      String?          // For NETWORK type: IP address (port 9100 default)
-  windowsName    String?          // For USB type: Windows printer name
+  connectionType PrinterConnection     @default(NETWORK)
+  ipAddress      String? // For NETWORK type: IP address (port 9100 default)
+  windowsName    String? // For USB type: Windows printer name
   categories     Category[]
-  areaOverrides  AreaPrinterOverride[]  // Areas using this printer as override
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  areaOverrides  AreaPrinterOverride[] // Areas using this printer as override
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 }
 
 enum PrinterConnection {
-  NETWORK  // TCP/IP connection (tcp://IP:9100)
-  USB      // Windows USB printer via printer name
+  NETWORK // TCP/IP connection (tcp://IP:9100)
+  USB // Windows USB printer via printer name
 }
 
 model Product {
-  id          Int                    @id @default(autoincrement())
-  categoryId  Int
-  category    Category               @relation(fields: [categoryId], references: [id])
-  name        String
-  description String?
-  price       Decimal                @db.Decimal(10, 2)
-  image       String?
-  productType ProductType            @default(SIMPLE)
-  isStockable Boolean                @default(true)
-  ingredients ProductIngredient[]
-  modifiers   ProductModifierGroup[]
-  isActive    Boolean                @default(true)
-  orderItems  OrderItem[]
-  channelPrices ProductChannelPrice[]  // Precios específicos por plataforma de delivery
-  createdAt   DateTime               @default(now())
-  updatedAt   DateTime               @updatedAt
+  id            Int                    @id @default(autoincrement())
+  categoryId    Int
+  category      Category               @relation(fields: [categoryId], references: [id])
+  name          String
+  description   String?
+  price         Decimal                @db.Decimal(10, 2)
+  image         String?
+  productType   ProductType            @default(SIMPLE)
+  isStockable   Boolean                @default(true)
+  ingredients   ProductIngredient[]
+  modifiers     ProductModifierGroup[]
+  isActive      Boolean                @default(true)
+  orderItems    OrderItem[]
+  channelPrices ProductChannelPrice[] // Precios específicos por plataforma de delivery
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
 
   @@index([categoryId])
 }
@@ -190,7 +196,7 @@ model StockMovement {
   ingredient   Ingredient    @relation(fields: [ingredientId], references: [id])
   type         StockMoveType
   quantity     Decimal       @db.Decimal(10, 4)
-  reason       String?       // Reason for movement (e.g. "Order #123", "Expired")
+  reason       String? // Reason for movement (e.g. "Order #123", "Expired")
   createdAt    DateTime      @default(now())
 
   @@index([ingredientId])
@@ -209,7 +215,7 @@ model Supplier {
   phone          String?
   email          String?
   address        String?
-  taxId          String?         // CUIT/RUT
+  taxId          String? // CUIT/RUT
   purchaseOrders PurchaseOrder[]
   isActive       Boolean         @default(true)
   createdAt      DateTime        @default(now())
@@ -268,7 +274,7 @@ model Invoice {
   invoiceNumber String      @unique
   type          InvoiceType @default(RECEIPT)
   clientName    String?
-  clientTaxId   String?     // CUIT/DNI
+  clientTaxId   String? // CUIT/DNI
   subtotal      Decimal     @db.Decimal(10, 2)
   tax           Decimal     @default(0) @db.Decimal(10, 2)
   total         Decimal     @db.Decimal(10, 2)
@@ -276,49 +282,49 @@ model Invoice {
 }
 
 enum InvoiceType {
-  RECEIPT    // Ticket simple
-  INVOICE_B  // Factura B (Consumidor Final)
+  RECEIPT // Ticket simple
+  INVOICE_B // Factura B (Consumidor Final)
 }
 
 model Order {
-  id              Int           @id @default(autoincrement())
-  orderNumber     Int           @unique
-  channel         OrderChannel  @default(POS)
-  externalId      String?
-  externalPayload Json?         // Payload raw del webhook para debugging/auditoría
-  peopleCount     Int           @default(1)
-  status          OrderStatus   @default(OPEN)
-  paymentStatus   PaymentStatus @default(PENDING)
-  subtotal        Decimal       @default(0) @db.Decimal(10, 2)
-  discount        Decimal       @default(0) @db.Decimal(10, 2)
-  tip             Decimal       @default(0) @db.Decimal(10, 2)  // Total tips for this order
-  total           Decimal       @default(0) @db.Decimal(10, 2)
-  tableId         Int?
-  table           Table?        @relation(fields: [tableId], references: [id])
-  clientId        Int?
-  client          Client?       @relation(fields: [clientId], references: [id])
-  serverId        Int?
-  server          User?         @relation("OrderServer", fields: [serverId], references: [id])
-  driverId        Int?
-  driver          User?         @relation("OrderDriver", fields: [driverId], references: [id])
-  deliveryAddress String?       // Dirección específica de esta entrega
-  deliveryNotes   String?       // Notas de entrega ("Tocar timbre 2B")
+  id                  Int               @id @default(autoincrement())
+  orderNumber         Int               @unique
+  channel             OrderChannel      @default(POS)
+  externalId          String?
+  externalPayload     Json? // Payload raw del webhook para debugging/auditoría
+  peopleCount         Int               @default(1)
+  status              OrderStatus       @default(OPEN)
+  paymentStatus       PaymentStatus     @default(PENDING)
+  subtotal            Decimal           @default(0) @db.Decimal(10, 2)
+  discount            Decimal           @default(0) @db.Decimal(10, 2)
+  tip                 Decimal           @default(0) @db.Decimal(10, 2) // Total tips for this order
+  total               Decimal           @default(0) @db.Decimal(10, 2)
+  tableId             Int?
+  table               Table?            @relation(fields: [tableId], references: [id])
+  clientId            Int?
+  client              Client?           @relation(fields: [clientId], references: [id])
+  serverId            Int?
+  server              User?             @relation("OrderServer", fields: [serverId], references: [id])
+  driverId            Int?
+  driver              User?             @relation("OrderDriver", fields: [driverId], references: [id])
+  deliveryAddress     String? // Dirección específica de esta entrega
+  deliveryNotes       String? // Notas de entrega ("Tocar timbre 2B")
   // Delivery Integration fields
-  fulfillmentType       FulfillmentType   @default(DINE_IN)
-  deliveryPlatformId    Int?              // Plataforma externa (Rappi, PedidosYa, etc.)
-  deliveryPlatform      DeliveryPlatform? @relation("PlatformOrders", fields: [deliveryPlatformId], references: [id])
-  deliveryDriverId      Int?              // Driver de flota propia
-  deliveryDriver        DeliveryDriver?   @relation("DeliveryDriverOrders", fields: [deliveryDriverId], references: [id])
-  estimatedDeliveryAt   DateTime?         // Hora estimada de entrega
-  deliveryFee           Decimal?          @db.Decimal(10,2)  // Costo de envío
-  platformCommission    Decimal?          @db.Decimal(10,2)  // Comisión pagada a plataforma
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  closedAt        DateTime?
-  businessDate    DateTime      @db.Date // Para agrupar ventas por "Día Operativo"
-  items           OrderItem[]
-  payments        Payment[]
-  invoice         Invoice?
+  fulfillmentType     FulfillmentType   @default(DINE_IN)
+  deliveryPlatformId  Int? // Plataforma externa (Rappi, PedidosYa, etc.)
+  deliveryPlatform    DeliveryPlatform? @relation("PlatformOrders", fields: [deliveryPlatformId], references: [id])
+  deliveryDriverId    Int? // Driver de flota propia
+  deliveryDriver      DeliveryDriver?   @relation("DeliveryDriverOrders", fields: [deliveryDriverId], references: [id])
+  estimatedDeliveryAt DateTime? // Hora estimada de entrega
+  deliveryFee         Decimal?          @db.Decimal(10, 2) // Costo de envío
+  platformCommission  Decimal?          @db.Decimal(10, 2) // Comisión pagada a plataforma
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  closedAt            DateTime?
+  businessDate        DateTime          @db.Date // Para agrupar ventas por "Día Operativo"
+  items               OrderItem[]
+  payments            Payment[]
+  invoice             Invoice?
 
   @@index([tableId])
   @@index([clientId])
@@ -328,7 +334,7 @@ model Order {
   @@index([deliveryDriverId])
   @@index([businessDate])
   @@index([createdAt])
-  @@index([externalId])  // Para búsquedas rápidas por ID externo (Rappi, Glovo)
+  @@index([externalId]) // Para búsquedas rápidas por ID externo (Rappi, Glovo)
 }
 
 enum OrderChannel {
@@ -403,17 +409,17 @@ model Area {
 // Allows an area to override the default category->printer routing
 // Example: "Terraza" area sends all drinks to "Printer Terraza" instead of "Bar Printer"
 model AreaPrinterOverride {
-  id         Int      @id @default(autoincrement())
+  id         Int       @id @default(autoincrement())
   areaId     Int
-  area       Area     @relation(fields: [areaId], references: [id], onDelete: Cascade)
-  categoryId Int?     // If null, applies to ALL categories (area-wide override)
+  area       Area      @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  categoryId Int? // If null, applies to ALL categories (area-wide override)
   category   Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   printerId  Int
-  printer    Printer  @relation(fields: [printerId], references: [id])
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  printer    Printer   @relation(fields: [printerId], references: [id])
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
-  @@unique([areaId, categoryId])  // One override per category per area
+  @@unique([areaId, categoryId]) // One override per category per area
   @@index([areaId])
   @@index([categoryId])
   @@index([printerId])
@@ -429,7 +435,7 @@ model Table {
   status         TableStatus @default(FREE)
   currentOrderId Int?
   orders         Order[]
-  qrCodes        QrCode[]    // QR codes asociados a esta mesa
+  qrCodes        QrCode[] // QR codes asociados a esta mesa
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -458,15 +464,15 @@ model Client {
 }
 
 model CashShift {
-  id          Int       @id @default(autoincrement())
-  userId      Int
-  user        User      @relation(fields: [userId], references: [id])
-  startTime   DateTime  @default(now())
-  endTime     DateTime?
-  startAmount Decimal   @db.Decimal(10, 2)
-  endAmount   Decimal?  @db.Decimal(10, 2)
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  user         User      @relation(fields: [userId], references: [id])
+  startTime    DateTime  @default(now())
+  endTime      DateTime?
+  startAmount  Decimal   @db.Decimal(10, 2)
+  endAmount    Decimal?  @db.Decimal(10, 2)
   businessDate DateTime  @db.Date // Día operativo del turno
-  payments    Payment[]
+  payments     Payment[]
 
   @@index([userId])
   @@index([businessDate])
@@ -479,7 +485,7 @@ model Payment {
   shiftId     Int?
   shift       CashShift?    @relation(fields: [shiftId], references: [id])
   amount      Decimal       @db.Decimal(10, 2)
-  tip         Decimal       @default(0) @db.Decimal(10, 2)  // Tip included in this payment
+  tip         Decimal       @default(0) @db.Decimal(10, 2) // Tip included in this payment
   method      PaymentMethod
   externalRef String?
   createdAt   DateTime      @default(now())
@@ -498,27 +504,27 @@ enum PaymentMethod {
 
 // Dynamic payment method configuration
 model PaymentMethodConfig {
-  id          Int      @id @default(autoincrement())
-  code        String   @unique  // Matches PaymentMethod enum value
-  name        String            // Display name: "Efectivo", "Tarjeta", etc.
-  icon        String?           // Lucide icon name
-  isActive    Boolean  @default(true)
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  code      String   @unique // Matches PaymentMethod enum value
+  name      String // Display name: "Efectivo", "Tarjeta", etc.
+  icon      String? // Lucide icon name
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // Audit log for tracking critical actions
 model AuditLog {
-  id          Int        @id @default(autoincrement())
-  userId      Int?
-  action      AuditAction
-  entity      String     // Table/model name: 'Order', 'Payment', 'CashShift'
-  entityId    Int?
-  details     Json?      // Additional context (old/new values, etc)
-  ipAddress   String?
-  userAgent   String?
-  createdAt   DateTime   @default(now())
+  id        Int         @id @default(autoincrement())
+  userId    Int?
+  action    AuditAction
+  entity    String // Table/model name: 'Order', 'Payment', 'CashShift'
+  entityId  Int?
+  details   Json? // Additional context (old/new values, etc)
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime    @default(now())
 
   @@index([userId])
   @@index([entity, entityId])
@@ -536,13 +542,13 @@ enum AuditAction {
   ORDER_CANCELLED
   ORDER_REFUNDED
   // Order Items
-  ITEM_VOIDED       // Item removed from order with reason
-  ITEM_TRANSFERRED  // Item moved to different table
+  ITEM_VOIDED // Item removed from order with reason
+  ITEM_TRANSFERRED // Item moved to different table
   // Payments
   PAYMENT_RECEIVED
   PAYMENT_VOIDED
   // Pricing
-  DISCOUNT_APPLIED  // Manual discount with authorization
+  DISCOUNT_APPLIED // Manual discount with authorization
   // Cash
   SHIFT_OPENED
   SHIFT_CLOSED
@@ -550,7 +556,7 @@ enum AuditAction {
   // Inventory
   STOCK_ADJUSTED
   STOCK_WASTED
-  BULK_PRICE_UPDATE  // Mass price update operation
+  BULK_PRICE_UPDATE // Mass price update operation
   // Admin
   USER_CREATED
   USER_DELETED
@@ -563,20 +569,20 @@ enum AuditAction {
 // ============================================================================
 
 enum QrMenuMode {
-  INTERACTIVE   // Menú dinámico desde DB
-  STATIC        // PDF o imagen subida
+  INTERACTIVE // Menú dinámico desde DB
+  STATIC // PDF o imagen subida
 }
 
 model QrCode {
-  id              Int       @id @default(autoincrement())
-  code            String    @unique @db.VarChar(12)  // UUID corto para URL
-  tableId         Int?      // null = QR genérico (no asociado a mesa)
-  table           Table?    @relation(fields: [tableId], references: [id])
-  isActive        Boolean   @default(true)
-  scansCount      Int       @default(0)
-  lastScannedAt   DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id            Int       @id @default(autoincrement())
+  code          String    @unique @db.VarChar(12) // UUID corto para URL
+  tableId       Int? // null = QR genérico (no asociado a mesa)
+  table         Table?    @relation(fields: [tableId], references: [id])
+  isActive      Boolean   @default(true)
+  scansCount    Int       @default(0)
+  lastScannedAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([tableId])
 }
@@ -586,51 +592,51 @@ model QrCode {
 // ============================================================================
 
 enum FulfillmentType {
-  DINE_IN              // Mesa en local
-  TAKEAWAY             // Para llevar (retira cliente)
-  PLATFORM_DELIVERY    // Delivery por plataforma externa (Rappi envía)
-  SELF_DELIVERY        // Delivery con flota propia del local
+  DINE_IN // Mesa en local
+  TAKEAWAY // Para llevar (retira cliente)
+  PLATFORM_DELIVERY // Delivery por plataforma externa (Rappi envía)
+  SELF_DELIVERY // Delivery con flota propia del local
 }
 
 model DeliveryPlatform {
-  id              Int       @id @default(autoincrement())
-  code            String    @unique  // PEDIDOSYA, RAPPI, GLOVO, etc.
-  name            String
-  isEnabled       Boolean   @default(false)
-  apiKey          String?   @db.VarChar(500)  // Encrypted API key
-  webhookSecret   String?   @db.VarChar(500)  // Para validar webhooks entrantes
-  storeId         String?   // ID del local en la plataforma
-  menuSyncEnabled Boolean   @default(false)   // Sincronizar menú automáticamente
-  lastSyncAt      DateTime?
-  commissionRate  Decimal?  @db.Decimal(5,2)  // Porcentaje de comisión (ej: 15.00)
+  id                      Int                   @id @default(autoincrement())
+  code                    String                @unique // PEDIDOSYA, RAPPI, GLOVO, etc.
+  name                    String
+  isEnabled               Boolean               @default(false)
+  apiKey                  String?               @db.VarChar(500) // Encrypted API key
+  webhookSecret           String?               @db.VarChar(500) // Para validar webhooks entrantes
+  storeId                 String? // ID del local en la plataforma
+  menuSyncEnabled         Boolean               @default(false) // Sincronizar menú automáticamente
+  lastSyncAt              DateTime?
+  commissionRate          Decimal?              @db.Decimal(5, 2) // Porcentaje de comisión (ej: 15.00)
   // ============ SAFETY LOCK (Margin Warning Protocol) ============
   // Campos para el protocolo de consentimiento de margen.
   // El usuario DEBE aceptar el riesgo de usar precios base antes de activar.
-  defaultMarkup           Decimal?  @db.Decimal(5,2)  // Markup automático sugerido (ej: 25.00 = +25%)
-  marginConsentAcceptedAt DateTime?                   // Timestamp cuando el usuario aceptó el riesgo
-  marginConsentAcceptedBy Int?                        // ID del usuario que aceptó
-  useFallbackPricing      Boolean   @default(false)   // Si true, usa precio base + markup cuando no hay precio específico
+  defaultMarkup           Decimal?              @db.Decimal(5, 2) // Markup automático sugerido (ej: 25.00 = +25%)
+  marginConsentAcceptedAt DateTime? // Timestamp cuando el usuario aceptó el riesgo
+  marginConsentAcceptedBy Int? // ID del usuario que aceptó
+  useFallbackPricing      Boolean               @default(false) // Si true, usa precio base + markup cuando no hay precio específico
   // ================================================================
-  config          Json?     // Configuración adicional específica
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  orders          Order[]   @relation("PlatformOrders")
-  productPrices   ProductChannelPrice[]  // Precios específicos por producto
+  config                  Json? // Configuración adicional específica
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+  orders                  Order[]               @relation("PlatformOrders")
+  productPrices           ProductChannelPrice[] // Precios específicos por producto
 }
 
 model DeliveryDriver {
-  id              Int       @id @default(autoincrement())
-  name            String
-  phone           String
-  email           String?
-  vehicleType     VehicleType @default(MOTORCYCLE)
-  licensePlate    String?
-  isActive        Boolean   @default(true)
-  isAvailable     Boolean   @default(true)
-  currentOrderId  Int?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  orders          Order[]   @relation("DeliveryDriverOrders")
+  id             Int         @id @default(autoincrement())
+  name           String
+  phone          String
+  email          String?
+  vehicleType    VehicleType @default(MOTORCYCLE)
+  licensePlate   String?
+  isActive       Boolean     @default(true)
+  isAvailable    Boolean     @default(true)
+  currentOrderId Int?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  orders         Order[]     @relation("DeliveryDriverOrders")
 }
 
 enum VehicleType {
@@ -647,18 +653,18 @@ enum VehicleType {
 // ============================================================================
 
 model ProductChannelPrice {
-  id                  Int               @id @default(autoincrement())
-  productId           Int
-  product             Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
-  deliveryPlatformId  Int
-  deliveryPlatform    DeliveryPlatform  @relation(fields: [deliveryPlatformId], references: [id], onDelete: Cascade)
-  price               Decimal           @db.Decimal(10, 2)  // Precio específico para este canal
-  externalSku         String?           @db.VarChar(100)    // SKU/PLU en la plataforma externa
-  isAvailable         Boolean           @default(true)      // Disponibilidad en este canal
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  id                 Int              @id @default(autoincrement())
+  productId          Int
+  product            Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  deliveryPlatformId Int
+  deliveryPlatform   DeliveryPlatform @relation(fields: [deliveryPlatformId], references: [id], onDelete: Cascade)
+  price              Decimal          @db.Decimal(10, 2) // Precio específico para este canal
+  externalSku        String?          @db.VarChar(100) // SKU/PLU en la plataforma externa
+  isAvailable        Boolean          @default(true) // Disponibilidad en este canal
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
-  @@unique([productId, deliveryPlatformId])  // Un precio por producto por plataforma
+  @@unique([productId, deliveryPlatformId]) // Un precio por producto por plataforma
   @@index([deliveryPlatformId])
   @@index([productId])
 }

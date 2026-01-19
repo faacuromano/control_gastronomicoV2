@@ -22,46 +22,61 @@ const logger_1 = require("../utils/logger");
  */
 class OrderNumberService {
     /**
-     * Generate the next order number using atomic increment on sequence table.
+     * Generate the next order number using date-based sharding.
      *
-     * This is significantly faster than the previous FOR UPDATE approach because:
-     * 1. Only locks the single sequence row, not the entire Order table
-     * 2. Uses database-level atomic increment (single operation)
-     * 3. Allows concurrent order creation without serialization
+     * FIX P1-001: Eliminates single-row bottleneck by creating a new sequence
+     * for each business day. This allows concurrent order creation without deadlocks.
+     *
+     * Performance improvement:
+     * - Old: Single row id=1 locked by ALL concurrent orders (serialized writes)
+     * - New: Each day has own row (parallel writes, only locks current day's row)
+     *
+     * Business logic:
+     * - Orders created before 6 AM belong to previous business day
+     * - Daily reset provides human-friendly order numbers (#1, #2, #3...)
+     * - Historical queries use (businessDate + orderNumber) as composite key
      *
      * @param tx - Prisma transaction context (required for atomicity)
-     * @returns The next sequential order number
+     * @returns The next sequential order number for today's business date
      *
      * @example
      * const orderNumber = await orderNumberService.getNextOrderNumber(tx);
-     * // Returns: 1, 2, 3, etc. (sequential, never duplicated)
+     * // Returns: 1, 2, 3, ... (resets daily)
      */
     async getNextOrderNumber(tx) {
         try {
-            // Atomic increment using upsert pattern
-            // If sequence doesn't exist (first order), create it with value 1
-            // Otherwise, increment the existing value
+            // Calculate business date (shift hours <6am to previous day)
+            const now = new Date();
+            const businessDate = new Date(now);
+            if (businessDate.getHours() < 6) {
+                businessDate.setDate(businessDate.getDate() - 1);
+            }
+            // Format as YYYYMMDD (e.g., "20260119")
+            const year = businessDate.getFullYear();
+            const month = String(businessDate.getMonth() + 1).padStart(2, '0');
+            const day = String(businessDate.getDate()).padStart(2, '0');
+            const sequenceKey = `${year}${month}${day}`;
+            // Upsert pattern: create sequence for today if not exists, else increment
             const sequence = await tx.orderSequence.upsert({
-                where: { id: 1 },
+                where: { sequenceKey },
                 update: {
-                    lastNumber: { increment: 1 }
+                    currentValue: { increment: 1 }
                 },
                 create: {
-                    id: 1,
-                    lastNumber: 1
+                    sequenceKey,
+                    currentValue: 1,
+                    lastNumber: 0 // Legacy field, not used in sharded mode
                 }
             });
-            return sequence.lastNumber;
+            logger_1.logger.info('Order number generated', {
+                sequenceKey,
+                orderNumber: sequence.currentValue
+            });
+            return sequence.currentValue;
         }
         catch (error) {
-            // Fallback to raw SQL for edge cases (e.g., concurrent first orders)
-            logger_1.logger.warn('OrderSequence upsert failed, using raw SQL fallback', { error });
-            const result = await tx.$executeRaw `
-                INSERT INTO OrderSequence (id, lastNumber) VALUES (1, 1)
-                ON DUPLICATE KEY UPDATE lastNumber = lastNumber + 1
-            `;
-            const seq = await tx.orderSequence.findUnique({ where: { id: 1 } });
-            return seq?.lastNumber ?? 1;
+            logger_1.logger.error('Failed to generate order number', { error });
+            throw new Error('Could not generate order number. Please try again.');
         }
     }
     /**

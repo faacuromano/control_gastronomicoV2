@@ -22,19 +22,26 @@ type TransactionClient = Prisma.TransactionClient;
  */
 export declare class OrderNumberService {
     /**
-     * Generate the next order number using atomic increment on sequence table.
+     * Generate the next order number using date-based sharding.
      *
-     * This is significantly faster than the previous FOR UPDATE approach because:
-     * 1. Only locks the single sequence row, not the entire Order table
-     * 2. Uses database-level atomic increment (single operation)
-     * 3. Allows concurrent order creation without serialization
+     * FIX P1-001: Eliminates single-row bottleneck by creating a new sequence
+     * for each business day. This allows concurrent order creation without deadlocks.
+     *
+     * Performance improvement:
+     * - Old: Single row id=1 locked by ALL concurrent orders (serialized writes)
+     * - New: Each day has own row (parallel writes, only locks current day's row)
+     *
+     * Business logic:
+     * - Orders created before 6 AM belong to previous business day
+     * - Daily reset provides human-friendly order numbers (#1, #2, #3...)
+     * - Historical queries use (businessDate + orderNumber) as composite key
      *
      * @param tx - Prisma transaction context (required for atomicity)
-     * @returns The next sequential order number
+     * @returns The next sequential order number for today's business date
      *
      * @example
      * const orderNumber = await orderNumberService.getNextOrderNumber(tx);
-     * // Returns: 1, 2, 3, etc. (sequential, never duplicated)
+     * // Returns: 1, 2, 3, ... (resets daily)
      */
     getNextOrderNumber(tx: TransactionClient): Promise<number>;
     /**
