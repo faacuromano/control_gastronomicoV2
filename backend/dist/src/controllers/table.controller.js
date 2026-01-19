@@ -1,9 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TableController = void 0;
+const zod_1 = require("zod");
 const table_service_1 = require("../services/table.service");
 const errors_1 = require("../utils/errors");
 const asyncHandler_1 = require("../middleware/asyncHandler");
+// FIX IP-001: Validate tableId parameter
+const tableIdSchema = zod_1.z.coerce.number().int().positive();
 class TableController {
     // Areas
     static getAreas = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
@@ -30,12 +33,12 @@ class TableController {
         res.status(201).json({ success: true, data: table });
     });
     static updateTable = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
-        const id = Number(req.params.id);
+        const id = tableIdSchema.parse(req.params.id);
         const table = await table_service_1.tableService.updateTable(id, req.body);
         res.json({ success: true, data: table });
     });
     static updatePosition = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
-        const id = Number(req.params.id);
+        const id = tableIdSchema.parse(req.params.id);
         const { x, y } = req.body;
         const table = await table_service_1.tableService.updateTablePosition(id, x, y);
         res.json({ success: true, data: table });
@@ -49,12 +52,12 @@ class TableController {
         res.json({ success: true, data: result });
     });
     static deleteTable = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
-        const id = Number(req.params.id);
+        const id = tableIdSchema.parse(req.params.id);
         await table_service_1.tableService.deleteTable(id);
         res.json({ success: true, message: 'Table deleted' });
     });
     static getTable = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
-        const id = Number(req.params.id);
+        const id = tableIdSchema.parse(req.params.id);
         const table = await table_service_1.tableService.getTable(id);
         res.json({ success: true, data: table });
     });
@@ -64,7 +67,7 @@ class TableController {
         if (!serverId) {
             throw new errors_1.UnauthorizedError('Not authenticated');
         }
-        const tableId = Number(req.params.id);
+        const tableId = tableIdSchema.parse(req.params.id);
         const { pax } = req.body;
         const order = await table_service_1.tableService.openTableWithOrder(tableId, serverId, pax || 1);
         res.status(201).json({ success: true, data: order });
@@ -74,7 +77,7 @@ class TableController {
         if (!serverId) {
             throw new errors_1.UnauthorizedError('Not authenticated');
         }
-        const tableId = Number(req.params.id);
+        const tableId = tableIdSchema.parse(req.params.id);
         const { payments } = req.body;
         const result = await table_service_1.tableService.closeTableWithPayment(tableId, serverId, payments);
         res.json({ success: true, data: result });

@@ -69,5 +69,7 @@ router.delete('/drivers/:id', (0, auth_1.requirePermission)('settings', 'update'
 // DELIVERY ORDERS
 // ============================================================================
 router.get('/orders', deliveryController.getDeliveryOrders);
+// Assign User (with delivery role) as driver to an order
+router.patch('/orders/:orderId/assign', deliveryController.assignUserDriverToOrder);
 exports.default = router;
 //# sourceMappingURL=delivery.routes.js.map

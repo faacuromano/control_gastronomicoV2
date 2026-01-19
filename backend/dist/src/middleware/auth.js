@@ -17,7 +17,8 @@ const authenticateToken = (req, res, next) => {
     if (!JWT_SECRET) {
         return (0, response_1.sendError)(res, 'CONFIG_ERROR', 'Server configuration error', null, 500);
     }
-    jsonwebtoken_1.default.verify(token, JWT_SECRET, (err, decoded) => {
+    // FIX P1-003: Explicit algorithm to prevent "alg: none" attack
+    jsonwebtoken_1.default.verify(token, JWT_SECRET, { algorithms: ['HS256'] }, (err, decoded) => {
         if (err) {
             return (0, response_1.sendError)(res, 'AUTH_INVALID', 'Invalid token', null, 403);
         }

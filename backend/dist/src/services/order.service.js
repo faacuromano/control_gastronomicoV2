@@ -105,6 +105,10 @@ class OrderService {
             const createData = {
                 orderNumber,
                 channel: data.channel ?? 'POS',
+                // Set fulfillmentType for delivery orders so they appear in dashboard
+                ...(data.channel === 'DELIVERY_APP' || data.deliveryData ? {
+                    fulfillmentType: 'SELF_DELIVERY'
+                } : {}),
                 status: paymentResult.isFullyPaid ? 'CONFIRMED' : 'OPEN',
                 paymentStatus: paymentResult.paymentStatus,
                 subtotal,
@@ -163,7 +167,17 @@ class OrderService {
             // 7. Update Stock
             await this.processStockUpdates(tx, stockUpdates, orderNumber);
             // 8. Update Table Status
+            // FIX RC-003: Verify table is FREE before occupying to prevent race condition
             if (data.tableId) {
+                const table = await tx.table.findUnique({
+                    where: { id: data.tableId }
+                });
+                if (!table) {
+                    throw new Error(`INVALID_TABLE: Table with ID ${data.tableId} not found`);
+                }
+                if (table.status !== 'FREE') {
+                    throw new Error(`TABLE_OCCUPIED: Table "${table.name}" is already occupied (currentOrderId: ${table.currentOrderId})`);
+                }
                 await tx.table.update({
                     where: { id: data.tableId },
                     data: { status: 'OCCUPIED', currentOrderId: order.id }
@@ -315,11 +329,13 @@ class OrderService {
                 },
                 include: { items: { include: { product: true } } }
             });
-            // 5. Update Stock
-            const stockService = new stockMovement_service_1.StockMovementService();
-            for (const update of stockUpdates) {
-                await stockService.register(update.ingredientId, client_1.StockMoveType.SALE, update.quantity, `Order #${order.orderNumber}`, tx);
-            }
+            // 5. Update Stock (if module enabled)
+            await (0, featureFlags_service_1.executeIfEnabled)('enableStock', async () => {
+                const stockService = new stockMovement_service_1.StockMovementService();
+                for (const update of stockUpdates) {
+                    await stockService.register(update.ingredientId, client_1.StockMoveType.SALE, update.quantity, `Order #${order.orderNumber}`, tx);
+                }
+            });
             return updatedOrder;
         });
         // 6. Broadcast to KDS (Outside transaction) - NEW: Notify kitchen of added items

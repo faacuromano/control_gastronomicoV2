@@ -49,6 +49,7 @@ export declare function generateInvoice(data: GenerateInvoiceData): Promise<{
         orderNumber: number;
         channel: import(".prisma/client").$Enums.OrderChannel;
         externalId: string | null;
+        externalPayload: import("@prisma/client/runtime/library").JsonValue | null;
         peopleCount: number;
         status: import(".prisma/client").$Enums.OrderStatus;
         paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
@@ -140,6 +141,7 @@ export declare function getByOrderId(orderId: number): Promise<{
         orderNumber: number;
         channel: import(".prisma/client").$Enums.OrderChannel;
         externalId: string | null;
+        externalPayload: import("@prisma/client/runtime/library").JsonValue | null;
         peopleCount: number;
         status: import(".prisma/client").$Enums.OrderStatus;
         paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
@@ -231,6 +233,7 @@ export declare function getByInvoiceNumber(invoiceNumber: string): Promise<{
         orderNumber: number;
         channel: import(".prisma/client").$Enums.OrderChannel;
         externalId: string | null;
+        externalPayload: import("@prisma/client/runtime/library").JsonValue | null;
         peopleCount: number;
         status: import(".prisma/client").$Enums.OrderStatus;
         paymentStatus: import(".prisma/client").$Enums.PaymentStatus;

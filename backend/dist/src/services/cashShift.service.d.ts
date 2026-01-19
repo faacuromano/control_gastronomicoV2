@@ -27,6 +27,10 @@ export interface ShiftReport {
 }
 export declare class CashShiftService {
     private getBusinessDate;
+    /**
+     * Open a new cash shift for a user.
+     * FIX RC-004: Atomic transaction prevents double shift opening under concurrent requests.
+     */
     openShift(userId: number, startAmount: number): Promise<{
         id: number;
         userId: number;
@@ -36,6 +40,10 @@ export declare class CashShiftService {
         startAmount: Prisma.Decimal;
         endAmount: Prisma.Decimal | null;
     }>;
+    /**
+     * Close the current shift for a user.
+     * FIX RC-005: Atomic transaction prevents double closing under concurrent requests.
+     */
     closeShift(userId: number, endAmount: number): Promise<{
         id: number;
         userId: number;
@@ -48,6 +56,10 @@ export declare class CashShiftService {
     /**
      * Close shift with blind count (arqueo ciego)
      * The cashier counts cash without seeing expected amount first
+     */
+    /**
+     * Close shift with blind count (arqueo ciego).
+     * FIX RC-005: Atomic transaction prevents double closing under concurrent requests.
      */
     closeShiftWithCount(userId: number, countedCash: number): Promise<ShiftReport>;
     /**

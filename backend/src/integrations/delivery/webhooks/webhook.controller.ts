@@ -14,6 +14,7 @@
  */
 
 import type { Request, Response } from 'express';
+import { z } from 'zod';
 import { queueService, QUEUE_NAMES } from '../../../lib/queue';
 import { AdapterFactory } from '../adapters/AdapterFactory';
 import { WebhookEventType, DeliveryPlatformCode } from '../types/normalized.types';
@@ -22,6 +23,14 @@ import { logger } from '../../../utils/logger';
 // ============================================================================
 // TIPOS
 // ============================================================================
+
+// FIX IP-005: Validate webhook payload schema
+const webhookPayloadSchema = z.object({
+  platform: z.string(),
+  signature: z.string().optional(),
+  timestamp: z.union([z.string(), z.number()]).optional(),
+  body: z.any(), // Allow any structure, adapter will validate specifics
+});
 
 interface WebhookJobData {
   platform: DeliveryPlatformCode;
@@ -69,8 +78,29 @@ class WebhookController {
     const platformCode = rawPlatform as DeliveryPlatformCode;
 
     try {
-      // @ts-expect-error - parsedBody viene del HMAC middleware
       const payload = req.parsedBody || req.body;
+
+      // FIX IP-005: Validate basic payload structure before processing
+      const validation = webhookPayloadSchema.safeParse({
+        platform: platformCode,
+        signature: req.headers['x-signature'] || req.headers['x-rappi-signature'],
+        timestamp: req.headers['x-timestamp'],
+        body: payload,
+      });
+
+      if (!validation.success) {
+        logger.warn('Invalid webhook payload structure', {
+          requestId,
+          platform: platformCode,
+          errors: validation.error.issues,
+        });
+        return res.status(400).json({
+          error: 'INVALID_PAYLOAD',
+          message: 'Webhook payload structure is invalid',
+          details: validation.error.issues,
+          requestId,
+        });
+      }
 
       // Parsear con el adapter para obtener tipo de evento
       const adapter = await AdapterFactory.getByPlatformCode(platformCode);

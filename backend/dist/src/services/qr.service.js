@@ -13,14 +13,17 @@ const errors_1 = require("../utils/errors");
 class QrService {
     /**
      * Get QR menu configuration for public display
+     * Includes check for global enableDigital flag
      */
     async getConfig() {
         const config = await prisma_1.prisma.tenantConfig.findFirst();
         if (!config) {
             throw new errors_1.NotFoundError('Configuration not found');
         }
+        // If the global Digital/QR module is disabled, override qrMenuEnabled to false
+        const effectiveEnabled = config.enableDigital && config.qrMenuEnabled;
         return {
-            enabled: config.qrMenuEnabled,
+            enabled: effectiveEnabled,
             mode: config.qrMenuMode,
             selfOrderEnabled: config.qrSelfOrderEnabled,
             pdfUrl: config.qrMenuPdfUrl,
@@ -98,8 +101,14 @@ class QrService {
     /**
      * Validate QR code and get associated data (public endpoint)
      * Also increments scan count
+     * Respects global enableDigital flag
      */
     async validateAndScan(code) {
+        // First check if the global module is enabled
+        const tenantConfig = await prisma_1.prisma.tenantConfig.findFirst();
+        if (!tenantConfig?.enableDigital) {
+            throw new errors_1.NotFoundError('Digital menu module is disabled');
+        }
         const qrCode = await prisma_1.prisma.qrCode.findUnique({
             where: { code },
             include: {

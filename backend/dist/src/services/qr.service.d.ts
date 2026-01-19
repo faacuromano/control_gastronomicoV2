@@ -26,6 +26,7 @@ export interface QrCodeData {
 export declare class QrService {
     /**
      * Get QR menu configuration for public display
+     * Includes check for global enableDigital flag
      */
     getConfig(): Promise<QrMenuConfig>;
     /**
@@ -51,6 +52,7 @@ export declare class QrService {
     /**
      * Validate QR code and get associated data (public endpoint)
      * Also increments scan count
+     * Respects global enableDigital flag
      */
     validateAndScan(code: string): Promise<{
         valid: boolean;

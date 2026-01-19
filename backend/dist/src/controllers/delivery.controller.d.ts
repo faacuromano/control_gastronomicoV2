@@ -20,4 +20,9 @@ export declare const assignDriverToOrder: (req: Request, res: Response, next: im
 export declare const releaseDriver: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const deleteDriver: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const getDeliveryOrders: (req: Request, res: Response, next: import("express").NextFunction) => void;
+/**
+ * Assign a User (with delivery role) as driver to an order.
+ * This uses the driverId field (FK to User), not deliveryDriverId.
+ */
+export declare const assignUserDriverToOrder: (req: Request, res: Response, next: import("express").NextFunction) => void;
 //# sourceMappingURL=delivery.controller.d.ts.map

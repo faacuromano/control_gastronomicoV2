@@ -36,7 +36,8 @@ exports.getPublicMenu = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
             mode: 'STATIC',
             pdfUrl: qr.config.pdfUrl,
             businessName: qr.config.businessName,
-            bannerUrl: qr.config.bannerUrl
+            bannerUrl: qr.config.bannerUrl,
+            theme: qr.config.theme
         });
         return;
     }
@@ -49,6 +50,7 @@ exports.getPublicMenu = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
         selfOrderEnabled: qr.config.selfOrderEnabled,
         tableId: qr.tableId,
         tableName: qr.tableName,
+        theme: qr.config.theme,
         ...menu
     });
 });

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Truck, MapPin, User, CheckCircle } from 'lucide-react';
 import { orderService } from '../../../../services/orderService';
 import type { OrderResponse } from '../../../../services/orderService';
+import type { OrderWithDeliveryDetails } from '../../../../services/orderTypes';
 import { userService } from '../../../../services/userService';
 import type { User as UserType } from '../../../../services/userService';
 
@@ -217,20 +218,13 @@ interface DeliveryCardProps {
 }
 
 const DeliveryCard: React.FC<DeliveryCardProps> = ({ order, drivers, onAssignDriver, onMarkDelivered, onDispatch, isReady, isOnRoute, readOnly }) => {
-    // Assuming backend sends `deliveryAddress` and `client` in OrderResponse. 
-    // Need to verify OrderResponse interface in orderService.ts if it includes these fields.
-    // It currently includes `items`, `orderNumber`, etc. 
-    // It might be missing `deliveryAddress`, `client`, `deliveryNotes`, `driver`.
-    // I should cast or assume backend sends it (it likely does if I updated controller to include relations).
-    // Let's assume standard `any` access or update interface later.
-    
-    // Safety check for delivery props which might not be typed yet
-    const anyOrder = order as any; 
-    const address = anyOrder.deliveryAddress || anyOrder.client?.address || 'Sin dirección';
-    const clientName = anyOrder.client?.name || 'Cliente Ocasional';
-    const clientPhone = anyOrder.client?.phone;
-    const notes = anyOrder.deliveryNotes;
-    const driverId = anyOrder.driverId;
+    // FIX NL-002: Use properly typed interface instead of 'as any'
+    const deliveryOrder = order as OrderWithDeliveryDetails;
+    const address = deliveryOrder.deliveryAddress || deliveryOrder.client?.address || 'Sin dirección';
+    const clientName = deliveryOrder.client?.name || 'Cliente Ocasional';
+    const clientPhone = deliveryOrder.client?.phone;
+    const notes = deliveryOrder.deliveryNotes;
+    const driverId = deliveryOrder.driverId;
 
     return (
         <div className={`bg-white dark:bg-slate-800 border ${isReady ? 'border-yellow-400 shadow-md ring-1 ring-yellow-400' : 'border-slate-200 dark:border-700'} rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow`}>
@@ -272,7 +266,7 @@ const DeliveryCard: React.FC<DeliveryCardProps> = ({ order, drivers, onAssignDri
                              <div className="flex flex-col gap-2">
                                 <p className="text-xs flex items-center gap-1 text-purple-600 font-medium">
                                     <Truck className="w-3 h-3" />
-                                    {anyOrder.driver?.name || "Repartidor asignado"}
+                                    {deliveryOrder.driver?.name || "Repartidor asignado"}
                                 </p>
                                 <button 
                                     onClick={() => onMarkDelivered && onMarkDelivered(order.id)}
@@ -288,7 +282,7 @@ const DeliveryCard: React.FC<DeliveryCardProps> = ({ order, drivers, onAssignDri
                             <div className="flex flex-col gap-2">
                                 <p className="text-xs flex items-center gap-1 text-yellow-600 font-medium">
                                     <Truck className="w-3 h-3" />
-                                    {anyOrder.driver?.name || "Repartidor asignado"}
+                                    {deliveryOrder.driver?.name || "Repartidor asignado"}
                                 </p>
                                 <button 
                                     onClick={() => onDispatch && onDispatch(order.id)}

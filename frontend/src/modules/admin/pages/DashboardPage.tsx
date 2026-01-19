@@ -25,9 +25,17 @@ const PAYMENT_LABELS: Record<string, string> = {
 
 type DatePreset = 'today' | 'week' | 'month' | 'custom';
 
+// FIX DS-002: Use local timezone for date formatting, not UTC
+const formatLocalDate = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const getDateRange = (preset: DatePreset): { startDate: string; endDate: string } | undefined => {
     const now = new Date();
-    const end = now.toISOString().split('T')[0];
+    const end = formatLocalDate(now);
     
     switch (preset) {
         case 'today':
@@ -35,12 +43,12 @@ const getDateRange = (preset: DatePreset): { startDate: string; endDate: string 
         case 'week': {
             const weekAgo = new Date(now);
             weekAgo.setDate(weekAgo.getDate() - 7);
-            return { startDate: weekAgo.toISOString().split('T')[0]!, endDate: end! };
+            return { startDate: formatLocalDate(weekAgo), endDate: end };
         }
         case 'month': {
             const monthAgo = new Date(now);
             monthAgo.setMonth(monthAgo.getMonth() - 1);
-            return { startDate: monthAgo.toISOString().split('T')[0]!, endDate: end! };
+            return { startDate: formatLocalDate(monthAgo), endDate: end };
         }
         default:
             return undefined;
@@ -93,7 +101,11 @@ export const DashboardPage: React.FC = () => {
     };
 
     const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`;
-    const formatTime = (date: string) => new Date(date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    // FIX NL-007: Defensive guard against null/undefined dates
+    const formatTime = (date: string | null | undefined) => {
+        if (!date) return '';
+        return new Date(date).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    };
     const formatDate = (date: string) => new Date(date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
 
     if (loading) {

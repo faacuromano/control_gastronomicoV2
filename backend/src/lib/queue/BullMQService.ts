@@ -24,11 +24,17 @@ import type { IQueueService, JobOptions, JobResult, JobHandler, DEFAULT_RETRY_CO
 /**
  * Configuración de conexión Redis.
  * En producción, usar variables de entorno.
+ * 
+ * FIX: Redis AUTH - Add authentication configuration
  */
 const REDIS_CONFIG = {
   host: process.env.REDIS_HOST || 'localhost',
   port: parseInt(process.env.REDIS_PORT || '6379', 10),
+  ...(process.env.REDIS_PASSWORD && { password: process.env.REDIS_PASSWORD }), // Only add if defined
   maxRetriesPerRequest: null,  // Requerido por BullMQ
+  ...(process.env.NODE_ENV === 'production' && { 
+    tls: {} // Enable TLS in production
+  }),
 };
 
 /**

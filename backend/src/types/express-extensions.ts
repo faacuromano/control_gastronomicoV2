@@ -60,6 +60,12 @@ declare global {
              * Will be `undefined` if request is not authenticated.
              */
             user?: AuthenticatedUser;
+            
+            /**
+             * Parsed JSON body from webhook HMAC middleware.
+             * Set after signature validation in hmac.middleware.ts.
+             */
+            parsedBody?: unknown;
         }
     }
 }

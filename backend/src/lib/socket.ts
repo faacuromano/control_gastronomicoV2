@@ -6,12 +6,13 @@ import { logger } from '../utils/logger';
 let io: Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any> | undefined;
 
 export const initSocket = (httpServer: HttpServer) => {
-  // Use same CORS configuration as Express app
-  const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173'];
+  // FIX: Socket.io CORS Lockdown - Use environment-configured origins
+  const allowedOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()) || 
+    (process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173']);
   
   io = new Server(httpServer, {
     cors: {
-      origin: allowedOrigins,
+      origin: allowedOrigins.length > 0 ? allowedOrigins : false,
       methods: ["GET", "POST"],
       credentials: true
     }

@@ -4,7 +4,7 @@
  * Provides typed errors for consistent error handling
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ServiceUnavailableError = exports.InsufficientStockError = exports.InternalError = exports.RateLimitError = exports.ConflictError = exports.NotFoundError = exports.ForbiddenError = exports.UnauthorizedError = exports.ValidationError = exports.ApiError = void 0;
+exports.ServiceUnavailableError = exports.InsufficientStockError = exports.InternalError = exports.RateLimitError = exports.ConflictError = exports.NotFoundError = exports.ForbiddenError = exports.UnauthorizedError = exports.BadRequestError = exports.ValidationError = exports.ApiError = void 0;
 /**
  * Base class for API errors
  */
@@ -32,6 +32,16 @@ class ValidationError extends ApiError {
     }
 }
 exports.ValidationError = ValidationError;
+/**
+ * 400 Bad Request - Generic bad request error
+ */
+class BadRequestError extends ApiError {
+    constructor(message = 'Bad request', details) {
+        super('BAD_REQUEST', message, 400, details);
+        this.name = 'BadRequestError';
+    }
+}
+exports.BadRequestError = BadRequestError;
 /**
  * 401 Unauthorized - Authentication required or failed
  */

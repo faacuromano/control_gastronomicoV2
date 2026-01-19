@@ -35,10 +35,10 @@ class DeliveryService {
             data: {
                 code: data.code.toUpperCase(),
                 name: data.name,
-                apiKey: data.apiKey,
-                webhookSecret: data.webhookSecret,
-                storeId: data.storeId,
-                commissionRate: data.commissionRate
+                apiKey: data.apiKey ?? null,
+                webhookSecret: data.webhookSecret ?? null,
+                storeId: data.storeId ?? null,
+                commissionRate: data.commissionRate ?? null
             }
         });
     }
@@ -97,9 +97,9 @@ class DeliveryService {
             data: {
                 name: data.name,
                 phone: data.phone,
-                email: data.email,
-                vehicleType: data.vehicleType || 'MOTORCYCLE',
-                licensePlate: data.licensePlate
+                email: data.email ?? null,
+                vehicleType: data.vehicleType ?? 'MOTORCYCLE',
+                licensePlate: data.licensePlate ?? null
             }
         });
     }
@@ -156,17 +156,32 @@ class DeliveryService {
     // ORDER DELIVERY HELPERS
     // ========================================================================
     async getDeliveryOrders(status) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
         return prisma_1.prisma.order.findMany({
             where: {
-                fulfillmentType: {
-                    in: ['PLATFORM_DELIVERY', 'SELF_DELIVERY']
-                },
-                ...(status ? { status: status } : {})
+                // Include orders with fulfillmentType OR channel (backward compatibility)
+                OR: [
+                    { fulfillmentType: { in: ['PLATFORM_DELIVERY', 'SELF_DELIVERY'] } },
+                    { channel: 'DELIVERY_APP' },
+                    { deliveryAddress: { not: null } }
+                ],
+                // Filter by status if provided, otherwise show today's active + delivered
+                ...(status ? { status: status } : {
+                    OR: [
+                        { status: { notIn: ['DELIVERED', 'CANCELLED'] } },
+                        {
+                            status: 'DELIVERED',
+                            closedAt: { gte: today }
+                        }
+                    ]
+                }),
             },
             include: {
                 client: true,
                 deliveryPlatform: true,
                 deliveryDriver: true,
+                driver: true, // Include User driver for POS delivery orders
                 items: {
                     include: {
                         product: true

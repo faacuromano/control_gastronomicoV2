@@ -75,6 +75,7 @@ export declare class OrderDeliveryService {
         orderNumber: number;
         channel: import(".prisma/client").$Enums.OrderChannel;
         externalId: string | null;
+        externalPayload: import("@prisma/client/runtime/library").JsonValue | null;
         peopleCount: number;
         status: import(".prisma/client").$Enums.OrderStatus;
         paymentStatus: import(".prisma/client").$Enums.PaymentStatus;
@@ -174,6 +175,7 @@ export declare class OrderDeliveryService {
         orderNumber: number;
         channel: import(".prisma/client").$Enums.OrderChannel;
         externalId: string | null;
+        externalPayload: import("@prisma/client/runtime/library").JsonValue | null;
         peopleCount: number;
         status: import(".prisma/client").$Enums.OrderStatus;
         paymentStatus: import(".prisma/client").$Enums.PaymentStatus;

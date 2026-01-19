@@ -5,11 +5,12 @@ const socket_io_1 = require("socket.io");
 const logger_1 = require("../utils/logger");
 let io;
 const initSocket = (httpServer) => {
-    // Use same CORS configuration as Express app
-    const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173'];
+    // FIX: Socket.io CORS Lockdown - Use environment-configured origins
+    const allowedOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()) ||
+        (process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173']);
     io = new socket_io_1.Server(httpServer, {
         cors: {
-            origin: allowedOrigins,
+            origin: allowedOrigins.length > 0 ? allowedOrigins : false,
             methods: ["GET", "POST"],
             credentials: true
         }

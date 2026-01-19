@@ -111,9 +111,30 @@ export function validateHmac(platformCode: string) {
         });
       }
 
-      // 5. Parsear body para uso posterior
-      // @ts-expect-error - Agregamos parsed body al request
-      req.parsedBody = JSON.parse(rawBody.toString('utf-8'));
+      // 5. Parsear body para uso posterior con protección contra JSON bombing (IP-003)
+      const rawString = rawBody.toString('utf-8');
+      
+      // FIX IP-003: Validate JSON depth before parsing to prevent DoS
+      const MAX_JSON_DEPTH = 10;
+      let depth = 0;
+      let maxDepthReached = 0;
+      for (const char of rawString) {
+        if (char === '{' || char === '[') {
+          depth++;
+          if (depth > maxDepthReached) maxDepthReached = depth;
+          if (depth > MAX_JSON_DEPTH) {
+            logger.warn('JSON depth limit exceeded', { platform: platformCode, depth });
+            return res.status(400).json({
+              error: 'PAYLOAD_TOO_COMPLEX',
+              message: 'JSON nesting depth exceeds limit',
+            });
+          }
+        } else if (char === '}' || char === ']') {
+          depth--;
+        }
+      }
+      
+      req.parsedBody = JSON.parse(rawString);
 
       // 6. Log de éxito
       const duration = Date.now() - startTime;
@@ -189,10 +210,8 @@ export function skipHmacInDevelopment(
     
     // Parsear body si es buffer
     if (Buffer.isBuffer(req.body)) {
-      // @ts-expect-error
       req.parsedBody = JSON.parse(req.body.toString('utf-8'));
     } else {
-      // @ts-expect-error
       req.parsedBody = req.body;
     }
     

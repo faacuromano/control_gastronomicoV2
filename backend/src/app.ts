@@ -25,6 +25,11 @@ const app = express();
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// FIX P1-002: Sanitize body to prevent prototype pollution
+import { sanitizeBody } from './middleware/sanitize-body.middleware';
+app.use(sanitizeBody); // CRITICAL: Apply AFTER body parsers, BEFORE routes
+
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(helmet());
 app.use(morgan('dev'));

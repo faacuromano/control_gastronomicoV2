@@ -23,6 +23,9 @@ const app = (0, express_1.default)();
 // Middleware
 app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
+// FIX P1-002: Sanitize body to prevent prototype pollution
+const sanitize_body_middleware_1 = require("./middleware/sanitize-body.middleware");
+app.use(sanitize_body_middleware_1.sanitizeBody); // CRITICAL: Apply AFTER body parsers, BEFORE routes
 app.use((0, cors_1.default)({ origin: allowedOrigins, credentials: true }));
 app.use((0, helmet_1.default)());
 app.use((0, morgan_1.default)('dev'));
@@ -80,6 +83,10 @@ app.use('/api/v1/sync', sync_routes_1.default);
 const qr_routes_1 = require("./routes/qr.routes");
 app.use('/api/v1/qr', qr_routes_1.qrPublicRouter); // Public: /api/v1/qr/:code
 app.use('/api/v1/admin/qr', qr_routes_1.qrAdminRouter); // Admin: /api/v1/admin/qr/...
+// Delivery Platform Webhooks (Rappi, Glovo, PedidosYa)
+// NOTA: Estas rutas usan express.raw() internamente para validación HMAC
+const delivery_1 = require("./integrations/delivery");
+app.use('/api/v1/webhooks', delivery_1.webhookRoutes);
 // Health Check
 app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });

@@ -84,6 +84,14 @@ exports.closeShift = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
 exports.getAllShifts = (0, asyncHandler_1.asyncHandler)(async (req, res) => {
     const fromDate = req.query.fromDate;
     const userId = req.query.userId ? Number(req.query.userId) : undefined;
+    // FIX IP-006: Validate ISO 8601 date format
+    if (fromDate) {
+        const dateSchema = zod_1.z.string().datetime();
+        const validation = dateSchema.safeParse(fromDate);
+        if (!validation.success) {
+            throw new errors_1.ValidationError(`Invalid date format for fromDate. Expected ISO 8601 (YYYY-MM-DDTHH:mm:ss.sssZ), got: ${fromDate}`);
+        }
+    }
     // Build filters object with only defined values
     const filters = {};
     if (fromDate)

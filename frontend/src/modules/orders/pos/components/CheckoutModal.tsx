@@ -43,7 +43,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
   
   // State for backend-fetched total (used in tableMode)
   const [backendTotal, setBackendTotal] = useState<number | null>(null);
-  const [, setLoadingTotal] = useState(false);
   
   // Use backend total if available (tableMode), otherwise fallback to prop/store
   const total = backendTotal !== null ? backendTotal : (totalAmount !== undefined ? totalAmount : storeTotal);
@@ -109,78 +108,62 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
           setShowDiscountSection(false);
           setCachedOrder(null); // Reset cached order
           
-       // Load payment methods from API
-          loadPaymentMethods();
+          // FIX WF-001: Parallel async loads instead of sequential
+          const initializeModal = async () => {
+              try {
+                  // Primary parallel loads
+                  const [methods, allPrinters, config] = await Promise.all([
+                      paymentMethodService.getActive().catch(() => [{ id: 0, code: 'CASH', name: 'Efectivo', icon: 'Banknote', isActive: true, sortOrder: 1 }]),
+                      printerService.getAll().catch(() => []),
+                      loyaltyService.getConfig().catch(() => null),
+                  ]);
+                  
+                  setPaymentMethods(methods.sort((a, b) => a.sortOrder - b.sortOrder));
+                  if (methods.length > 0) {
+                      setCurrentMethod(methods[0].code);
+                  }
+                  setPrinters(allPrinters);
+                  if (config) setLoyaltyConfig(config);
+                  
+                  // Secondary parallel loads (based on props)
+                  const secondaryLoads: Promise<void>[] = [];
+                  
+                  if (selectedClientId) {
+                      secondaryLoads.push(
+                          loyaltyService.getBalance(selectedClientId)
+                              .then(balance => setLoyaltyBalance(balance))
+                              .catch(err => console.error('Failed to load loyalty balance:', err))
+                      );
+                  }
+                  
+                  if (tableMode && tableId) {
+                      secondaryLoads.push(
+                          orderService.getOrderByTable(tableId)
+                              .then(order => {
+                                  if (order) {
+                                      setBackendTotal(Number(order.total));
+                                      setCurrentOrderId(order.id);
+                                      setCachedOrder(order);
+                                  }
+                              })
+                              .catch(err => console.error('Failed to load order total:', err))
+                      );
+                  }
+                  
+                  if (secondaryLoads.length > 0) {
+                      await Promise.all(secondaryLoads);
+                  }
+              } catch (err) {
+                  console.error('CheckoutModal initialization failed:', err);
+              }
+          };
           
-          // Load printers
-          loadPrinters();
-          
-          // Load loyalty config
-          loadLoyaltyConfig();
-          
-          // Load loyalty balance if client selected
-          if (selectedClientId) {
-              loadLoyaltyBalance(selectedClientId);
-          }
-          
-          // In tableMode, fetch fresh order total from backend
-          if (tableMode && tableId) {
-              loadOrderTotal(tableId);
-          }
+          initializeModal();
       }
       prevIsOpenRef.current = isOpen;
   }, [isOpen, tableMode, tableId, selectedClientId]);
 
-  const loadOrderTotal = async (tblId: number) => {
-      setLoadingTotal(true);
-      try {
-          const order = await orderService.getOrderByTable(tblId);
-          if (order) {
-              const orderTotal = Number(order.total);
-              console.log('[CheckoutModal] Fetched fresh order total:', orderTotal);
-              setBackendTotal(orderTotal);
-              setCurrentOrderId(order.id); // Save orderId for printing
-              setCachedOrder(order); // Cache full order for print after close
-          }
-      } catch (err) {
-          console.error('Failed to load order total:', err);
-      } finally {
-          setLoadingTotal(false);
-      }
-  };
-
-  const loadPaymentMethods = async () => {
-      try {
-          const methods = await paymentMethodService.getActive();
-          setPaymentMethods(methods.sort((a, b) => a.sortOrder - b.sortOrder));
-          // Set default payment method to first available
-          if (methods.length > 0) {
-              setCurrentMethod(methods[0].code);
-          }
-      } catch (err) {
-          console.error('Failed to load payment methods:', err);
-          // Fallback to CASH if API fails
-          setPaymentMethods([{ id: 0, code: 'CASH', name: 'Efectivo', icon: 'Banknote', isActive: true, sortOrder: 1 }]);
-      }
-  };
-
-  const loadLoyaltyConfig = async () => {
-      try {
-          const config = await loyaltyService.getConfig();
-          setLoyaltyConfig(config);
-      } catch (err) {
-          console.error('Failed to load loyalty config:', err);
-      }
-  };
-
-  const loadLoyaltyBalance = async (clientId: number) => {
-      try {
-          const balance = await loyaltyService.getBalance(clientId);
-          setLoyaltyBalance(balance);
-      } catch (err) {
-          console.error('Failed to load loyalty balance:', err);
-      }
-  };
+  // Helper functions removed - now using Promise.all in useEffect for parallel loading
 
   const handleRedeemPoints = () => {
       if (!loyaltyBalance || !loyaltyConfig || pointsToRedeem <= 0) return;
@@ -394,14 +377,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
       }
   };
   
-  const loadPrinters = async () => {
-      try {
-          const allPrinters = await printerService.getAll();
-          setPrinters(allPrinters);
-      } catch (error) {
-          console.error('Failed to load printers:', error);
-      }
-  };
+
 
   const handlePrintPreAccount = async () => {
       if (!currentOrderId || printers.length === 0) {
