@@ -18,7 +18,7 @@ const PendingOrderItemSchema = zod_1.z.object({
     notes: zod_1.z.string().optional(),
     modifiers: zod_1.z.array(zod_1.z.object({
         id: zod_1.z.number().int().positive(),
-        price: zod_1.z.number()
+        price: zod_1.z.coerce.number() // Accept strings and convert to numbers (e.g., "1.5" → 1.5)
     })).optional(),
     removedIngredientIds: zod_1.z.array(zod_1.z.number().int()).optional()
 });

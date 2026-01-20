@@ -246,7 +246,8 @@ export const POSPage: React.FC = () => {
               channel,
               tableId: tableId ? Number(tableId) : undefined,
               clientId: selectedClient?.id,
-              deliveryData: currentPendingData || undefined
+              // FIX: Only send deliveryData if it actually has an address
+              ...(currentPendingData?.address ? { deliveryData: currentPendingData } : {})
         };
 
         const order = await orderService.create(createPayload);

@@ -58,8 +58,9 @@ class OrderService {
             // 1. Validate Products & Calculate Totals (stock validation if enabled)
             const { itemDataList, stockUpdates, subtotal } = await this.validateAndCalculateItems(tx, data.items, stockEnabled);
             const total = subtotal; // Apply discounts here if needed
-            // 2. Generate order number
-            const orderNumber = await orderNumber_service_1.orderNumberService.getNextOrderNumber(tx);
+            // 2. Generate order number and get atomic businessDate
+            // FIX P2002: Use the businessDate returned by getNextOrderNumber to ensure consistency
+            const { orderNumber, businessDate } = await orderNumber_service_1.orderNumberService.getNextOrderNumber(tx);
             // 3. Validate active shift
             if (!data.serverId) {
                 throw new Error('Server ID is required to create an order');
@@ -105,15 +106,16 @@ class OrderService {
             const createData = {
                 orderNumber,
                 channel: data.channel ?? 'POS',
-                // Set fulfillmentType for delivery orders so they appear in dashboard
-                ...(data.channel === 'DELIVERY_APP' || data.deliveryData ? {
+                // FIX: Only set fulfillmentType for actual delivery orders
+                // A POS order should NOT appear in delivery dashboard
+                ...(data.channel === 'DELIVERY_APP' || (data.deliveryData?.address) ? {
                     fulfillmentType: 'SELF_DELIVERY'
                 } : {}),
                 status: paymentResult.isFullyPaid ? 'CONFIRMED' : 'OPEN',
                 paymentStatus: paymentResult.paymentStatus,
                 subtotal,
                 total,
-                businessDate: new Date(),
+                businessDate, // FIX P2002: Use the businessDate from getNextOrderNumber for atomic consistency
                 items: {
                     create: itemDataList.map(item => ({
                         product: { connect: { id: item.productId } },

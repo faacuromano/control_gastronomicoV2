@@ -97,6 +97,7 @@ export declare class OrderService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -120,7 +121,6 @@ export declare class OrderService {
         deliveryFee: Prisma.Decimal | null;
         platformCommission: Prisma.Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     }) | null>;
     /**
      * Create a new order with items and optional payments.
@@ -140,6 +140,7 @@ export declare class OrderService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -163,7 +164,6 @@ export declare class OrderService {
         deliveryFee: Prisma.Decimal | null;
         platformCommission: Prisma.Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     }>;
     /**
      * Assign a driver to an order.
@@ -228,6 +228,7 @@ export declare class OrderService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -251,7 +252,6 @@ export declare class OrderService {
         deliveryFee: Prisma.Decimal | null;
         platformCommission: Prisma.Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     }>;
     /**
      * Get active delivery orders.
@@ -328,6 +328,7 @@ export declare class OrderService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -351,7 +352,6 @@ export declare class OrderService {
         deliveryFee: Prisma.Decimal | null;
         platformCommission: Prisma.Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     })[]>;
     /**
      * Update individual order item status.
@@ -363,6 +363,7 @@ export declare class OrderService {
             createdAt: Date;
             updatedAt: Date;
             orderNumber: number;
+            businessDate: Date;
             status: import(".prisma/client").$Enums.OrderStatus;
             clientId: number | null;
             channel: import(".prisma/client").$Enums.OrderChannel;
@@ -386,7 +387,6 @@ export declare class OrderService {
             deliveryFee: Prisma.Decimal | null;
             platformCommission: Prisma.Decimal | null;
             closedAt: Date | null;
-            businessDate: Date;
         };
     } & {
         id: number;
@@ -482,6 +482,7 @@ export declare class OrderService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -505,7 +506,6 @@ export declare class OrderService {
         deliveryFee: Prisma.Decimal | null;
         platformCommission: Prisma.Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     }) | null>;
     /**
      * Validate products and calculate order totals.
@@ -576,6 +576,7 @@ export declare class OrderService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -599,7 +600,6 @@ export declare class OrderService {
         deliveryFee: Prisma.Decimal | null;
         platformCommission: Prisma.Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     }) | null>;
     addItemsToOrder(orderId: number, newItems: OrderItemInput[], serverId: number): Promise<{
         items: ({
@@ -630,6 +630,7 @@ export declare class OrderService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -653,7 +654,6 @@ export declare class OrderService {
         deliveryFee: Prisma.Decimal | null;
         platformCommission: Prisma.Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     }>;
     getRecentOrders(): Promise<({
         items: ({
@@ -684,6 +684,7 @@ export declare class OrderService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -707,7 +708,6 @@ export declare class OrderService {
         deliveryFee: Prisma.Decimal | null;
         platformCommission: Prisma.Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     })[]>;
     /**
      * Get active orders for KDS (Kitchen Display System).
@@ -769,6 +769,7 @@ export declare class OrderService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -792,7 +793,6 @@ export declare class OrderService {
         deliveryFee: Prisma.Decimal | null;
         platformCommission: Prisma.Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     })[]>;
     /**
      * Update order status with state machine validation.
@@ -854,6 +854,7 @@ export declare class OrderService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -877,7 +878,6 @@ export declare class OrderService {
         deliveryFee: Prisma.Decimal | null;
         platformCommission: Prisma.Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     }>;
 }
 export declare const orderService: OrderService;

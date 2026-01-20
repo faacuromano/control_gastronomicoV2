@@ -219,12 +219,8 @@ class DeliveryService {
 
         return prisma.order.findMany({
             where: {
-                // Include orders with fulfillmentType OR channel (backward compatibility)
-                OR: [
-                    { fulfillmentType: { in: ['PLATFORM_DELIVERY', 'SELF_DELIVERY'] } },
-                    { channel: 'DELIVERY_APP' },
-                    { deliveryAddress: { not: null } }
-                ],
+                // FIX: Only show delivery orders (exclude POS and DINE_IN)
+                fulfillmentType: { in: ['PLATFORM_DELIVERY', 'SELF_DELIVERY', 'TAKEAWAY'] },
                 // Filter by status if provided, otherwise show today's active + delivered
                 ...(status ? { status: status as any } : {
                     OR: [

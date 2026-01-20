@@ -20,6 +20,7 @@ import { kdsService } from './kds.service';
 import { executeIfEnabled, isFeatureEnabled } from './featureFlags.service';
 import { LoyaltyService } from './loyalty.service';
 import { logger } from '../utils/logger';
+import { getBusinessDate } from '../utils/businessDate';
 
 // Extracted specialized services
 import { orderKitchenService } from './orderKitchen.service';
@@ -82,8 +83,9 @@ export class OrderService {
 
       const total = subtotal; // Apply discounts here if needed
 
-      // 2. Generate order number
-      const orderNumber = await orderNumberService.getNextOrderNumber(tx);
+      // 2. Generate order number and get atomic businessDate
+      // FIX P2002: Use the businessDate returned by getNextOrderNumber to ensure consistency
+      const { orderNumber, businessDate } = await orderNumberService.getNextOrderNumber(tx);
 
       // 3. Validate active shift
       if (!data.serverId) {
@@ -142,15 +144,16 @@ export class OrderService {
       const createData: OrderCreateData = {
         orderNumber,
         channel: data.channel ?? 'POS',
-        // Set fulfillmentType for delivery orders so they appear in dashboard
-        ...(data.channel === 'DELIVERY_APP' || data.deliveryData ? {
+        // FIX: Only set fulfillmentType for actual delivery orders
+        // A POS order should NOT appear in delivery dashboard
+        ...(data.channel === 'DELIVERY_APP' || (data.deliveryData?.address) ? {
           fulfillmentType: 'SELF_DELIVERY'
         } : {}),
         status: paymentResult.isFullyPaid ? 'CONFIRMED' : 'OPEN',
         paymentStatus: paymentResult.paymentStatus,
         subtotal,
         total,
-        businessDate: new Date(),
+        businessDate, // FIX P2002: Use the businessDate from getNextOrderNumber for atomic consistency
         items: {
           create: itemDataList.map(item => ({
             product: { connect: { id: item.productId } },

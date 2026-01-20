@@ -1,22 +1,24 @@
 # =============================================================================
-# PentiumPOS Frontend - Docker Image
+# Frontend - Dockerfile para Desarrollo
 # =============================================================================
-# For development with docker-compose
+# Versión simplificada para desarrollo rápido
 # =============================================================================
 
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies
+# Copy package files
 COPY package*.json ./
+
+# Install dependencies
 RUN npm ci
 
-# Copy source (will be mounted as volume in dev)
+# Copy application files
 COPY . .
 
 # Expose Vite dev server port
 EXPOSE 5173
 
-# Vite needs --host to be accessible from outside container
+# Start Vite dev server (--host para acceder desde fuera del contenedor)
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

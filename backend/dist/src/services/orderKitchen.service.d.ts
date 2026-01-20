@@ -20,6 +20,7 @@ export declare class OrderKitchenService {
             createdAt: Date;
             updatedAt: Date;
             orderNumber: number;
+            businessDate: Date;
             status: import(".prisma/client").$Enums.OrderStatus;
             clientId: number | null;
             channel: import(".prisma/client").$Enums.OrderChannel;
@@ -43,7 +44,6 @@ export declare class OrderKitchenService {
             deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
             platformCommission: import("@prisma/client/runtime/library").Decimal | null;
             closedAt: Date | null;
-            businessDate: Date;
         };
     } & {
         id: number;
@@ -139,6 +139,7 @@ export declare class OrderKitchenService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -162,7 +163,6 @@ export declare class OrderKitchenService {
         deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
         platformCommission: import("@prisma/client/runtime/library").Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     }) | null>;
     /**
      * Get active orders for KDS (Kitchen Display System).
@@ -225,6 +225,7 @@ export declare class OrderKitchenService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -248,7 +249,6 @@ export declare class OrderKitchenService {
         deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
         platformCommission: import("@prisma/client/runtime/library").Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     })[]>;
     /**
      * Helper to get order with full relations for broadcasting.

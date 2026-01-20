@@ -1,0 +1,182 @@
+version: "3.8"
+
+services:
+  # MySQL 8.0 - Simulates Standard VPS Database (1 vCPU, 1.5GB RAM)
+  mysql-production-sim:
+    image: mysql:8.0
+    container_name: gastro-mysql-sim
+    restart: unless-stopped
+
+    # HARDWARE CONSTRAINTS (Standard Business VPS)
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0" # Single core (shared hosting)
+          memory: 1536M # 1.5 GB strict limit
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password_production_sim
+      MYSQL_DATABASE: control_gastronomico
+      MYSQL_USER: gastro_user
+      MYSQL_PASSWORD: gastro_pass_2026
+      TZ: America/Argentina/Buenos_Aires
+
+    volumes:
+      # Persist database data
+      - mysql-data-sim:/var/lib/mysql
+      # Mount restrictive MySQL configuration
+      - ./mysql-config/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+      # Mount logs for debugging
+      - ./mysql-logs:/var/log/mysql
+
+    ports:
+      - "3306:3306"
+
+    networks:
+      - production-sim-network
+
+    # Health check
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-proot_password_production_sim",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Node.js Application - Simulates Standard VPS App Server (1 vCPU, 1GB RAM)
+  app-production-sim:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gastro-app-sim
+    restart: unless-stopped
+
+    # HARDWARE CONSTRAINTS (Standard Business VPS)
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0" # Single core (shared hosting)
+          memory: 1024M # 1 GB strict limit
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Connection string: max_connections(150) - reserve(10) - margin(40) = 100
+      DATABASE_URL: mysql://gastro_user:gastro_pass_2026@mysql-production-sim:3306/control_gastronomico?connection_limit=100&pool_timeout=10
+      TZ: America/Argentina/Buenos_Aires
+
+    ports:
+      - "3000:3000"
+
+    depends_on:
+      mysql-production-sim:
+        condition: service_healthy
+
+    networks:
+      - production-sim-network
+
+    volumes:
+      # Mount application code (for development)
+      - ./src:/app/src:ro
+      - ./prisma:/app/prisma:ro
+      # Logs
+      - ./app-logs:/app/logs
+
+  # ---------------------------------------------------------------------------
+  # Redis (Production Simulation - Queue Infrastructure)
+  # ---------------------------------------------------------------------------
+  redis-production-sim:
+    image: redis:7-alpine
+    container_name: gastro-redis-sim
+    restart: unless-stopped
+
+    # HARDWARE CONSTRAINTS (Minimal for queue)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - redis-data-sim:/data
+
+    networks:
+      - production-sim-network
+
+    command: redis-server --appendonly yes --maxmemory 200mb --maxmemory-policy allkeys-lru
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Frontend (Production Simulation)
+  # ---------------------------------------------------------------------------
+  frontend-production-sim:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: gastro-frontend-sim
+    restart: unless-stopped
+
+    # HARDWARE CONSTRAINTS
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+    environment:
+      VITE_API_URL: http://localhost:3000/api/v1
+      VITE_WS_URL: ws://localhost:3000
+
+    ports:
+      - "5173:5173"
+
+    depends_on:
+      app-production-sim:
+        condition: service_started
+
+    networks:
+      - production-sim-network
+
+    volumes:
+      - ../frontend/src:/app/src:ro
+      - ../frontend/public:/app/public:ro
+
+networks:
+  production-sim-network:
+    driver: bridge
+
+volumes:
+  mysql-data-sim:
+    driver: local
+  redis-data-sim:
+    driver: local

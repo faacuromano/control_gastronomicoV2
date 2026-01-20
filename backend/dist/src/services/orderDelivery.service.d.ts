@@ -73,6 +73,7 @@ export declare class OrderDeliveryService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -96,7 +97,6 @@ export declare class OrderDeliveryService {
         deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
         platformCommission: import("@prisma/client/runtime/library").Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     }>;
     /**
      * Get active delivery orders (including delivered orders from today).
@@ -173,6 +173,7 @@ export declare class OrderDeliveryService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -196,7 +197,6 @@ export declare class OrderDeliveryService {
         deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
         platformCommission: import("@prisma/client/runtime/library").Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     })[]>;
 }
 export declare const orderDeliveryService: OrderDeliveryService;

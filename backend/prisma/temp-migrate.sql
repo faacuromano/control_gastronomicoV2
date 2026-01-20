@@ -1,0 +1,2 @@
+ALTER TABLE `OrderSequence`
+  MODIFY COLUMN `sequenceKey` VARCHAR(12) NOT NULL;

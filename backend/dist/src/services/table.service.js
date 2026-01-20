@@ -199,12 +199,10 @@ class TableService {
             });
             if (!shift)
                 throw new errors_1.ConflictError('No hay turno de caja abierto. Abre un turno primero.');
-            // 3. Get next order number SAFETY using OrderNumberService
-            // Import dynamically or pass tx if service is adapted, but here we use the service instance logic
-            // We need to import the service at the top of file
+            // 3. Get next order number and atomic businessDate using OrderNumberService
+            // FIX P2002: Use the businessDate returned by getNextOrderNumber for consistency
             const { orderNumberService } = await Promise.resolve().then(() => __importStar(require('./orderNumber.service')));
-            // Cast tx to the type expected by getNextOrderNumber if needed, or rely on compatibility
-            const orderNumber = await orderNumberService.getNextOrderNumber(tx);
+            const { orderNumber, businessDate } = await orderNumberService.getNextOrderNumber(tx);
             // 4. Create an empty order (no items)
             const order = await tx.order.create({
                 data: {
@@ -216,7 +214,7 @@ class TableService {
                     paymentStatus: 'PENDING',
                     subtotal: 0,
                     total: 0,
-                    businessDate: new Date()
+                    businessDate // FIX P2002: Use atomic businessDate from getNextOrderNumber
                 }
             });
             // 5. Update table to OCCUPIED

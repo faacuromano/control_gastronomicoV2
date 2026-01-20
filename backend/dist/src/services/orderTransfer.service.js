@@ -13,6 +13,7 @@ const client_1 = require("@prisma/client");
 const audit_service_1 = require("./audit.service");
 const logger_1 = require("../utils/logger");
 const errors_1 = require("../utils/errors");
+const businessDate_1 = require("../utils/businessDate");
 /**
  * Service for transferring order items between tables.
  */
@@ -90,7 +91,7 @@ class OrderTransferService {
                         paymentStatus: 'PENDING',
                         subtotal: 0,
                         total: 0,
-                        businessDate: new Date(),
+                        businessDate: (0, businessDate_1.getBusinessDate)(), // FIX P1-001: Use 6 AM cutoff logic
                         tableId: toTableId,
                         serverId: sourceOrder.serverId
                     }

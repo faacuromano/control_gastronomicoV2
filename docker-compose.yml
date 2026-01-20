@@ -1,103 +1,184 @@
 # =============================================================================
 # PentiumPOS - Docker Compose for Development
 # =============================================================================
+# Full stack: MySQL + Redis + Backend + Frontend
+# 
 # Usage:
-#   docker-compose up -d        # Start all services
-#   docker-compose down         # Stop all services
-#   docker-compose logs -f      # View logs
-#   docker-compose down -v      # Stop and remove volumes (reset DB)
+#   docker-compose up -d              # Start all services
+#   docker-compose up -d backend      # Start only backend + dependencies
+#   docker-compose logs -f backend    # View backend logs
+#   docker-compose down               # Stop all services
+#   docker-compose down -v            # Stop and remove volumes (reset DB)
+#   docker-compose restart backend    # Restart backend only
 # =============================================================================
 
 services:
   # ---------------------------------------------------------------------------
-  # MySQL Database
+  # MySQL Database (Development - NO resource limits)
   # ---------------------------------------------------------------------------
   db:
     image: mysql:8.0
-    container_name: pentiumpos-db
+    container_name: pentiumpos-db-dev
     restart: unless-stopped
+    
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-pentiumpos_dev}
-      MYSQL_DATABASE: pentiumpos
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-pentiumpos}
+      MYSQL_USER: ${MYSQL_USER:-pentium_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-pentium_pass_dev}
+      TZ: America/Argentina/Buenos_Aires
+    
     ports:
-      - "3306:3306"
+      - "3307:3306"  # Host:Container - Usa 3307 en tu máquina, 3306 dentro de Docker
+    
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mysql_data_dev:/var/lib/mysql
+      - ./backend/mysql-logs:/var/log/mysql
+    
+    networks:
+      - pentiumpos-network
+    
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-pentiumpos_dev}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
   # ---------------------------------------------------------------------------
-  # Redis (Queue Infrastructure)
-  # Para procesamiento asíncrono de webhooks y jobs en background.
+  # Redis (Queue Infrastructure for BullMQ)
   # ---------------------------------------------------------------------------
   redis:
     image: redis:7-alpine
-    container_name: pentiumpos-redis
+    container_name: pentiumpos-redis-dev
     restart: unless-stopped
+    
     ports:
       - "6379:6379"
+    
     volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
+      - redis_data_dev:/data
+    
+    networks:
+      - pentiumpos-network
+    
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-
   # ---------------------------------------------------------------------------
-  # Backend API
+  # Backend API (Node.js + Express + Prisma)
   # ---------------------------------------------------------------------------
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: pentiumpos-backend
+    container_name: pentiumpos-backend-dev
     restart: unless-stopped
+    
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    
     environment:
-      DATABASE_URL: mysql://root:${MYSQL_ROOT_PASSWORD:-pentiumpos_dev}@db:3306/pentiumpos
-      JWT_SECRET: ${JWT_SECRET:-development_secret_change_in_production_min_32_chars}
-      PORT: 3001
+      # Database
+      DATABASE_URL: mysql://${MYSQL_USER:-pentium_user}:${MYSQL_PASSWORD:-pentium_pass_dev}@db:3306/${MYSQL_DATABASE:-pentiumpos}?connection_limit=200&pool_timeout=20
+      
+      # Redis/Queue
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      QUEUE_PROVIDER: bullmq
+      
+      # Application
       NODE_ENV: development
-      CORS_ORIGINS: http://localhost:5173,http://localhost:3000
-      LOG_LEVEL: info
+      PORT: 3001
+      
+      # Security
+      JWT_SECRET: ${JWT_SECRET:-development_secret_change_in_production_min_32_chars_long}
+      
+      # CORS
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://frontend:5173
+      
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-debug}
+    
     ports:
       - "3001:3001"
+    
     volumes:
-      - ./backend/src:/app/src:ro
-      - ./backend/prisma:/app/prisma:ro
+      # Mount source for hot-reload
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+      - ./backend/scripts:/app/scripts
+      # Logs
+      - ./backend/app-logs:/app/logs
+    
+    networks:
+      - pentiumpos-network
+    
     command: >
-      sh -c "npx prisma migrate deploy && npm run dev"
+      sh -c "
+        echo '🔄 Running Prisma migrations...' &&
+        npx prisma migrate deploy &&
+        echo '✅ Migrations complete!' &&
+        echo '🚀 Starting development server...' &&
+        npm run dev
+      "
 
   # ---------------------------------------------------------------------------
-  # Frontend (Vite Dev Server)
+  # Frontend (Vite + React)
   # ---------------------------------------------------------------------------
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: pentiumpos-frontend
+    container_name: pentiumpos-frontend-dev
     restart: unless-stopped
+    
     depends_on:
-      - backend
+      backend:
+        condition: service_started
+    
     environment:
-      VITE_API_URL: http://localhost:3001/api/v1
+      # Vite env variables (must start with VITE_)
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:3001/api/v1}
+      VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:3001}
+    
     ports:
       - "5173:5173"
+    
     volumes:
-      - ./frontend/src:/app/src:ro
-      - ./frontend/public:/app/public:ro
+      # Mount source for hot-reload (HMR)
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+    
+    networks:
+      - pentiumpos-network
 
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  pentiumpos-network:
+    driver: bridge
+    name: pentiumpos-dev-network
+
+# =============================================================================
+# Volumes
+# =============================================================================
 volumes:
-  mysql_data:
-    name: pentiumpos-mysql-data
-  redis_data:
-    name: pentiumpos-redis-data
-
+  mysql_data_dev:
+    name: pentiumpos-mysql-dev
+    driver: local
+  
+  redis_data_dev:
+    name: pentiumpos-redis-dev
+    driver: local

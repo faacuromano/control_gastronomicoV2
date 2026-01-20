@@ -1,29 +1,34 @@
 # =============================================================================
-# PentiumPOS Backend - Docker Image
+# Backend - Dockerfile para Desarrollo
 # =============================================================================
-# For development with docker-compose
+# Versión simplificada sin multi-stage para desarrollo más rápido
 # =============================================================================
 
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
-RUN npm ci
+# Install OpenSSL for Prisma
+RUN apk add --no-cache openssl
 
-# Copy prisma schema for migrations
+# Copy package files
+COPY package*.json ./
 COPY prisma ./prisma/
+
+# Install dependencies
+RUN npm ci
 
 # Generate Prisma client
 RUN npx prisma generate
 
-# Copy source (will be mounted as volume in dev)
-COPY src ./src/
+# Copy source code
 COPY tsconfig.json ./
+COPY src ./src/
+COPY scripts ./scripts/
+COPY migration-scripts ./migration-scripts/
 
 # Expose port
 EXPOSE 3001
 
-# Default command (overridden in docker-compose)
+# Start command
 CMD ["npm", "run", "dev"]

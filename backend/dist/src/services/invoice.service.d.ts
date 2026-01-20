@@ -47,6 +47,7 @@ export declare function generateInvoice(data: GenerateInvoiceData): Promise<{
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -70,7 +71,6 @@ export declare function generateInvoice(data: GenerateInvoiceData): Promise<{
         deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
         platformCommission: import("@prisma/client/runtime/library").Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     };
 } & {
     id: number;
@@ -139,6 +139,7 @@ export declare function getByOrderId(orderId: number): Promise<{
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -162,7 +163,6 @@ export declare function getByOrderId(orderId: number): Promise<{
         deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
         platformCommission: import("@prisma/client/runtime/library").Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     };
 } & {
     id: number;
@@ -231,6 +231,7 @@ export declare function getByInvoiceNumber(invoiceNumber: string): Promise<{
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -254,7 +255,6 @@ export declare function getByInvoiceNumber(invoiceNumber: string): Promise<{
         deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
         platformCommission: import("@prisma/client/runtime/library").Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     };
 } & {
     id: number;

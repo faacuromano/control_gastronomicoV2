@@ -59,21 +59,14 @@ export class OrderDeliveryService {
 
         return await prisma.order.findMany({
             where: {
-                AND: [
-                    {
-                        OR: [
-                            { deliveryAddress: { not: null } },
-                            { channel: 'DELIVERY_APP' }
-                        ]
-                    },
-                    {
-                        OR: [
-                            { status: { in: activeDeliveryStatuses } },
-                            { 
-                                status: OrderStatus.DELIVERED,
-                                closedAt: { gte: today }
-                            }
-                        ]
+                // FIX: Only show orders with actual delivery fulfillment types
+                // This excludes POS and DINE_IN orders from the delivery dashboard
+                fulfillmentType: { in: ['PLATFORM_DELIVERY', 'SELF_DELIVERY', 'TAKEAWAY'] },
+                OR: [
+                    { status: { in: activeDeliveryStatuses } },
+                    { 
+                        status: OrderStatus.DELIVERED,
+                        closedAt: { gte: today }
                     }
                 ]
             },

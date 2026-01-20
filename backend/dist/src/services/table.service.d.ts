@@ -112,6 +112,7 @@ export declare class TableService {
             createdAt: Date;
             updatedAt: Date;
             orderNumber: number;
+            businessDate: Date;
             status: import(".prisma/client").$Enums.OrderStatus;
             clientId: number | null;
             channel: import(".prisma/client").$Enums.OrderChannel;
@@ -135,7 +136,6 @@ export declare class TableService {
             deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
             platformCommission: import("@prisma/client/runtime/library").Decimal | null;
             closedAt: Date | null;
-            businessDate: Date;
         })[];
     } & {
         name: string;
@@ -211,6 +211,7 @@ export declare class TableService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -234,7 +235,6 @@ export declare class TableService {
         deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
         platformCommission: import("@prisma/client/runtime/library").Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     }>;
     /**
      * Closes a table by processing payment and freeing the table

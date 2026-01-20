@@ -546,6 +546,27 @@ async function main() {
     console.log('✅ Test Orders for KDS');
   }
 
+  // 10. Initialize OrderSequence for hourly sharding
+  // Format: YYYYMMDDHH (e.g., 2026012001 for 2026-01-20 at 1 AM)
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hour = String(now.getHours()).padStart(2, '0');
+  const sequenceKey = `${year}${month}${day}${hour}`;
+  
+  // Start from 9004 since we created test orders 9001-9003
+  const existingSeq = await prisma.orderSequence.findUnique({ where: { sequenceKey } });
+  if (!existingSeq) {
+    await prisma.orderSequence.create({
+      data: {
+        sequenceKey,
+        currentValue: 9003, // Next order will be 9004
+      }
+    });
+    console.log(`✅ OrderSequence initialized for ${sequenceKey} (starting from 9004)`);
+  }
+
   console.log('🚀 Seeding finished.');
 }
 

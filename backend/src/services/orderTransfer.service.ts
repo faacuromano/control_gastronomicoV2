@@ -11,6 +11,7 @@ import { AuditAction } from '@prisma/client';
 import { auditService, AuditContext } from './audit.service';
 import { logger } from '../utils/logger';
 import { NotFoundError, ValidationError } from '../utils/errors';
+import { getBusinessDate } from '../utils/businessDate';
 
 export interface TransferResult {
     success: boolean;
@@ -111,7 +112,7 @@ export class OrderTransferService {
                         paymentStatus: 'PENDING',
                         subtotal: 0,
                         total: 0,
-                        businessDate: new Date(),
+                        businessDate: getBusinessDate(), // FIX P1-001: Use 6 AM cutoff logic
                         tableId: toTableId,
                         serverId: sourceOrder.serverId
                     }

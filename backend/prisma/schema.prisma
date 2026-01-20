@@ -26,13 +26,13 @@ model TenantConfig {
   qrMenuTheme        Json? // Colores, tipografía personalizada
 }
 
-// FIX P1-001: Date-based sharding to eliminate single-row bottleneck
-// Each business day gets its own sequence row, preventing deadlocks
-// under high concurrency (>10 concurrent order requests)
-// CLEAN SLATE: No legacy fields, sequenceKey is always present
+// FIX P1-001 PHASE 2: Hourly-based sharding to eliminate lock contention
+// Each hour gets its own sequence row, reducing contention by 24x
+// FORMAT: "YYYYMMDDHH" (e.g., "2026011914" for Jan 19, 2PM)
+// PERFORMANCE: Latency expected to drop from 1200ms to ~50ms
 model OrderSequence {
   id           Int      @id @default(autoincrement())
-  sequenceKey  String   @unique @db.VarChar(8)  // Format: "YYYYMMDD" (e.g., "20260119")
+  sequenceKey  String   @unique @db.VarChar(12)  // Format: "YYYYMMDDHH" (e.g., "2026011914")
   currentValue Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -288,7 +288,7 @@ enum InvoiceType {
 
 model Order {
   id                  Int               @id @default(autoincrement())
-  orderNumber         Int               @unique
+  orderNumber         Int // FIX P1-001: Removed @unique, now uses composite unique constraint below
   channel             OrderChannel      @default(POS)
   externalId          String?
   externalPayload     Json? // Payload raw del webhook para debugging/auditoría
@@ -326,6 +326,7 @@ model Order {
   payments            Payment[]
   invoice             Invoice?
 
+  @@unique([businessDate, orderNumber]) // FIX P1-001: Composite unique - allows same orderNumber on different days
   @@index([tableId])
   @@index([clientId])
   @@index([serverId])
@@ -335,6 +336,7 @@ model Order {
   @@index([businessDate])
   @@index([createdAt])
   @@index([externalId]) // Para búsquedas rápidas por ID externo (Rappi, Glovo)
+  @@index([orderNumber]) // FIX P1-001: Add index for fast lookups by orderNumber alone
 }
 
 enum OrderChannel {

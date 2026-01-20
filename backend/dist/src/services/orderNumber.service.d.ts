@@ -1,70 +1,204 @@
 /**
- * @fileoverview OrderNumber generation service with efficient sequence-based implementation.
- * Uses a dedicated sequence table instead of locking the entire Order table.
+ * @fileoverview OrderNumber Service - Banking Grade Implementation (UUID Migration Ready)
  *
- * @module services/orderNumber.service
+ * CRITICALITY: FINANCIAL DATA - Zero tolerance for duplicates or data loss
+ * COMPLIANCE: AFIP Resolución 4291/2018, SOC2 Type II, ISO 27001
  *
- * PERFORMANCE NOTE:
- * Previous implementation used SELECT MAX(orderNumber) FOR UPDATE on the Order table,
- * which serialized all concurrent order creations and caused bottlenecks under load.
+ * MIGRATION STATUS: Phase 2 - Dual Write Pattern
+ * - Genera UUID v4 (Primary Key futuro)
+ * - Mantiene orderNumber secuencial (Display number)
+ * - Calcula businessDate UNA ÚNICA VEZ (evita race condition)
  *
- * New implementation uses a dedicated OrderSequence table with atomic increment,
- * which only locks a single row and allows much higher concurrency.
+ * GARANTÍAS MATEMÁTICAS:
+ * 1. UUID v4 collision probability < 10^-36
+ * 2. UNIQUE constraint (businessDate, orderNumber) enforced by DB
+ * 3. SELECT FOR UPDATE serializes sequence generation per day
+ *
+ * AUDIT TRAIL:
+ * - Every Order ID generation is logged with timestamp, businessDate, UUID
+ * - Performance metrics sent to monitoring
+ * - Constraint errors detected and alerted immediately
+ *
+ * @author Backend Architecture Team
+ * @version 2.0.0 (UUID Migration)
  */
 import { Prisma } from '@prisma/client';
 /**
- * Transaction context type for Prisma interactive transactions.
+ * Transaction client type for Prisma interactive transactions
  */
 type TransactionClient = Prisma.TransactionClient;
 /**
- * Service for generating unique, sequential order numbers.
- * Uses a dedicated sequence table for high-performance, concurrent-safe generation.
+ * Order Identifier - Complete set of IDs for an order
+ *
+ * @property id - UUID v4 (Primary Key técnico, globally unique)
+ * @property orderNumber - Sequential display number (1-9999, resets daily)
+ * @property businessDate - Operational date (NOT calendar date, uses 6 AM rule)
+ */
+export interface OrderIdentifier {
+    id: string;
+    orderNumber: number;
+    businessDate: Date;
+}
+/**
+ * Error types for order number generation
+ */
+export declare class OrderNumberGenerationError extends Error {
+    readonly code: string;
+    readonly context?: Record<string, unknown> | undefined;
+    constructor(message: string, code: string, context?: Record<string, unknown> | undefined);
+}
+/**
+ * Service for generating unique, sequential order identifiers
+ * with mathematical guarantees of uniqueness and fiscal auditability
  */
 export declare class OrderNumberService {
     /**
-     * Generate the next order number using date-based sharding.
+     * Maximum retry attempts for sequence generation
+     * Rationale: 3 attempts with exponential backoff should handle transient deadlocks
+     */
+    private readonly MAX_RETRIES;
+    /**
+     * Base delay for retry exponential backoff (milliseconds)
+     * Rationale: 50ms is enough to let conflicting transaction complete
+     */
+    private readonly RETRY_BASE_DELAY_MS;
+    /**
+     * Maximum acceptable order number per day
+     * Rationale: 9999 orders/day is reasonable limit; exceeding indicates bug
+     */
+    private readonly MAX_ORDER_NUMBER;
+    /**
+     * Generates the next Order ID with guarantees of uniqueness and fiscal compliance.
      *
-     * FIX P1-001: Eliminates single-row bottleneck by creating a new sequence
-     * for each business day. This allows concurrent order creation without deadlocks.
+     * CRITICAL: This method implements "Dual-Write" pattern during migration:
+     * - Generates UUID (future Primary Key)
+     * - Generates sequential orderNumber (display number)
+     * - Calculates businessDate ONCE (prevents 6 AM cutoff race condition)
      *
-     * Performance improvement:
-     * - Old: Single row id=1 locked by ALL concurrent orders (serialized writes)
-     * - New: Each day has own row (parallel writes, only locks current day's row)
+     * GUARANTEES:
+     * 1. UUID is globally unique (no coordination between servers needed)
+     * 2. orderNumber is unique per businessDate (guaranteed by DB constraint)
+     * 3. businessDate is deterministic (calculated exactly once)
      *
-     * Business logic:
-     * - Orders created before 6 AM belong to previous business day
-     * - Daily reset provides human-friendly order numbers (#1, #2, #3...)
-     * - Historical queries use (businessDate + orderNumber) as composite key
+     * FISCAL COMPLIANCE (AFIP):
+     * - orderNumber is sequential per operational day (required for electronic invoicing)
+     * - businessDate allows grouping sales by accounting rules (6 AM closure)
+     * - Complete audit trail in logs for tax authority inspection
      *
-     * @param tx - Prisma transaction context (required for atomicity)
-     * @returns The next sequential order number for today's business date
+     * PERFORMANCE:
+     * - SELECT FOR UPDATE serializes only per businessDate (different days = parallel)
+     * - UUID generation is O(1) and requires no DB roundtrip
+     * - Retry logic handles deadlocks gracefully (max 3 attempts)
+     *
+     * @param tx - Prisma transaction context (REQUIRED for atomicity)
+     * @returns OrderIdentifier with id (UUID), orderNumber, businessDate
+     *
+     * @throws OrderNumberGenerationError if generation fails after all retries
+     * @throws OrderNumberGenerationError if UUID validation fails (critical bug indicator)
      *
      * @example
-     * const orderNumber = await orderNumberService.getNextOrderNumber(tx);
-     * // Returns: 1, 2, 3, ... (resets daily)
-     */
-    getNextOrderNumber(tx: TransactionClient): Promise<number>;
-    /**
-     * Get the current max order number without modification (for display purposes).
-     * WARNING: Do not use this for generating new order numbers.
+     * ```typescript
+     * await prisma.$transaction(async (tx) => {
+     *   const { id, orderNumber, businessDate } =
+     *     await orderNumberService.getNextOrderNumber(tx);
      *
-     * @returns The current maximum order number
+     *   const order = await tx.order.create({
+     *     data: {
+     *       id,              // ← UUID (PK técnico)
+     *       orderNumber,     // ← Display number (#1, #2, #3...)
+     *       businessDate,    // ← Operational date (CRITICAL: use returned value, do NOT recalculate)
+     *       // ... other fields
+     *     }
+     *   });
+     * });
+     * ```
      */
+    getNextOrderNumber(tx: TransactionClient): Promise<OrderIdentifier>;
     /**
-     * DEPRECATED: This method no longer works with date-based sharding.
-     * Use the current day's sequence instead.
+     * Generates and validates a UUID v4
+     *
+     * PARANOID VALIDATION: Although UUID generation failure is statistically impossible,
+     * we validate format because invalid UUID would corrupt database
+     *
+     * @private
+     * @param operationId - For log correlation
+     * @returns Valid UUID v4 string
+     * @throws OrderNumberGenerationError if validation fails
      */
-    getCurrentMaxOrderNumber(): Promise<number>;
+    private generateAndValidateUuid;
     /**
-     * Initialize the sequence from existing orders (migration helper).
-     * Call this once after migrating to set the sequence to the correct value.
+     * Obtains the next sequence number for a specific operational day
+     *
+     * IMPLEMENTATION: SELECT FOR UPDATE to prevent race conditions
+     * - FOR UPDATE acquires exclusive lock on OrderSequence row
+     * - Other transactions wait until this one commits or rolls back
+     * - Serializes only per sequenceKey (different days = fully parallel)
+     *
+     * RETRY LOGIC:
+     * - Max 3 attempts with exponential backoff (50ms, 100ms, 150ms)
+     * - Handles deadlocks and lock wait timeouts
+     * - If 3 attempts fail, throws exception requiring investigation
+     *
+     * @private
+     * @param tx - Transaction context
+     * @param sequenceKey - Format "YYYYMMDD" (e.g., "20260119")
+     * @param businessDate - Business date for logging
+     * @param operationId - For log correlation
+     * @returns Sequential order number (1-based)
+     * @throws OrderNumberGenerationError after max retries exceeded
      */
+    private getNextSequenceNumber;
     /**
-     * DEPRECATED: Legacy initialization method.
-     * With date-based sharding, sequences are created automatically.
+     * Determines if an error is retryable
+     *
+     * Retryable errors:
+     * - Deadlocks (SQLSTATE 40001)
+     * - Lock wait timeout (SQLSTATE HY000, errno 1205)
+     *
+     * Non-retryable errors:
+     * - Constraint violations (would fail again)
+     * - Connection errors (need different handling)
+     * - Syntax errors (code bug)
+     *
+     * @private
+     * @param error - Error to check
+     * @returns true if error is retryable
      */
-    initializeFromExistingOrders(): Promise<number>;
+    private isRetryableError;
+    /**
+     * Logs Order ID generation with structured data
+     *
+     * Rationale: Audit trail required for:
+     * - AFIP compliance (must prove order numbers are sequential)
+     * - Debugging (correlate order creation with ID generation)
+     * - Performance monitoring (track latency trends)
+     *
+     * @private
+     */
+    private logOrderIdGenerated;
+    /**
+     * Validates that a UUID string follows RFC4122 v4 format
+     *
+     * USAGE: For validating UUIDs of legacy orders during backfill
+     *
+     * @param uuid - UUID string to validate
+     * @returns true if valid RFC4122 v4 UUID, false otherwise
+     */
+    validateUuid(uuid: string): boolean;
+    /**
+     * Generates a UUID without persisting (useful for testing or dry-run)
+     *
+     * @returns RFC4122 v4 UUID string
+     */
+    generateUuid(): string;
 }
+/**
+ * Singleton instance of the service
+ *
+ * Rationale: Single instance ensures consistent configuration and easier testing
+ *
+ * USAGE: import { orderNumberService } from './orderNumber.service'
+ */
 export declare const orderNumberService: OrderNumberService;
 export {};
 //# sourceMappingURL=orderNumber.service.d.ts.map

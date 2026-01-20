@@ -80,6 +80,7 @@ export declare class OrderStatusService {
         createdAt: Date;
         updatedAt: Date;
         orderNumber: number;
+        businessDate: Date;
         status: import(".prisma/client").$Enums.OrderStatus;
         clientId: number | null;
         channel: import(".prisma/client").$Enums.OrderChannel;
@@ -103,7 +104,6 @@ export declare class OrderStatusService {
         deliveryFee: import("@prisma/client/runtime/library").Decimal | null;
         platformCommission: import("@prisma/client/runtime/library").Decimal | null;
         closedAt: Date | null;
-        businessDate: Date;
     }>;
     /**
      * Check if a status transition is valid.
