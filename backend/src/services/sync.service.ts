@@ -6,6 +6,7 @@
  */
 
 import { prisma } from '../lib/prisma';
+import { withSerializableTransaction, type TransactionClient } from '../lib/prisma-extensions';
 import { OrderChannel, PaymentMethod, AuditAction } from '@prisma/client';
 import { orderService } from './order.service';
 import { auditService, type AuditContext } from './audit.service';
@@ -189,7 +190,17 @@ export class SyncService {
     }
 
     /**
-     * Process a single offline payment
+     * Process a single offline payment within a Serializable transaction.
+     * 
+     * @complexity O(1) - Single transaction with atomic read-modify-write
+     * @guarantee ACID - Serializable isolation prevents phantom payments
+     * @implements TDD Section 1.2 - Serializable Transaction for Payment
+     * 
+     * FIX P0-003: Replaces separate CREATE + READ + UPDATE with atomic
+     * transaction. Prevents race condition where concurrent payments
+     * calculate incorrect totals.
+     * 
+     * Invariant: ∑Payments ≤ Order.total (validated before commit)
      */
     private async processOfflinePayment(
         pendingPayment: PendingPayment,
@@ -204,46 +215,92 @@ export class SyncService {
             );
         }
 
-        // Get active shift for payment
-        const activeShift = await prisma.cashShift.findFirst({
-            where: { endTime: null },
-            orderBy: { startTime: 'desc' }
-        });
+        await withSerializableTransaction(
+            async (tx: TransactionClient) => {
+                // Step 1: Get active shift (read-only, can be outside tx but included for atomicity)
+                const activeShift = await tx.cashShift.findFirst({
+                    where: { endTime: null },
+                    orderBy: { startTime: 'desc' }
+                });
 
-        if (!activeShift) {
-            throw new ValidationError('No active cash shift for payment sync');
-        }
-
-        // Create payment
-        await prisma.payment.create({
-            data: {
-                orderId: realOrderId,
-                method: pendingPayment.method,
-                amount: pendingPayment.amount,
-                shiftId: activeShift.id
-            }
-        });
-
-        // Update order payment status
-        const order = await prisma.order.findUnique({
-            where: { id: realOrderId },
-            include: { payments: true }
-        });
-
-        if (order) {
-            const totalPaid = order.payments.reduce(
-                (sum, p) => sum + Number(p.amount), 
-                0
-            );
-            const orderTotal = Number(order.total);
-
-            await prisma.order.update({
-                where: { id: realOrderId },
-                data: {
-                    paymentStatus: totalPaid >= orderTotal ? 'PAID' : 'PARTIAL'
+                if (!activeShift) {
+                    throw new ValidationError('No active cash shift for payment sync');
                 }
-            });
-        }
+
+                // Step 2: Get order with existing payments INSIDE transaction
+                // Serializable isolation ensures no phantom payments appear
+                const order = await tx.order.findUnique({
+                    where: { id: realOrderId },
+                    include: { payments: true }
+                });
+
+                if (!order) {
+                    throw new ValidationError(`Order ${realOrderId} not found`);
+                }
+
+                // Step 3: Calculate current total paid BEFORE adding new payment
+                const currentTotalPaid = order.payments.reduce(
+                    (sum, p) => sum + Number(p.amount),
+                    0
+                );
+                const orderTotal = Number(order.total);
+
+                // Step 4: Invariant check - prevent overpayment
+                // Per TDD: ∑Payments ≤ Order.total
+                const proposedTotalPaid = currentTotalPaid + pendingPayment.amount;
+                const overpaymentMargin = 0.01; // Allow 1 cent tolerance
+
+                if (proposedTotalPaid > orderTotal + overpaymentMargin) {
+                    logger.warn('Overpayment detected in offline sync', {
+                        orderId: realOrderId,
+                        orderTotal,
+                        currentTotalPaid,
+                        proposedPayment: pendingPayment.amount,
+                        proposedTotal: proposedTotalPaid,
+                    });
+                    // Don't throw - cap the payment to remaining amount
+                    const remainingAmount = Math.max(0, orderTotal - currentTotalPaid);
+                    if (remainingAmount <= 0) {
+                        logger.info('Order already fully paid, skipping payment', {
+                            orderId: realOrderId,
+                        });
+                        return; // Skip this payment
+                    }
+                    // Adjust payment amount to remaining
+                    pendingPayment.amount = remainingAmount;
+                }
+
+                // Step 5: Create payment INSIDE transaction
+                await tx.payment.create({
+                    data: {
+                        orderId: realOrderId,
+                        method: pendingPayment.method,
+                        amount: pendingPayment.amount,
+                        shiftId: activeShift.id
+                    }
+                });
+
+                // Step 6: Calculate new total and update status ATOMICALLY
+                const newTotalPaid = currentTotalPaid + pendingPayment.amount;
+                const newStatus = newTotalPaid >= orderTotal ? 'PAID' : 'PARTIAL';
+
+                await tx.order.update({
+                    where: { id: realOrderId },
+                    data: { paymentStatus: newStatus }
+                });
+
+                logger.debug('Offline payment processed in serializable tx', {
+                    orderId: realOrderId,
+                    paymentAmount: pendingPayment.amount,
+                    newTotalPaid,
+                    newStatus,
+                });
+            },
+            {
+                resourceName: `Order:${realOrderId}:Payment`,
+                lockTimeoutMs: 5000,
+            }
+        );
     }
 
     // =========================================================================

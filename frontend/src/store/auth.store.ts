@@ -24,29 +24,35 @@ export interface User {
 
 /**
  * Authentication state managed by Zustand.
- * Persisted to localStorage under 'auth-storage' key.
+ * 
+ * FIX P0-004: Token is NO LONGER stored here. JWT is now in HttpOnly cookie
+ * managed by the browser, making it inaccessible to JavaScript/XSS.
+ * 
+ * Only user data is persisted to localStorage under 'auth-storage' key.
  */
 interface AuthState {
     user: User | null;
-    token: string | null;
     isAuthenticated: boolean;
     
     /**
      * Authenticate user with email and password.
+     * Token is set via Set-Cookie header, not stored in JS.
      * @throws Error if credentials are invalid
      */
     login: (email: string, password: string) => Promise<void>;
     
     /**
      * Authenticate user with 6-digit PIN.
+     * Token is set via Set-Cookie header, not stored in JS.
      * @throws Error if PIN is invalid
      */
     loginPin: (pin: string) => Promise<void>;
     
     /**
      * Clear authentication state and log out user.
+     * Calls logout endpoint to clear the HttpOnly cookie.
      */
-    logout: () => void;
+    logout: () => Promise<void>;
     
     /**
      * Check if current user has permission for a specific action on a resource/module.
@@ -59,29 +65,39 @@ interface AuthState {
 
 /**
  * Global authentication store using Zustand.
- * Automatically persists to localStorage.
+ * 
+ * FIX P0-004: No longer persists token to localStorage.
+ * Only user data is persisted. Authentication is maintained via HttpOnly cookie.
  */
 export const useAuthStore = create<AuthState>()(
     persist(
         (set, get) => ({
             user: null,
-            token: null,
             isAuthenticated: false,
 
             login: async (email: string, password: string) => {
                 const response = await api.post('/auth/login', { email, password });
-                const { user, token } = response.data.data;
-                set({ user, token, isAuthenticated: true });
+                // FIX P0-004: Token is in Set-Cookie header, not in response body
+                const { user } = response.data.data;
+                set({ user, isAuthenticated: true });
             },
 
             loginPin: async (pin: string) => {
                 const response = await api.post('/auth/login/pin', { pin });
-                const { user, token } = response.data.data;
-                set({ user, token, isAuthenticated: true });
+                // FIX P0-004: Token is in Set-Cookie header, not in response body
+                const { user } = response.data.data;
+                set({ user, isAuthenticated: true });
             },
 
-            logout: () => {
-                set({ user: null, token: null, isAuthenticated: false });
+            logout: async () => {
+                try {
+                    // FIX P0-004: Call logout endpoint to clear HttpOnly cookie
+                    await api.post('/auth/logout');
+                } catch (error) {
+                    // Ignore errors on logout - clear local state anyway
+                    console.warn('Logout API call failed, clearing local state');
+                }
+                set({ user: null, isAuthenticated: false });
             },
             
             hasPermission: (resource: string, action: 'access' | 'create' | 'read' | 'update' | 'delete') => {
@@ -101,6 +117,12 @@ export const useAuthStore = create<AuthState>()(
         }),
         {
             name: 'auth-storage',
+            // FIX P0-004: Only persist user data, not sensitive tokens
+            partialize: (state) => ({ 
+                user: state.user, 
+                isAuthenticated: state.isAuthenticated 
+            }),
         }
     )
 );
+

@@ -1,0 +1,84 @@
+version: "3.8"
+
+services:
+  # -------------------------------------------------------------
+  # APP: Node.js Backend
+  # -------------------------------------------------------------
+  app:
+    build: .
+    container_name: benchmark_app
+    restart: unless-stopped
+    ports:
+      - "3000:3000" # Direct access (optional, mainly for debugging)
+    environment:
+      - DATABASE_URL=mysql://root:root@db:3306/control_gastronomico?connection_limit=50&pool_timeout=10
+      - NODE_ENV=production
+      - PORT=3000
+      - JWT_SECRET=super_secure_benchmark_secret_key_32_chars_long_12345
+      - DISABLE_RATE_LIMIT=true
+    depends_on:
+      - db
+      - redis
+    # HARD LIMITS (Hostinger KVM2 Share)
+    # Total System: 2.0 CPU / 8GB RAM
+    # Allocation: App gets ~40-50% CPU, 2.5GB RAM safe
+    deploy:
+      resources:
+        limits:
+          cpus: "1.20" # Single-threaded Node.js needs 1 full core usually
+          memory: 2560M # 2.5 GB Hard Limit (Simulate Heap Out Of Memory)
+        reservations:
+          cpus: "0.50"
+          memory: 1024M
+
+  # -------------------------------------------------------------
+  # DB: MySQL 8 (The Heavy Lifter)
+  # -------------------------------------------------------------
+  db:
+    image: mysql:8.0
+    container_name: benchmark_db
+    restart: always
+    command: --default-authentication-plugin=mysql_native_password --max_connections=200 --innodb_buffer_pool_size=3G
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: control_gastronomico
+    volumes:
+      - mysql_benchmark_data:/var/lib/mysql # Persistent IO simulation
+    # HARD LIMITS
+    # Allocation: DB gets almost 1 full core + most RAM (Buffer Pool)
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00" # DB Background threads need CPU too
+          memory: 4096M # 4 GB Hard Limit (OOM Killer will strike here first)
+        reservations:
+          cpus: "0.50"
+          memory: 2048M
+
+  # -------------------------------------------------------------
+  # CACHE: Redis (Session/Queue)
+  # -------------------------------------------------------------
+  redis:
+    image: redis:alpine
+    container_name: benchmark_redis
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
+
+  # -------------------------------------------------------------
+  # CHAOS: Network Latency (The "Last Mile" Simulator)
+  # -------------------------------------------------------------
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.5.0
+    container_name: benchmark_chaos
+    hostname: toxiproxy
+    ports:
+      - "8474:8474" # Control API
+      - "3001:3001" # Proxy to App (use THIS port for stress test)
+    depends_on:
+      - app
+
+volumes:
+  mysql_benchmark_data:

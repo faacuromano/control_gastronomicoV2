@@ -3,13 +3,14 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
+import cookieParser from 'cookie-parser';
 
 // Environment validation
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = process.env.PORT || 3001;
 
 // CORS Configuration - Use CORS_ORIGINS env var for production
-const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173'];
+const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173', 'http://localhost:5174'];
 
 // SECURITY: Warn if using default CORS in production
 if (isProduction && !process.env.CORS_ORIGINS) {
@@ -25,6 +26,9 @@ const app = express();
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// FIX P0-004: Cookie parser for HttpOnly cookie authentication
+app.use(cookieParser());
 
 // FIX P1-002: Sanitize body to prevent prototype pollution
 import { sanitizeBody } from './middleware/sanitize-body.middleware';

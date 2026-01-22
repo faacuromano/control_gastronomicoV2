@@ -151,18 +151,31 @@ export const loginWithPin = async (pin: string) => {
         throw new ValidationError('Invalid format', validation.error);
     }
 
-    // 2. Find User by PIN (we need to check if exists before lockout check)
-    const user = await prisma.user.findUnique({
-        where: { pinCode: pin },
+    // 2. Find all users with PIN (we must compare hashes in code)
+    // SECURITY: bcrypt hashes cannot be indexed, so we fetch candidates and compare
+    const candidates = await prisma.user.findMany({
+        where: { 
+            pinHash: { not: null },
+            isActive: true 
+        },
         include: { role: true }
     });
+
+    // 3. Compare PIN with each hash to find matching user
+    let user = null;
+    for (const candidate of candidates) {
+        if (await bcrypt.compare(pin, candidate.pinHash!)) {
+            user = candidate;
+            break;
+        }
+    }
 
     // SECURITY: Don't reveal if PIN exists or not
     if (!user) {
         throw new UnauthorizedError('Invalid credentials');
     }
 
-    // 3. Check if account is locked
+    // 4. Check if account is locked
     if (isAccountLocked(user)) {
         const remainingMinutes = Math.ceil(
             (user.lockedUntil!.getTime() - Date.now()) / (1000 * 60)
@@ -170,11 +183,6 @@ export const loginWithPin = async (pin: string) => {
         throw new UnauthorizedError(
             `Cuenta bloqueada. Intenta nuevamente en ${remainingMinutes} minutos.`
         );
-    }
-
-    // 4. Check if user is active
-    if (!user.isActive) {
-        throw new UnauthorizedError('Invalid credentials or inactive user');
     }
 
     // 5. Reset failed attempts on successful login
@@ -204,36 +212,45 @@ export const register = async (data: RegisterData) => {
         throw new ValidationError('Invalid format', validation.error.issues);
     }
 
-    // 2. Check for existing user
-    const existingUser = await prisma.user.findFirst({
-        where: {
-            OR: [
-                { email: data.email },
-                { pinCode: data.pinCode }
-            ]
-        }
+    // 2. Check for existing user by email
+    const existingByEmail = await prisma.user.findUnique({
+        where: { email: data.email }
     });
 
-    if (existingUser) {
-        throw new ConflictError('User with this email or PIN already exists');
+    if (existingByEmail) {
+        throw new ConflictError('User with this email already exists');
     }
 
-    // 3. Hash Password
-    const passwordHash = await bcrypt.hash(data.password, 10);
+    // 3. Check PIN uniqueness by comparing hashes
+    // SECURITY: Since bcrypt hashes can't be indexed for uniqueness,
+    // we must compare the new PIN against all existing hashes
+    const usersWithPin = await prisma.user.findMany({
+        where: { pinHash: { not: null } }
+    });
 
-    // 4. Create User
+    for (const existingUser of usersWithPin) {
+        if (await bcrypt.compare(data.pinCode, existingUser.pinHash!)) {
+            throw new ConflictError('PIN already in use');
+        }
+    }
+
+    // 4. Hash Password and PIN
+    const passwordHash = await bcrypt.hash(data.password, 10);
+    const pinHash = await bcrypt.hash(data.pinCode, 10);
+
+    // 5. Create User
     const user = await prisma.user.create({
         data: {
             email: data.email,
             passwordHash,
             name: data.name,
-            pinCode: data.pinCode,
+            pinHash,
             roleId: data.roleId
         },
         include: { role: true }
     });
 
-    // 5. Generate Token
+    // 6. Generate Token
     const token = generateToken(user, '24h');
 
     return {

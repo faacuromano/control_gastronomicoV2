@@ -1,0 +1,7 @@
+{
+  "type": "latency",
+  "attributes": {
+    "latency": 50,
+    "jitter": 20
+  }
+}

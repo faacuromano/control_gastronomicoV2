@@ -153,7 +153,8 @@ export const getUserById = asyncHandler(async (req: Request, res: Response) => {
             id: true,
             name: true,
             email: true,
-            pinCode: true,
+            // SECURITY: Never expose pinHash to API
+            pinHash: false,
             isActive: true,
             createdAt: true,
             updatedAt: true,
@@ -186,18 +187,26 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
         throw new ValidationError('Se requiere email o PIN para autenticación');
     }
 
-    // Check for existing user with same email or PIN
-    const existing = await prisma.user.findFirst({
-        where: {
-            OR: [
-                email ? { email } : {},
-                pinCode ? { pinCode } : {}
-            ].filter(obj => Object.keys(obj).length > 0)
+    // Check for existing user with same email
+    if (email) {
+        const existingEmail = await prisma.user.findUnique({ where: { email } });
+        if (existingEmail) {
+            throw new ConflictError('Ya existe un usuario con ese email');
         }
-    });
+    }
 
-    if (existing) {
-        throw new ConflictError('Ya existe un usuario con ese email o PIN');
+    // Check PIN uniqueness by comparing hashes
+    let pinHash: string | null = null;
+    if (pinCode) {
+        const usersWithPin = await prisma.user.findMany({
+            where: { pinHash: { not: null } }
+        });
+        for (const existingUser of usersWithPin) {
+            if (await bcrypt.compare(pinCode, existingUser.pinHash!)) {
+                throw new ConflictError('PIN ya en uso por otro usuario');
+            }
+        }
+        pinHash = await bcrypt.hash(pinCode, 10);
     }
 
     // Hash password if provided
@@ -207,7 +216,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
         data: {
             name,
             email: email ?? null,
-            pinCode: pinCode ?? null,
+            pinHash,
             passwordHash,
             roleId
         },
@@ -244,24 +253,13 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
         throw new NotFoundError('Usuario');
     }
 
-    // Check for conflicts if changing email or PIN
-    if (email || pinCode) {
-        const conflict = await prisma.user.findFirst({
-            where: {
-                AND: [
-                    { id: { not: userId } },
-                    {
-                        OR: [
-                            email ? { email } : {},
-                            pinCode ? { pinCode } : {}
-                        ].filter(obj => Object.keys(obj).length > 0)
-                    }
-                ]
-            }
+    // Check for email conflict
+    if (email) {
+        const emailConflict = await prisma.user.findFirst({
+            where: { email, id: { not: userId } }
         });
-
-        if (conflict) {
-            throw new ConflictError('Email o PIN ya en uso por otro usuario');
+        if (emailConflict) {
+            throw new ConflictError('Email ya en uso por otro usuario');
         }
     }
 
@@ -269,10 +267,22 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
     const updateData: Prisma.UserUpdateInput = {};
     if (name !== undefined) updateData.name = name;
     if (email !== undefined) updateData.email = email;
-    if (pinCode !== undefined) updateData.pinCode = pinCode;
     if (roleId !== undefined) updateData.role = { connect: { id: roleId } };
     if (isActive !== undefined) updateData.isActive = isActive;
     if (password) updateData.passwordHash = await bcrypt.hash(password, 10);
+
+    // Check PIN uniqueness and hash if changing
+    if (pinCode !== undefined) {
+        const usersWithPin = await prisma.user.findMany({
+            where: { pinHash: { not: null }, id: { not: userId } }
+        });
+        for (const existingUser of usersWithPin) {
+            if (await bcrypt.compare(pinCode, existingUser.pinHash!)) {
+                throw new ConflictError('PIN ya en uso por otro usuario');
+            }
+        }
+        updateData.pinHash = await bcrypt.hash(pinCode, 10);
+    }
 
     const user = await prisma.user.update({
         where: { id: userId },

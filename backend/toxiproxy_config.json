@@ -1,0 +1,6 @@
+{
+  "name": "app_slow",
+  "listen": "0.0.0.0:3001",
+  "upstream": "benchmark_app:3000",
+  "enabled": true
+}

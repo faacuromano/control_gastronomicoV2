@@ -26,7 +26,8 @@ if (process.env.REDIS_HOST || process.env.ENABLE_QUEUE_WORKERS === 'true') {
     });
 }
 
-httpServer.listen(PORT, () => {
+// BIND TO 0.0.0.0 FOR DOCKER COMPATIBILITY
+httpServer.listen(Number(PORT), '0.0.0.0', () => {
     logger.info('Server started', { port: PORT });
     logger.info('WebSocket server initialized');
 });

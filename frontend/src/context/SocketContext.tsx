@@ -19,7 +19,11 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   useEffect(() => {
     // In dev, backend is localhost:3001. In prod, relative or ENV.
-    const socketInstance = io('http://localhost:3001', {
+    const socketUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    // Remove /api/v1 if it exists in the URL because socket.io connects to root
+    const baseUrl = socketUrl.replace('/api/v1', '');
+    
+    const socketInstance = io(baseUrl, {
       transports: ['websocket'],
       autoConnect: true,
     });

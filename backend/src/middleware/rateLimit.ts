@@ -27,8 +27,8 @@ export const authRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // SECURITY: Never skip rate limiting for auth endpoints
-  skip: () => false,
+  // SECURITY: Never skip rate limiting for auth endpoints UNLESS explicitly disabled for benchmarks
+  skip: () => process.env.DISABLE_RATE_LIMIT === 'true',
   validate: { xForwardedForHeader: false }, // Disable validation that causes IPv6 error
 });
 
@@ -48,7 +48,7 @@ export const apiRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => isDevelopment,
+  skip: () => isDevelopment || process.env.DISABLE_RATE_LIMIT === 'true',
 });
 
 /**

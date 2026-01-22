@@ -8,7 +8,7 @@ let io: Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any> | unde
 export const initSocket = (httpServer: HttpServer) => {
   // FIX: Socket.io CORS Lockdown - Use environment-configured origins
   const allowedOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()) || 
-    (process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173']);
+    (process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173', 'http://localhost:5174']);
   
   io = new Server(httpServer, {
     cors: {

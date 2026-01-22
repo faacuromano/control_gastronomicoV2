@@ -53,7 +53,7 @@ model User {
   role                Role        @relation(fields: [roleId], references: [id])
   name                String
   email               String?     @unique
-  pinCode             String?     @unique @db.VarChar(6)
+  pinHash             String?     @db.VarChar(60)  // bcrypt hash, uniqueness verified in code
   passwordHash        String?
   uiSettings          Json?
   orders              Order[]     @relation("OrderServer")

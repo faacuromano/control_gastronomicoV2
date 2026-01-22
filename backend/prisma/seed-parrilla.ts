@@ -117,13 +117,16 @@ async function main() {
         const role = await prisma.role.findUnique({ where: { name: u.role } });
         if (!role) continue;
 
+        // SECURITY: Hash PIN before storing
+        const pinHash = await bcrypt.hash(u.pin, 10);
+
         await prisma.user.upsert({
             where: { email: u.email },
-            update: { pinCode: u.pin, roleId: role.id },
+            update: { pinHash, roleId: role.id },
             create: {
                 name: u.name,
                 email: u.email,
-                pinCode: u.pin,
+                pinHash, // SECURITY: Now stored as bcrypt hash
                 passwordHash,
                 roleId: role.id,
                 isActive: true,

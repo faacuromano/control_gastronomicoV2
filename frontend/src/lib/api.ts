@@ -15,21 +15,25 @@ interface ApiErrorResponse {
 }
 
 /**
- * Configured Axios instance for API calls
+ * Configured Axios instance for API calls.
+ * 
+ * FIX P0-004: Uses withCredentials: true to include HttpOnly cookies
+ * in cross-origin requests. This replaces localStorage token storage.
  */
 const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1',
     timeout: 10000, // 10 second timeout
+    withCredentials: true, // FIX P0-004: Include cookies in requests
 });
 
 /**
- * Request interceptor - adds auth token to all requests
+ * Request interceptor - minimal processing.
+ * 
+ * NOTE: No longer adds Authorization header - tokens are in HttpOnly cookies.
+ * This prevents XSS attacks from accessing tokens.
  */
 api.interceptors.request.use((config) => {
-    const token = useAuthStore.getState().token;
-    if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-    }
+    // No auth header manipulation needed - cookies are automatic
     return config;
 });
 

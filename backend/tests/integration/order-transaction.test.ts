@@ -30,7 +30,7 @@ describe('Order Transaction Integrity', () => {
         });
 
         const user = await prisma.user.create({
-            data: { name: 'Test Server TX', pinCode: '5566', roleId: role.id }
+            data: { name: 'Test Server TX', pinHash: '$2a$10$test.hash.for.integration.tests', roleId: role.id }
         });
         userId = user.id;
 
