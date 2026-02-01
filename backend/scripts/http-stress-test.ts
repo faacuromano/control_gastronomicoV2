@@ -59,7 +59,7 @@ async function bootstrap() {
             const setCookie = res.headers['set-cookie'];
             if (setCookie && setCookie.length > 0) {
                 // Grab the auth_token part
-                authTokenCookie = setCookie[0].split(';')[0];
+                authTokenCookie = setCookie[0]!.split(';')[0] ?? '';
                 console.log("✅ OK");
                 console.log(`   Cookie: ${authTokenCookie}`);
                 

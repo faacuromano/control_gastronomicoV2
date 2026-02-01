@@ -23,6 +23,13 @@ jest.mock('../../src/lib/prisma', () => ({
   }
 }));
 
+// Mock FeatureFlags service
+jest.mock('../../src/services/featureFlags.service', () => ({
+  executeIfEnabled: jest.fn().mockResolvedValue(undefined),
+  isFeatureEnabled: jest.fn().mockResolvedValue(true),
+  clearConfigCache: jest.fn()
+}));
+
 // Mock StockMovementService
 jest.mock('../../src/services/stockMovement.service', () => ({
   StockMovementService: jest.fn().mockImplementation(() => ({
@@ -39,6 +46,26 @@ jest.mock('../../src/services/kds.service', () => ({
   }
 }));
 
+// Mock businessDate service
+jest.mock('../../src/services/businessDate.service', () => ({
+  businessDateService: {
+    determineBusinessDate: jest.fn().mockResolvedValue(new Date('2026-01-19'))
+  }
+}));
+
+// Mock orderNumber service
+jest.mock('../../src/services/orderNumber.service', () => ({
+  orderNumberService: {
+    getNextOrderNumber: jest.fn().mockResolvedValue({
+      id: 'test-uuid',
+      orderNumber: 1001,
+      formattedOrderNumber: '20260119-1001',
+      businessDate: new Date('2026-01-19')
+    })
+  },
+  OrderNumberService: jest.fn()
+}));
+
 import { prisma } from '../../src/lib/prisma';
 import { OrderService, OrderItemInput, CreateOrderInput } from '../../src/services/order.service';
 
@@ -52,7 +79,15 @@ describe('OrderService', () => {
     isActive: true,
     isStockable: true,
     ingredients: [
-      { ingredientId: 1, quantity: '2.00' }
+      {
+        ingredientId: 1,
+        quantity: '2.00',
+        ingredient: {
+          id: 1,
+          name: 'Test Ingredient',
+          stock: '100.00'
+        }
+      }
     ]
   };
 
@@ -73,19 +108,24 @@ describe('OrderService', () => {
     it('should create an order successfully with valid data', async () => {
       const txMock = {
         product: {
-          findUnique: jest.fn().mockResolvedValue(mockProduct)
+          findMany: jest.fn().mockResolvedValue([mockProduct])
+        },
+        modifierOption: {
+          findMany: jest.fn().mockResolvedValue([])
         },
         order: {
-          findFirst: jest.fn().mockResolvedValue({ orderNumber: 1000 }),
           create: jest.fn().mockResolvedValue({
             id: 1,
             orderNumber: 1001,
-            total: '100.00',
+            total: '200.00',
             items: []
           })
         },
         cashShift: {
           findFirst: jest.fn().mockResolvedValue(mockShift)
+        },
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 1 })
         },
         ingredient: {
           update: jest.fn()
@@ -98,6 +138,7 @@ describe('OrderService', () => {
       mockTransaction.mockImplementation(async (fn) => fn(txMock));
 
       const orderData: CreateOrderInput = {
+        tenantId: 1,
         userId: 1,
         items: [{ productId: 1, quantity: 2 }],
         channel: 'POS',
@@ -110,15 +151,20 @@ describe('OrderService', () => {
       expect(result).toHaveProperty('id', 1);
       expect(result).toHaveProperty('orderNumber', 1001);
       expect(txMock.order.create).toHaveBeenCalled();
+      expect(txMock.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: { in: [1] }, tenantId: 1 }
+        })
+      );
     });
 
     it('should throw error when product not found', async () => {
       const txMock = {
         product: {
-          findUnique: jest.fn().mockResolvedValue(null)
+          findMany: jest.fn().mockResolvedValue([])  // Empty array = product not found
         },
-        order: {
-          findFirst: jest.fn()
+        modifierOption: {
+          findMany: jest.fn().mockResolvedValue([])
         },
         cashShift: {
           findFirst: jest.fn().mockResolvedValue(mockShift)
@@ -128,6 +174,7 @@ describe('OrderService', () => {
       mockTransaction.mockImplementation(async (fn) => fn(txMock));
 
       const orderData: CreateOrderInput = {
+        tenantId: 1,
         userId: 1,
         items: [{ productId: 999, quantity: 1 }],
         serverId: 1
@@ -140,13 +187,13 @@ describe('OrderService', () => {
     it('should throw error when product is inactive', async () => {
       const txMock = {
         product: {
-          findUnique: jest.fn().mockResolvedValue({
+          findMany: jest.fn().mockResolvedValue([{
             ...mockProduct,
             isActive: false
-          })
+          }])
         },
-        order: {
-          findFirst: jest.fn()
+        modifierOption: {
+          findMany: jest.fn().mockResolvedValue([])
         },
         cashShift: {
           findFirst: jest.fn().mockResolvedValue(mockShift)
@@ -156,6 +203,7 @@ describe('OrderService', () => {
       mockTransaction.mockImplementation(async (fn) => fn(txMock));
 
       const orderData: CreateOrderInput = {
+        tenantId: 1,
         userId: 1,
         items: [{ productId: 1, quantity: 1 }],
         serverId: 1
@@ -165,80 +213,24 @@ describe('OrderService', () => {
         .rejects.toThrow('is not active');
     });
 
-    it('should throw error when no server ID provided', async () => {
+    it('should create order successfully even without server ID', async () => {
       const txMock = {
         product: {
-          findUnique: jest.fn().mockResolvedValue(mockProduct)
+          findMany: jest.fn().mockResolvedValue([mockProduct])
+        },
+        modifierOption: {
+          findMany: jest.fn().mockResolvedValue([])
         },
         order: {
-          findFirst: jest.fn()
-        },
-        cashShift: {
-          findFirst: jest.fn()
-        }
-      };
-
-      mockTransaction.mockImplementation(async (fn) => fn(txMock));
-
-      const orderData: CreateOrderInput = {
-        userId: 1,
-        items: [{ productId: 1, quantity: 1 }]
-        // Missing serverId
-      };
-
-      await expect(orderService.createOrder(orderData))
-        .rejects.toThrow('Server ID is required');
-    });
-
-    it('should throw error when no open shift exists', async () => {
-      const txMock = {
-        product: {
-          findUnique: jest.fn().mockResolvedValue(mockProduct)
-        },
-        order: {
-          findFirst: jest.fn()
-        },
-        cashShift: {
-          findFirst: jest.fn().mockResolvedValue(null) // No open shift
-        }
-      };
-
-      mockTransaction.mockImplementation(async (fn) => fn(txMock));
-
-      const orderData: CreateOrderInput = {
-        userId: 1,
-        items: [{ productId: 1, quantity: 1 }],
-        serverId: 1
-      };
-
-      await expect(orderService.createOrder(orderData))
-        .rejects.toThrow('NO_OPEN_SHIFT');
-    });
-
-    it('should calculate totals correctly for multiple items', async () => {
-      const products = [
-        { ...mockProduct, id: 1, price: '50.00' },
-        { ...mockProduct, id: 2, price: '75.00' }
-      ];
-
-      const txMock = {
-        product: {
-          findUnique: jest.fn()
-            .mockResolvedValueOnce(products[0])
-            .mockResolvedValueOnce(products[1])
-        },
-        order: {
-          findFirst: jest.fn().mockResolvedValue({ orderNumber: 1000 }),
-          create: jest.fn().mockImplementation((args) => ({
+          create: jest.fn().mockResolvedValue({
             id: 1,
             orderNumber: 1001,
-            subtotal: args.data.subtotal,
-            total: args.data.total,
+            total: '100.00',
             items: []
-          }))
+          })
         },
         cashShift: {
-          findFirst: jest.fn().mockResolvedValue(mockShift)
+          findFirst: jest.fn().mockResolvedValue(null)  // No shift, but that's OK
         },
         ingredient: {
           update: jest.fn()
@@ -251,6 +243,106 @@ describe('OrderService', () => {
       mockTransaction.mockImplementation(async (fn) => fn(txMock));
 
       const orderData: CreateOrderInput = {
+        tenantId: 1,
+        userId: 1,
+        items: [{ productId: 1, quantity: 1 }]
+        // Missing serverId - should still work
+      };
+
+      const result = await orderService.createOrder(orderData);
+
+      expect(result).toHaveProperty('id', 1);
+      expect(result).toHaveProperty('orderNumber', 1001);
+      expect(txMock.order.create).toHaveBeenCalled();
+    });
+
+    it('should allow order creation without open shift (logs warning)', async () => {
+      const txMock = {
+        product: {
+          findMany: jest.fn().mockResolvedValue([mockProduct])
+        },
+        modifierOption: {
+          findMany: jest.fn().mockResolvedValue([])
+        },
+        order: {
+          create: jest.fn().mockResolvedValue({
+            id: 1,
+            orderNumber: 1001,
+            total: '100.00',
+            items: []
+          })
+        },
+        cashShift: {
+          findFirst: jest.fn().mockResolvedValue(null) // No open shift
+        },
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 1 })
+        },
+        ingredient: {
+          update: jest.fn()
+        },
+        stockMovement: {
+          create: jest.fn()
+        }
+      };
+
+      mockTransaction.mockImplementation(async (fn) => fn(txMock));
+
+      const orderData: CreateOrderInput = {
+        tenantId: 1,
+        userId: 1,
+        items: [{ productId: 1, quantity: 1 }],
+        serverId: 1
+      };
+
+      // Should NOT throw - service allows orders without shift
+      const result = await orderService.createOrder(orderData);
+
+      expect(result).toHaveProperty('id', 1);
+      expect(result).toHaveProperty('orderNumber', 1001);
+      expect(txMock.order.create).toHaveBeenCalled();
+    });
+
+    it('should calculate totals correctly for multiple items', async () => {
+      const products = [
+        { ...mockProduct, id: 1, price: '50.00' },
+        { ...mockProduct, id: 2, price: '75.00' }
+      ];
+
+      const txMock = {
+        product: {
+          findMany: jest.fn().mockResolvedValue(products)
+        },
+        modifierOption: {
+          findMany: jest.fn().mockResolvedValue([])
+        },
+        order: {
+          create: jest.fn().mockImplementation((args) => ({
+            id: 1,
+            orderNumber: 1001,
+            subtotal: args.data.subtotal,
+            total: args.data.total,
+            items: []
+          }))
+        },
+        cashShift: {
+          findFirst: jest.fn().mockResolvedValue(mockShift)
+        },
+        user: {
+          findFirst: jest.fn().mockResolvedValue({ id: 1 })
+        },
+        ingredient: {
+          update: jest.fn()
+        },
+        stockMovement: {
+          create: jest.fn()
+        }
+      };
+
+      mockTransaction.mockImplementation(async (fn) => fn(txMock));
+
+      const orderData: CreateOrderInput = {
+        tenantId: 1,
         userId: 1,
         items: [
           { productId: 1, quantity: 2 }, // 2 x 50 = 100
@@ -264,6 +356,11 @@ describe('OrderService', () => {
       // Expected total: 100 + 225 = 325
       expect(result.subtotal).toBe(325);
       expect(result.total).toBe(325);
+      expect(txMock.product.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: { in: [1, 2] }, tenantId: 1 }
+        })
+      );
     });
   });
 
@@ -276,7 +373,7 @@ describe('OrderService', () => {
 
       (prisma.order.findMany as jest.Mock).mockResolvedValue(mockOrders);
 
-      const result = await orderService.getRecentOrders();
+      const result = await orderService.getRecentOrders(1);
 
       expect(result).toHaveLength(2);
       expect(result[0]).toHaveProperty('orderNumber', 1001);

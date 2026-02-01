@@ -126,7 +126,7 @@ describe('Auth Service - loginWithPin', () => {
     });
 
     it('returns { user, token } for valid PIN', async () => {
-      const result = await loginWithPin('123456');
+      const result = await loginWithPin('123456', 1);
 
       expect(result).toHaveProperty('user');
       expect(result).toHaveProperty('token');
@@ -135,8 +135,8 @@ describe('Auth Service - loginWithPin', () => {
     });
 
     it('returns correctly shaped user object', async () => {
-      const result = await loginWithPin('123456');
-      
+      const result = await loginWithPin('123456', 1);
+
       expect(result.user).toEqual({
         id: 1,
         name: 'Test User',
@@ -146,7 +146,7 @@ describe('Auth Service - loginWithPin', () => {
     });
 
     it('returns a valid JWT token with correct claims', async () => {
-      const result = await loginWithPin('123456');
+      const result = await loginWithPin('123456', 1);
       const decoded = jwt.verify(result.token, JWT_SECRET) as Record<string, unknown>;
 
       expect(decoded.id).toBe(1);
@@ -163,7 +163,7 @@ describe('Auth Service - loginWithPin', () => {
       mockPrismaUser.update.mockResolvedValue(createCompleteMockUser());
       jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
 
-      await loginWithPin('123456');
+      await loginWithPin('123456', 1);
 
       expect(mockPrismaUser.update).toHaveBeenCalledWith({
         where: { id: 1 },
@@ -172,8 +172,8 @@ describe('Auth Service - loginWithPin', () => {
     });
 
     it('calls auditService.logAuth is available (verification)', async () => {
-      await loginWithPin('123456');
-      
+      await loginWithPin('123456', 1);
+
       // AuditService is mocked - verify it's callable
       expect(auditService.logAuth).toBeDefined();
     });
@@ -182,51 +182,51 @@ describe('Auth Service - loginWithPin', () => {
   describe('Validation Errors', () => {
     
     it('throws VALIDATION_ERROR for PIN shorter than 6 characters', async () => {
-      await expect(loginWithPin('123')).rejects.toMatchObject({
+      await expect(loginWithPin('123', 1)).rejects.toMatchObject({
         code: 'VALIDATION_ERROR',
       });
-      
+
       // Prisma findMany should NOT be called for invalid input
       expect(mockPrismaUser.findMany).not.toHaveBeenCalled();
     });
 
     it('throws VALIDATION_ERROR for PIN longer than 6 characters', async () => {
-      await expect(loginWithPin('1234567')).rejects.toMatchObject({
+      await expect(loginWithPin('1234567', 1)).rejects.toMatchObject({
         code: 'VALIDATION_ERROR',
       });
-      
+
       expect(mockPrismaUser.findMany).not.toHaveBeenCalled();
     });
 
     it('throws VALIDATION_ERROR for empty PIN', async () => {
-      await expect(loginWithPin('')).rejects.toMatchObject({
+      await expect(loginWithPin('', 1)).rejects.toMatchObject({
         code: 'VALIDATION_ERROR',
       });
     });
   });
 
   describe('Authentication Errors', () => {
-    
-    it('throws AUTH_FAILED for non-existent user (PIN not found)', async () => {
+
+    it('throws UNAUTHORIZED for non-existent user (PIN not found)', async () => {
       // CRITICAL: Mock returns empty array for no matching users
       mockPrismaUser.findMany.mockResolvedValue([]);
 
-      await expect(loginWithPin('999999')).rejects.toMatchObject({
-        code: 'AUTH_FAILED',
+      await expect(loginWithPin('999999', 1)).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
       });
     });
 
-    it('throws AUTH_FAILED when no bcrypt match found', async () => {
+    it('throws UNAUTHORIZED when no bcrypt match found', async () => {
       // Users exist but bcrypt.compare returns false for all
       mockPrismaUser.findMany.mockResolvedValue([createCompleteMockUser()]);
       jest.spyOn(bcrypt, 'compare').mockResolvedValue(false as never);
 
-      await expect(loginWithPin('999999')).rejects.toMatchObject({
-        code: 'AUTH_FAILED',
+      await expect(loginWithPin('999999', 1)).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
       });
     });
 
-    it('throws AUTH_FAILED for locked account', async () => {
+    it('throws UNAUTHORIZED for locked account', async () => {
       mockPrismaUser.findMany.mockResolvedValue([
         createCompleteMockUser({
           lockedUntil: new Date(Date.now() + 60000), // Locked for 1 minute
@@ -234,20 +234,8 @@ describe('Auth Service - loginWithPin', () => {
       ]);
       jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
 
-      await expect(loginWithPin('123456')).rejects.toMatchObject({
-        code: 'AUTH_FAILED',
-      });
-    });
-
-    it('throws AUTH_FAILED for locked account', async () => {
-      mockPrismaUser.findUnique.mockResolvedValue(
-        createCompleteMockUser({
-          lockedUntil: new Date(Date.now() + 60000), // Locked for 1 minute
-        })
-      );
-
-      await expect(loginWithPin('123456')).rejects.toMatchObject({
-        code: 'AUTH_FAILED',
+      await expect(loginWithPin('123456', 1)).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
       });
     });
   });
@@ -258,17 +246,19 @@ describe('Auth Service - loginWithPin', () => {
 // ============================================================================
 
 describe('Auth Service - loginWithPassword', () => {
-  
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockPrismaUser.findUnique.mockReset();
+    mockPrismaUser.findFirst.mockReset();
     mockPrismaUser.update.mockReset();
   });
 
   describe('Success Scenarios', () => {
-    
+
     beforeEach(() => {
       mockPrismaUser.findUnique.mockResolvedValue(createCompleteMockUser());
+      mockPrismaUser.findFirst.mockResolvedValue(createCompleteMockUser());
       jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
     });
 
@@ -276,6 +266,7 @@ describe('Auth Service - loginWithPassword', () => {
       const result = await loginWithPassword({
         email: 'test@example.com',
         password: 'password123',
+        tenantId: 1,
       });
 
       expect(result).toHaveProperty('user');
@@ -285,12 +276,13 @@ describe('Auth Service - loginWithPassword', () => {
 
     it('calls bcrypt.compare with correct arguments', async () => {
       const mockUser = createCompleteMockUser();
-      mockPrismaUser.findUnique.mockResolvedValue(mockUser);
+      mockPrismaUser.findFirst.mockResolvedValue(mockUser);
       const compareSpy = jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
 
       await loginWithPassword({
         email: 'test@example.com',
         password: 'password123',
+        tenantId: 1,
       });
 
       expect(compareSpy).toHaveBeenCalledWith('password123', mockUser.passwordHash);
@@ -303,17 +295,19 @@ describe('Auth Service - loginWithPassword', () => {
       await expect(loginWithPassword({
         email: 'not-an-email',
         password: 'anypassword',
+        tenantId: 1,
       })).rejects.toMatchObject({
         code: 'VALIDATION_ERROR',
       });
 
-      expect(mockPrismaUser.findUnique).not.toHaveBeenCalled();
+      expect(mockPrismaUser.findFirst).not.toHaveBeenCalled();
     });
 
     it('throws VALIDATION_ERROR for missing email', async () => {
       await expect(loginWithPassword({
         email: '',
         password: 'password123',
+        tenantId: 1,
       })).rejects.toMatchObject({
         code: 'VALIDATION_ERROR',
       });
@@ -321,59 +315,66 @@ describe('Auth Service - loginWithPassword', () => {
   });
 
   describe('Authentication Errors', () => {
-    
-    it('throws AUTH_FAILED for wrong password', async () => {
-      mockPrismaUser.findUnique.mockResolvedValue(createCompleteMockUser());
+
+    it('throws UNAUTHORIZED for wrong password', async () => {
+      mockPrismaUser.findFirst.mockResolvedValue(createCompleteMockUser());
       mockPrismaUser.update.mockResolvedValue(createCompleteMockUser());
       jest.spyOn(bcrypt, 'compare').mockResolvedValue(false as never);
 
       await expect(loginWithPassword({
         email: 'test@example.com',
         password: 'wrongpassword',
+        tenantId: 1,
       })).rejects.toMatchObject({
-        code: 'AUTH_FAILED',
+        code: 'UNAUTHORIZED',
       });
     });
 
-    it('throws AUTH_FAILED for non-existent user', async () => {
-      mockPrismaUser.findUnique.mockResolvedValue(null);
+    it('throws UNAUTHORIZED for non-existent user', async () => {
+      mockPrismaUser.findFirst.mockResolvedValue(null);
 
       await expect(loginWithPassword({
         email: 'nonexistent@example.com',
         password: 'anypassword',
+        tenantId: 1,
       })).rejects.toMatchObject({
-        code: 'AUTH_FAILED',
+        code: 'UNAUTHORIZED',
       });
     });
 
-    it('throws AUTH_FAILED for inactive user', async () => {
-      mockPrismaUser.findUnique.mockResolvedValue(
+    it('throws UNAUTHORIZED for inactive user', async () => {
+      mockPrismaUser.findFirst.mockResolvedValue(
         createCompleteMockUser({ isActive: false })
       );
 
       await expect(loginWithPassword({
         email: 'test@example.com',
         password: 'password123',
+        tenantId: 1,
       })).rejects.toMatchObject({
-        code: 'AUTH_FAILED',
+        code: 'UNAUTHORIZED',
       });
     });
 
     it('increments failed attempts on wrong password', async () => {
-      mockPrismaUser.findUnique.mockResolvedValue(
+      mockPrismaUser.findFirst.mockResolvedValue(
         createCompleteMockUser({ failedLoginAttempts: 2 })
       );
-      mockPrismaUser.update.mockResolvedValue(createCompleteMockUser());
+      mockPrismaUser.update.mockResolvedValue(
+        createCompleteMockUser({ failedLoginAttempts: 3 })
+      );
       jest.spyOn(bcrypt, 'compare').mockResolvedValue(false as never);
 
       await expect(loginWithPassword({
         email: 'test@example.com',
         password: 'wrongpassword',
+        tenantId: 1,
       })).rejects.toThrow();
 
       expect(mockPrismaUser.update).toHaveBeenCalledWith({
         where: { id: 1 },
-        data: { failedLoginAttempts: 3 },
+        data: { failedLoginAttempts: { increment: 1 } },
+        select: { failedLoginAttempts: true },
       });
     });
   });
@@ -384,18 +385,20 @@ describe('Auth Service - loginWithPassword', () => {
 // ============================================================================
 
 describe('Auth Service - register', () => {
-  
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockPrismaUser.findFirst.mockReset();
+    mockPrismaUser.findMany.mockReset();
     mockPrismaUser.create.mockReset();
     jest.spyOn(bcrypt, 'hash').mockResolvedValue('$2a$10$hashedpassword' as never);
   });
 
   describe('Success Scenarios', () => {
-    
+
     beforeEach(() => {
-      mockPrismaUser.findFirst.mockResolvedValue(null); // No existing user
+      mockPrismaUser.findFirst.mockResolvedValue(null); // No existing user by email
+      mockPrismaUser.findMany.mockResolvedValue([]); // No existing PIN users
       mockPrismaUser.create.mockResolvedValue(
         createCompleteMockUser({ id: 2, email: 'new@example.com' })
       );
@@ -408,6 +411,7 @@ describe('Auth Service - register', () => {
         name: 'New User',
         pinCode: '654321',
         roleId: 1,
+        tenantId: 1,
       });
 
       expect(result).toHaveProperty('user');
@@ -424,6 +428,7 @@ describe('Auth Service - register', () => {
         name: 'New User',
         pinCode: '654321',
         roleId: 1,
+        tenantId: 1,
       });
 
       expect(hashSpy).toHaveBeenCalledWith('password123', 10);
@@ -439,6 +444,7 @@ describe('Auth Service - register', () => {
         name: 'Test',
         pinCode: '123456',
         roleId: 1,
+        tenantId: 1,
       })).rejects.toMatchObject({
         code: 'VALIDATION_ERROR',
       });
@@ -451,6 +457,7 @@ describe('Auth Service - register', () => {
         name: 'Test',
         pinCode: '123456',
         roleId: 1,
+        tenantId: 1,
       })).rejects.toMatchObject({
         code: 'VALIDATION_ERROR',
       });
@@ -463,6 +470,7 @@ describe('Auth Service - register', () => {
         name: 'Test',
         pinCode: '123', // Too short
         roleId: 1,
+        tenantId: 1,
       })).rejects.toMatchObject({
         code: 'VALIDATION_ERROR',
       });
@@ -471,8 +479,9 @@ describe('Auth Service - register', () => {
 
   describe('Conflict Errors', () => {
     
-    it('throws USER_EXISTS if email already registered', async () => {
+    it('throws CONFLICT if email already registered', async () => {
       mockPrismaUser.findFirst.mockResolvedValue(createCompleteMockUser());
+      mockPrismaUser.findMany.mockResolvedValue([]); // No PIN collision
 
       await expect(register({
         email: 'test@example.com',
@@ -480,8 +489,9 @@ describe('Auth Service - register', () => {
         name: 'Duplicate User',
         pinCode: '111111',
         roleId: 1,
+        tenantId: 1,
       })).rejects.toMatchObject({
-        code: 'USER_EXISTS',
+        code: 'CONFLICT',
       });
 
       expect(mockPrismaUser.create).not.toHaveBeenCalled();

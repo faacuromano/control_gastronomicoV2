@@ -26,28 +26,29 @@ describe('Order Transaction Integrity', () => {
 
         // Create dependencies
         const role = await prisma.role.create({
-            data: { name: 'WAITER_TEST_TX', permissions: {} }
+            data: { name: 'WAITER_TEST_TX', permissions: {}, tenantId: 1 }
         });
 
         const user = await prisma.user.create({
-            data: { name: 'Test Server TX', pinHash: '$2a$10$test.hash.for.integration.tests', roleId: role.id }
+            data: { name: 'Test Server TX', pinHash: '$2a$10$test.hash.for.integration.tests', roleId: role.id, tenantId: 1 }
         });
         userId = user.id;
 
         const shift = await prisma.cashShift.create({
-            data: { 
-                userId: user.id, 
-                startAmount: 100, 
+            data: {
+                userId: user.id,
+                startAmount: 100,
                 startTime: new Date(),
-                businessDate: new Date()
+                businessDate: new Date(),
+                tenantId: 1
             }
         });
         shiftId = shift.id;
 
-        const cat = await prisma.category.create({ data: { name: 'Test Cat' } });
+        const cat = await prisma.category.create({ data: { name: 'Test Cat', tenantId: 1 } });
         
         const ing = await prisma.ingredient.create({
-            data: { name: 'Test Ing', unit: 'kg', stock: 100, cost: 10 }
+            data: { name: 'Test Ing', unit: 'kg', stock: 100, cost: 10, tenantId: 1 }
         });
 
         const prod = await prisma.product.create({
@@ -56,8 +57,9 @@ describe('Order Transaction Integrity', () => {
                 price: 100,
                 categoryId: cat.id,
                 isStockable: true,
+                tenantId: 1,
                 ingredients: {
-                    create: [{ ingredientId: ing.id, quantity: 1 }]
+                    create: [{ ingredientId: ing.id, quantity: 1, tenantId: 1 }]
                 }
             }
         });

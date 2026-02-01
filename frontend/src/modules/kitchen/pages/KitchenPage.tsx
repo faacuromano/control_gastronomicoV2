@@ -104,7 +104,7 @@ export const KitchenPage: React.FC = () => {
   const handleMarkServed = async (orderId: number) => {
       try {
           await orderService.markAllItemsServed(orderId);
-          const updatedOrder = await orderService.updateStatus(orderId, 'DELIVERED');
+          await orderService.updateStatus(orderId, 'DELIVERED');
           // Remove delivered order from KDS
           setOrders(prev => prev.filter(o => o.id !== orderId));
       } catch (e) {

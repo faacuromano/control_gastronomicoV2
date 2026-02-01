@@ -43,6 +43,7 @@ async function getDefaultTenant() {
 
 async function fixAreaNulls(defaultTenantId: number) {
   const nullAreas = await prisma.area.findMany({
+    // @ts-expect-error Pre-migration script queries NULL tenantId before NOT NULL constraint
     where: { tenantId: null },
   });
 
@@ -66,6 +67,7 @@ async function fixAreaNulls(defaultTenantId: number) {
 
 async function fixTableNulls(defaultTenantId: number) {
   const nullTables = await prisma.table.findMany({
+    // @ts-expect-error Pre-migration script queries NULL tenantId before NOT NULL constraint
     where: { tenantId: null },
     include: { area: true },
   });
@@ -80,9 +82,10 @@ async function fixTableNulls(defaultTenantId: number) {
   for (const table of nullTables) {
     // Intentar obtener tenantId del Area relacionada
     let tenantId = defaultTenantId;
+    const tableWithArea = table as typeof table & { area?: { tenantId: number } };
 
-    if (table.area && table.area.tenantId) {
-      tenantId = table.area.tenantId;
+    if (tableWithArea.area && tableWithArea.area.tenantId) {
+      tenantId = tableWithArea.area.tenantId;
       console.log(
         `   - Table ID ${table.id} ("${table.name}") → tenantId: ${tenantId} (from Area)`
       );
@@ -103,6 +106,7 @@ async function fixTableNulls(defaultTenantId: number) {
 
 async function fixAuditLogNulls(defaultTenantId: number) {
   const nullLogs = await prisma.auditLog.findMany({
+    // @ts-expect-error Pre-migration script queries NULL tenantId before NOT NULL constraint
     where: { tenantId: null },
   });
 
@@ -163,8 +167,11 @@ async function main() {
   console.log('\n3️⃣  Verificando resultado...\n');
 
   const remainingNulls = {
+    // @ts-expect-error Pre-migration script queries NULL tenantId before NOT NULL constraint
     area: await prisma.area.count({ where: { tenantId: null } }),
+    // @ts-expect-error Pre-migration script queries NULL tenantId before NOT NULL constraint
     table: await prisma.table.count({ where: { tenantId: null } }),
+    // @ts-expect-error Pre-migration script queries NULL tenantId before NOT NULL constraint
     auditLog: await prisma.auditLog.count({ where: { tenantId: null } }),
   };
 

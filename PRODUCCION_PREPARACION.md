@@ -240,8 +240,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 - [ ] **Backup de base de datos** (`mysqldump -u root -p control_gastronomico_v2 > backup.sql`)
 - [x] **Resolver todos los items P0** de la Seccion 3.1 *(los 10 resueltos)*
-- [ ] **Ejecutar migraciones pendientes** (`npx prisma migrate deploy`)
-- [ ] **Regenerar cliente Prisma** (`npx prisma generate`)
+- [x] **Ejecutar migraciones pendientes** (`npx prisma migrate deploy`) *(hecho — `20260201070000_p1_cascade_tax_refresh` aplicada exitosamente)*
+- [x] **Regenerar cliente Prisma** (`npx prisma generate`) *(hecho — modelos RefreshToken + TaxRate ahora en el cliente)*
 - [x] **Corregir datos semilla** para incluir `tenantId` en todos los registros *(hecho)*
 - [x] **Eliminar defaults `?? 1` de tenantId** de `auth.service.ts` *(hecho)*
 - [x] **Limitar salas WebSocket por tenant** (`tenant:${tenantId}:kitchen`) *(hecho)*
@@ -251,9 +251,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 - [x] **Agregar `express.json({ limit: '1mb' })`** *(hecho)*
 - [x] **Configurar CORS** para dominio de produccion *(lee variable `CORS_ORIGINS` — `app.ts:24-34`)*
 - [ ] **Establecer `NODE_ENV=production`**
-- [ ] **Ejecutar compilacion TypeScript** (`npx tsc --noEmit`) - verificar cero errores
-- [ ] **Ejecutar tests de integracion** (`npm test -- tenantIsolation.test.ts`)
-- [ ] **Compilar frontend** (`npm run build`) y verificar bundle
+- [x] **Ejecutar compilacion TypeScript** (`npx tsc --noEmit`) - verificar cero errores *(hecho — 0 errores en src, tests y scripts)*
+- [x] **Ejecutar tests de integracion** (`npm test -- tenantIsolation.test.ts`) *(hecho — 13/13 PASAN: aislamiento de orden, cliente, producto, analytics, usuario + proteccion de escritura cross-tenant + validacion de esquema)*
+- [x] **Compilar frontend** (`npm run build`) y verificar bundle *(hecho — 54 entradas precache, 899 KiB, service worker PWA generado)*
 
 ### Despliegue
 
@@ -380,8 +380,13 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 | Suite de Tests | Estado | Cobertura |
 |----------------|--------|-----------|
+| Compilacion TypeScript | **0 errores** | Todo src, tests y scripts compilan limpiamente |
 | Integracion de aislamiento de tenant | 13/13 PASAN | Orden, Cliente, Producto, Usuario, Analytics, Escritura cross-tenant, Esquema |
-| Spec forense de OrderNumber | Presente | Casos borde de generacion de numero de orden |
+| Spec forense de OrderNumber (Vitest) | **17/17 PASAN** | Generacion UUID, logica de fecha de negocio, concurrencia, restricciones BD, reintentos, rendimiento |
+| Tests unitarios de auth (Jest) | **25/25 PASAN** | Login por PIN, login por password, registro, errores de validacion, cuentas bloqueadas, conflictos de duplicados |
+| Tests unitarios de feature flags (Jest) | **PASAN** | executeIfEnabled con parametro tenantId, manejo de errores, flags independientes |
+| Tests unitarios de order (Jest) | **7/7 PASAN** | createOrder (datos validos, producto no encontrado, producto inactivo, sin server ID, sin turno, totales multi-item), getRecentOrders |
+| Integracion de transaccion de orden | Actualizado para multi-tenant | Todas las operaciones Prisma create incluyen tenantId |
 | QA manual | No documentado | No existe plan de pruebas |
 | Tests E2E | No implementados | Ninguno |
 | Tests de rendimiento/carga | No implementados | Plan de stress test existe pero no ejecutado |

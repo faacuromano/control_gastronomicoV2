@@ -175,7 +175,7 @@ export const divideDecimals = (
 export const sumDecimals = (
     values: (string | number | null | undefined)[]
 ): number => {
-    return values.reduce((sum, value) => addDecimals(sum, value), 0);
+    return values.reduce<number>((sum, value) => addDecimals(sum, value), 0);
 };
 
 /**

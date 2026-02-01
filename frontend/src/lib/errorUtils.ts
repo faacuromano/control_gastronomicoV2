@@ -4,7 +4,6 @@
  * Provides consistent error message extraction from API responses.
  */
 
-import { AxiosError } from 'axios';
 
 /**
  * Standard API error response format

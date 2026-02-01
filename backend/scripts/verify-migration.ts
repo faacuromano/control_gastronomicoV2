@@ -84,8 +84,8 @@ async function verifyMigration() {
     const testKey = '2026012001';  // Jan 20, 1 AM
     
     // Check if exists
-    const existing = await prisma.orderSequence.findUnique({
-      where: { sequenceKey: testKey }
+    const existing = await prisma.orderSequence.findFirst({
+      where: { sequenceKey: testKey, tenantId: 1 }
     });
     
     if (existing) {
@@ -96,7 +96,8 @@ async function verifyMigration() {
       const created = await prisma.orderSequence.create({
         data: {
           sequenceKey: testKey,
-          currentValue: 0
+          currentValue: 0,
+          tenantId: 1
         }
       });
       

@@ -9,7 +9,7 @@ async function main() {
   console.log(JSON.stringify(sequences, null, 2));
   
   const orders = await prisma.order.findMany({
-      select: { orderNumber: true, businessDate: true, uuid: true, createdAt: true },
+      select: { orderNumber: true, businessDate: true, createdAt: true },
       orderBy: { createdAt: 'desc' },
       take: 20
   });

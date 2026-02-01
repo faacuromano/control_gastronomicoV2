@@ -17,7 +17,7 @@ const CONCURRENCY = 60;
 const DB_URL = process.env.DATABASE_URL;
 
 const prisma = new PrismaClient({
-  datasources: { db: { url: DB_URL } },
+  datasources: { db: { url: DB_URL! } },
   log: ['error'], // Only log critical errors to keep throughput high
 });
 
@@ -54,7 +54,7 @@ async function simulateUser(userId: number) {
 
       // 2. Execute Critical Path
       await prisma.$transaction(async (tx) => {
-        await orderNumberService.getNextOrderNumber(tx);
+        await orderNumberService.getNextOrderNumber(tx, 1, new Date());
       }, {
         maxWait: 5000, 
         timeout: 10000 

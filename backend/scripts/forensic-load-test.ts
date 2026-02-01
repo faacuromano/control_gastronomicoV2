@@ -19,7 +19,7 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const prisma = new PrismaClient({
   datasources: {
     db: {
-      url: DATABASE_URL,
+      url: DATABASE_URL!,
     },
   },
   // Increase connection pool to handle high concurrency simulation? 
@@ -59,7 +59,7 @@ async function runLoadTest() {
     const start = performance.now();
     try {
       return await prisma.$transaction(async (tx) => {
-        const result = await orderNumberService.getNextOrderNumber(tx);
+        const result = await orderNumberService.getNextOrderNumber(tx, 1, new Date());
         const latency = performance.now() - start;
         return {
           success: true,

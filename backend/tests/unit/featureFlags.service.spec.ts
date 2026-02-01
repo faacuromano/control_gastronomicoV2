@@ -54,7 +54,7 @@ describe('Feature Flags Service', () => {
             const stockDeductionFn = jest.fn().mockResolvedValue({ success: true });
 
             // Act: Try to execute with disabled flag
-            const result = await executeIfEnabled('enableStock', stockDeductionFn, undefined);
+            const result = await executeIfEnabled('enableStock', stockDeductionFn, 1, undefined);
 
             // Assert: Function was NOT called, returned undefined (fallback)
             expect(stockDeductionFn).not.toHaveBeenCalled();
@@ -83,7 +83,7 @@ describe('Feature Flags Service', () => {
             const stockDeductionFn = jest.fn().mockResolvedValue({ deducted: 10 });
 
             // Act
-            const result = await executeIfEnabled('enableStock', stockDeductionFn);
+            const result = await executeIfEnabled('enableStock', stockDeductionFn, 1);
 
             // Assert: Function WAS called
             expect(stockDeductionFn).toHaveBeenCalledTimes(1);
@@ -116,7 +116,7 @@ describe('Feature Flags Service', () => {
             const failingFn = jest.fn().mockRejectedValue(new Error('Database connection failed'));
 
             // Act: Execute with error - should not throw, should return fallback
-            const result = await executeIfEnabled('enableStock', failingFn, { fallbackUsed: true });
+            const result = await executeIfEnabled('enableStock', failingFn, 1, { fallbackUsed: true });
 
             // Assert: Error was caught, fallback returned
             expect(failingFn).toHaveBeenCalled();
@@ -145,13 +145,13 @@ describe('Feature Flags Service', () => {
             const stockFn = jest.fn().mockResolvedValue({ deducted: 5 });
 
             // Act
-            const deliveryResult = await executeIfEnabled('enableDelivery', deliveryFn);
+            const deliveryResult = await executeIfEnabled('enableDelivery', deliveryFn, 1);
             
             // Clear cache to refetch
             clearConfigCache();
             (prisma.tenantConfig.findFirst as jest.Mock).mockResolvedValue(mockConfig);
             
-            const stockResult = await executeIfEnabled('enableStock', stockFn);
+            const stockResult = await executeIfEnabled('enableStock', stockFn, 1);
 
             // Assert
             expect(deliveryFn).toHaveBeenCalled();

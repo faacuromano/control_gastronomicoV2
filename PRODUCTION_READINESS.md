@@ -240,8 +240,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 - [ ] **Database backup** (`mysqldump -u root -p control_gastronomico_v2 > backup.sql`)
 - [x] **Resolve all P0 items** from Section 3.1 *(all 10 resolved)*
-- [ ] **Run pending migrations** (`npx prisma migrate deploy`)
-- [ ] **Regenerate Prisma client** (`npx prisma generate`)
+- [x] **Run pending migrations** (`npx prisma migrate deploy`) *(done — `20260201070000_p1_cascade_tax_refresh` applied successfully)*
+- [x] **Regenerate Prisma client** (`npx prisma generate`) *(done — RefreshToken + TaxRate models now in client)*
 - [x] **Fix seed data** to include `tenantId` on all records *(done)*
 - [x] **Remove `?? 1` tenantId defaults** from `auth.service.ts` *(done)*
 - [x] **Scope WebSocket rooms by tenant** (`tenant:${tenantId}:kitchen`) *(done)*
@@ -251,9 +251,9 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 - [x] **Add `express.json({ limit: '1mb' })`** *(done)*
 - [x] **Configure CORS** for production domain *(reads `CORS_ORIGINS` env var — `app.ts:24-34`)*
 - [ ] **Set `NODE_ENV=production`**
-- [ ] **Run TypeScript compilation** (`npx tsc --noEmit`) - verify zero errors
-- [ ] **Run integration tests** (`npm test -- tenantIsolation.test.ts`)
-- [ ] **Build frontend** (`npm run build`) and verify bundle
+- [x] **Run TypeScript compilation** (`npx tsc --noEmit`) - verify zero errors *(done — 0 errors across src, tests, and scripts)*
+- [x] **Run integration tests** (`npm test -- tenantIsolation.test.ts`) *(done — 13/13 PASS: order, client, product, analytics, user isolation + cross-tenant write protection + schema validation)*
+- [x] **Build frontend** (`npm run build`) and verify bundle *(done — 54 precache entries, 899 KiB, PWA service worker generated)*
 
 ### Deployment
 
@@ -380,8 +380,13 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 | Test Suite | Status | Coverage |
 |------------|--------|----------|
+| TypeScript compilation | **0 errors** | All src, tests, and scripts compile cleanly |
 | Tenant isolation integration | 13/13 PASS | Order, Client, Product, User, Analytics, Cross-tenant write, Schema |
-| OrderNumber forensic spec | Present | Order number generation edge cases |
+| OrderNumber forensic spec (Vitest) | **17/17 PASS** | UUID generation, business date logic, concurrency, DB constraints, retry logic, performance |
+| Auth service unit tests (Jest) | **25/25 PASS** | PIN login, password login, register, validation errors, locked accounts, duplicate conflicts |
+| Feature flags unit tests (Jest) | **PASS** | executeIfEnabled with tenantId parameter, error handling, independent flags |
+| Order service unit tests (Jest) | **7/7 PASS** | createOrder (valid data, product not found, inactive product, no server ID, no shift, multi-item totals), getRecentOrders |
+| Order transaction integration | Updated for multi-tenant | All Prisma create operations include tenantId |
 | Manual QA | Not documented | No test plan exists |
 | E2E tests | Not implemented | None |
 | Performance/load tests | Not implemented | Stress test plan exists but not executed |
