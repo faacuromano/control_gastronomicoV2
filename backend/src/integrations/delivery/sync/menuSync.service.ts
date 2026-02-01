@@ -57,6 +57,14 @@ class MenuSyncService {
     logger.info('Starting menu sync', { tenantId, platformId });
 
     try {
+      // SEC-015: Verify platform belongs to requesting tenant (defense-in-depth)
+      const platformOwnership = await prisma.deliveryPlatform.findFirst({
+        where: { id: platformId, tenantId },
+      });
+      if (!platformOwnership) {
+        throw new Error(`Platform ${platformId} not found or does not belong to tenant ${tenantId}`);
+      }
+
       // 1. Obtener configuración del tenant para esta plataforma
       const config = await prisma.tenantPlatformConfig.findUnique({
         where: {

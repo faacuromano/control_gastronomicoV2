@@ -14,12 +14,14 @@ const createClientSchema = z.object({
 });
 
 export const searchClients = asyncHandler(async (req: Request, res: Response) => {
-    const { q } = req.query;
-    const clients = await clientService.search(
+    const { q, page, limit } = req.query;
+    const result = await clientService.search(
         req.user!.tenantId!,
-        typeof q === 'string' ? q : undefined
+        typeof q === 'string' ? q : undefined,
+        parseInt(page as string) || 1,
+        parseInt(limit as string) || 50
     );
-    sendSuccess(res, clients);
+    sendSuccess(res, result.data, result.meta);
 });
 
 export const createClient = asyncHandler(async (req: Request, res: Response) => {

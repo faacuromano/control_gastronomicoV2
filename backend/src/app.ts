@@ -59,7 +59,21 @@ import { correlationId } from './middleware/correlationId';
 
 app.use(cors({ origin: allowedOrigins, credentials: true }));
 app.use(helmet({
-  ...(!isProduction && { contentSecurityPolicy: false }), // Disable CSP in dev for hot-reload
+  // SEC-020: Explicit CSP for production; disabled in dev for hot-reload
+  contentSecurityPolicy: isProduction ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"], // Required for inline styles
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", ...(process.env.CORS_ORIGINS?.split(',') || [])],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  } : false,
   hsts: isProduction ? { maxAge: 31536000, includeSubDomains: true } : false,
   crossOriginEmbedderPolicy: false, // Allow loading images from external sources
 }));

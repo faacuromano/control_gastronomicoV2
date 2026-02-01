@@ -247,6 +247,17 @@ export const registerNewTenant = asyncHandler(async (req: Request, res: Response
  * @implements TDD Section 3.2 - Login Request Flow
  */
 export const loginUser = asyncHandler(async (req: Request, res: Response) => {
+    // BIZ-006: Validate tenant subscription before password login (matches PIN login check)
+    const { tenantId: rawTenantId } = req.body;
+    if (rawTenantId) {
+        const tenant = await prisma.tenant.findFirst({
+            where: { id: rawTenantId, activeSubscription: true }
+        });
+        if (!tenant) {
+            return sendError(res, 'INVALID_TENANT', 'Invalid or inactive organization');
+        }
+    }
+
     try {
         const result = await loginWithPassword(req.body);
         

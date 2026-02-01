@@ -7,22 +7,22 @@ const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
 // DATOS
 // ============================================================
 
-const QUALITY_SCORE = 76;
-const READINESS_PCT = 80;
+const QUALITY_SCORE = 82;
+const READINESS_PCT = 85;
 
 const severityCounts = { "Cr\u00edtico": 12, Alto: 38, Medio: 72, Bajo: 45, Info: 30, Total: 197 };
-const fixedCount = 74;
-const remainingCount = 123;
+const fixedCount = 88;
+const remainingCount = 109;
 
 const categoryScores = [
-  { category: "Seguridad",         weight: "20%", score: 75, rationale: "25/43 hallazgos corregidos. Sanitizaci\u00f3n XSS, CORS bloqueado en producci\u00f3n, rate limit webhooks, validaci\u00f3n cross-tenant, longitud m\u00e1xima en campos. Pendientes: ajuste CSP, rotaci\u00f3n de secretos, Docker secrets." },
-  { category: "Manejo de Errores", weight: "15%", score: 72, rationale: "7/16 corregidos. Reintento de colisi\u00f3n QR, diferenciaci\u00f3n de errores mejorada. Pendientes: recuperaci\u00f3n de broadcast KDS, alertas de feature flags." },
+  { category: "Seguridad",         weight: "20%", score: 80, rationale: "28/43 hallazgos corregidos. CSP en producci\u00f3n, verificaci\u00f3n de ownership de plataforma, credenciales Docker via env_file, limpieza de secretos en frontend. Pendientes: rotaci\u00f3n de secretos, validaci\u00f3n Zod de webhooks." },
+  { category: "Manejo de Errores", weight: "15%", score: 80, rationale: "11/16 corregidos. Errores estructurados KDS/audit, stack traces en producci\u00f3n, feature flags cr\u00edticos re-lanzan errores. Pendientes: fuga de archivos temporales de impresora." },
   { category: "Dise\u00f1o de API",      weight: "15%", score: 58, rationale: "2/11 corregidos. Formato de respuesta estandarizado. Pendientes: docs de versionado API, OpenAPI, respuesta de paginaci\u00f3n consistente." },
-  { category: "Base de Datos",     weight: "12%", score: 78, rationale: "8/18 corregidos. Races TOCTOU en proveedor/categor\u00eda envueltas en transacciones. Pendientes: connection pooling, rollback de sync de pagos." },
+  { category: "Base de Datos",     weight: "12%", score: 82, rationale: "9/18 corregidos. Connection pool configurable via DB_POOL_SIZE. Pendientes: \u00edndices compuestos, batch de stock." },
   { category: "Calidad de C\u00f3digo", weight: "10%", score: 50, rationale: "2/28 corregidos. console.* reemplazado con logger, middleware de validaci\u00f3n de ID. Pendientes: casts 'as any', helpers duplicados." },
-  { category: "Rendimiento",       weight: "8%",  score: 72, rationale: "7/21 corregidos. Throttling de alertas de stock, l\u00edmites por defecto reducidos, paginaci\u00f3n. Pendientes: batch de stock, optimizaci\u00f3n de routing de impresora." },
+  { category: "Rendimiento",       weight: "8%",  score: 78, rationale: "9/21 corregidos. Paginaci\u00f3n de clientes, TTL en cach\u00e9 de adaptadores. Pendientes: batch de stock, optimizaci\u00f3n de routing de impresora." },
   { category: "Dependencias",      weight: "7%",  score: 65, rationale: "2/4 corregidos. npm audit + configuraci\u00f3n Dependabot. Pendientes: estabilidad Express 5 RC, upgrade bcryptjs." },
-  { category: "Configuraci\u00f3n",     weight: "5%",  score: 65, rationale: "2/8 corregidos. Configuraci\u00f3n Nginx, validaci\u00f3n condicional Redis. Pendientes: docs SSL, valores de config hardcoded." },
+  { category: "Configuraci\u00f3n",     weight: "5%",  score: 70, rationale: "3/8 corregidos. Credenciales Docker via env_file, pool configurable. Pendientes: docs SSL, valores de config hardcoded." },
   { category: "Testing",           weight: "5%",  score: 30, rationale: "0/16 corregidos. Brechas importantes de cobertura persisten. Positivo: existen tests de aislamiento de tenant y tests forenses." },
   { category: "Documentaci\u00f3n",     weight: "3%",  score: 55, rationale: "Documentos de auditor\u00eda mantenidos con seguimiento completo de remediaci\u00f3n. A\u00fan sin OpenAPI/Swagger." },
 ];

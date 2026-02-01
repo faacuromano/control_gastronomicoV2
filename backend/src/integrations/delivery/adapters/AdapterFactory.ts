@@ -41,10 +41,12 @@ const ADAPTER_REGISTRY: Record<
 // ============================================================================
 
 /**
- * Cache de adapters instanciados.
+ * Cache de adapters instanciados with TTL (PERF-009).
  * Evita crear múltiples instancias del mismo adapter.
+ * TTL ensures credential changes are reflected without restart.
  */
-const adapterCache = new Map<number, AbstractDeliveryAdapter>();
+const ADAPTER_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const adapterCache = new Map<number, { adapter: AbstractDeliveryAdapter; expiry: number }>();
 
 // ============================================================================
 // FACTORY
@@ -60,11 +62,12 @@ class AdapterFactoryClass {
    * @throws Error si no hay adapter implementado para esa plataforma
    */
   async getByPlatformId(platformId: number): Promise<AbstractDeliveryAdapter> {
-    // Verificar cache primero
+    // Verificar cache primero (with TTL check)
     const cached = adapterCache.get(platformId);
-    if (cached) {
-      return cached;
+    if (cached && cached.expiry > Date.now()) {
+      return cached.adapter;
     }
+    if (cached) adapterCache.delete(platformId); // Expired
 
     const platform = await prisma.deliveryPlatform.findUnique({
       where: { id: platformId },
@@ -93,11 +96,12 @@ class AdapterFactoryClass {
       throw new NotFoundError(`Plataforma de delivery con código=${code}`);
     }
 
-    // Verificar cache
-    const cached = adapterCache.get(platform.id);
-    if (cached) {
-      return cached;
+    // Verificar cache (with TTL)
+    const cachedEntry = adapterCache.get(platform.id);
+    if (cachedEntry && cachedEntry.expiry > Date.now()) {
+      return cachedEntry.adapter;
     }
+    if (cachedEntry) adapterCache.delete(platform.id);
 
     return this.createAdapter(platform);
   }
@@ -209,9 +213,9 @@ class AdapterFactoryClass {
     // Los overrides tienen prioridad (ej: storeId del tenant sobre storeId de plataforma)
     const adapter = new AdapterClass(platform, configOverrides);
     
-    // Solo guardar en cache si NO hay overrides (instancia global)
+    // Solo guardar en cache si NO hay overrides (instancia global), with TTL
     if (Object.keys(configOverrides).length === 0) {
-      adapterCache.set(platform.id, adapter);
+      adapterCache.set(platform.id, { adapter, expiry: Date.now() + ADAPTER_CACHE_TTL_MS });
     }
     
     logger.debug('Adapter created', {

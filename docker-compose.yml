@@ -24,13 +24,12 @@ services:
 
     command: --max-connections=300 --innodb-buffer-pool-size=256M
 
+    # SEC-016: Credentials loaded via env_file only (not visible in docker inspect)
     env_file:
       - .env
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-pentiumpos}
       MYSQL_USER: ${MYSQL_USER:-pentium_user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       TZ: America/Argentina/Buenos_Aires
 
     ports:
@@ -115,25 +114,25 @@ services:
       redis:
         condition: service_healthy
     
+    # SEC-029: Sensitive credentials loaded via env_file, not inline environment
+    env_file:
+      - .env
     environment:
-      # Database
-      DATABASE_URL: mysql://${MYSQL_USER:-pentium_user}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-pentiumpos}?connection_limit=20&pool_timeout=20
-      
+      # DB-013: Connection pool configurable via env var (default 50 for dev)
+      DATABASE_URL: mysql://${MYSQL_USER:-pentium_user}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-pentiumpos}?connection_limit=${DB_POOL_SIZE:-50}&pool_timeout=20
+
       # Redis/Queue
       REDIS_HOST: redis
       REDIS_PORT: 6379
       QUEUE_PROVIDER: bullmq
-      
+
       # Application
       NODE_ENV: development
       PORT: 3001
-      
-      # Security
-      JWT_SECRET: ${JWT_SECRET}
-      
+
       # CORS
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://frontend:5173
-      
+
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-debug}
     

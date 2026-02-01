@@ -21,10 +21,11 @@ export const errorHandler = (
     if (!isProduction) {
         logger.error('[Error Handler]', { error: err });
     } else {
-        // In production, log without stack trace to external service
+        // ERR-008: In production, log WITH stack trace for debugging but don't expose to client
         logger.error('[Error]', {
             name: err.name,
             message: err.message,
+            stack: err.stack,
             path: req.path,
             method: req.method,
             timestamp: new Date().toISOString()

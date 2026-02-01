@@ -64,8 +64,24 @@ export class SyncService {
         const errors: SyncError[] = [];
         const warnings: SyncWarning[] = [];
 
-        // 1. Process orders first (they need real IDs before payments)
+        // BIZ-010: Idempotency check — detect duplicate tempIds in retry scenarios
+        const seenTempIds = new Set<string>();
         for (const pendingOrder of request.pendingOrders) {
+            if (seenTempIds.has(pendingOrder.tempId)) {
+                warnings.push({
+                    tempId: pendingOrder.tempId,
+                    code: 'DUPLICATE_TEMP_ID',
+                    message: `Duplicate tempId detected: ${pendingOrder.tempId}, skipping`
+                });
+            }
+            seenTempIds.add(pendingOrder.tempId);
+        }
+        const uniqueOrders = request.pendingOrders.filter((o, i, arr) =>
+            arr.findIndex(x => x.tempId === o.tempId) === i
+        );
+
+        // 1. Process orders first (they need real IDs before payments)
+        for (const pendingOrder of uniqueOrders) {
             try {
                 const result = await this.processOfflineOrder(pendingOrder, tenantId, context);
                 orderMappings.push(result.mapping);

@@ -59,6 +59,8 @@ export const DeliveryPlatformsPage: React.FC = () => {
                 const created = await deliveryService.createPlatform(data);
                 setPlatforms([...platforms, created]);
             }
+            // SEC-014: Clear sensitive fields from state immediately after submit
+            setFormData(prev => ({ ...prev, apiKey: '', webhookSecret: '' }));
             closeModal();
         } catch (err) {
             console.error('Failed to save platform:', err);
@@ -89,8 +91,8 @@ export const DeliveryPlatformsPage: React.FC = () => {
         setFormData({
             code: platform.code,
             name: platform.name,
-            apiKey: platform.apiKey || '',
-            webhookSecret: platform.webhookSecret || '',
+            apiKey: '', // SEC-014: Never load secrets back into state
+            webhookSecret: '', // SEC-014: Never load secrets back into state
             storeId: platform.storeId || '',
             commissionRate: platform.commissionRate?.toString() || ''
         });

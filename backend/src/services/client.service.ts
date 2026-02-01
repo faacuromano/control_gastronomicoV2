@@ -5,25 +5,30 @@ export class ClientService {
   /**
    * Search clients by name or phone, or return recent clients.
    */
-  async search(tenantId: number, query?: string) {
-    if (!query || !query.trim()) {
-      return prisma.client.findMany({
-        where: { tenantId },
-        take: 20,
-        orderBy: { id: 'desc' }
-      });
+  async search(tenantId: number, query?: string, page = 1, limit = 50) {
+    // PERF-008: Support pagination (default 50, max 200)
+    const take = Math.min(Math.max(1, limit), 200);
+    const skip = (Math.max(1, page) - 1) * take;
+
+    const where: any = { tenantId };
+    if (query && query.trim()) {
+      where.OR = [
+        { name: { contains: query } },
+        { phone: { contains: query } }
+      ];
     }
 
-    return prisma.client.findMany({
-      where: {
-        tenantId,
-        OR: [
-          { name: { contains: query } },
-          { phone: { contains: query } }
-        ]
-      },
-      take: 20
-    });
+    const [data, total] = await Promise.all([
+      prisma.client.findMany({
+        where,
+        take,
+        skip,
+        orderBy: { id: 'desc' }
+      }),
+      prisma.client.count({ where })
+    ]);
+
+    return { data, meta: { total, page, limit: take, totalPages: Math.ceil(total / take) } };
   }
 
   /**

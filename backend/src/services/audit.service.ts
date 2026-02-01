@@ -45,8 +45,15 @@ export class AuditService {
 
             await prisma.auditLog.create({ data });
         } catch (error) {
-            // Never fail the main operation due to audit failure
-            logger.error('Audit log failed:', { error });
+            // ERR-004: Never fail the main operation, but log with full context for alerting
+            logger.error('AUDIT_LOG_FAILED', {
+                action,
+                entity,
+                entityId,
+                tenantId: context.tenantId,
+                error: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined,
+            });
         }
     }
 

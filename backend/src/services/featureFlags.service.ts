@@ -91,7 +91,19 @@ export async function executeIfEnabled<T>(
     try {
         return await fn();
     } catch (error) {
-        logger.error(`[Feature Flag] Optional module ${flag} failed:`, { error });
+        // ERR-011: Log with full context; critical features (stock) should not silently fail
+        const isCritical = flag === 'enableStock' || flag === 'enableFiscal';
+        const level = isCritical ? 'error' : 'warn';
+        logger[level](`FEATURE_FLAG_EXECUTION_FAILED`, {
+            flag,
+            tenantId,
+            critical: isCritical,
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+        });
+        if (isCritical) {
+            throw error; // Don't swallow stock/fiscal errors — they cause inventory drift
+        }
         return fallback;
     }
 }

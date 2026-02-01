@@ -46,7 +46,14 @@ export class KDSService {
                 prepTime
             });
         } catch (error) {
-            logger.warn('Failed to broadcast new order', { error });
+            // ERR-007: Log with full order context for manual recovery
+            logger.error('KDS_BROADCAST_FAILED', {
+                event: 'order_new',
+                orderId: order.id,
+                orderNumber: order.orderNumber,
+                tenantId: order.tenantId,
+                error: error instanceof Error ? error.message : String(error),
+            });
         }
     }
 
@@ -85,7 +92,15 @@ export class KDSService {
                 tenantId
             });
         } catch (error) {
-            logger.warn('Failed to broadcast order update', { error });
+            // ERR-007: Log with full order context for manual recovery
+            logger.error('KDS_BROADCAST_FAILED', {
+                event: 'order_update',
+                orderId: order.id,
+                orderNumber: order.orderNumber,
+                status: order.status,
+                tenantId: order.tenantId,
+                error: error instanceof Error ? error.message : String(error),
+            });
         }
     }
 
