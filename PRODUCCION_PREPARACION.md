@@ -178,15 +178,15 @@ npx prisma generate
 
 ### 5.1 Correcciones de Configuracion Docker
 
-| Elemento | Actual | Requerido |
-|----------|--------|-----------|
-| MySQL `max_connections` | 151 (por defecto) | 300+ o reducir pool a 100 |
-| Pool de conexiones | `connection_limit=200` | Reducir a 100 o aumentar MySQL |
-| Timeout del pool | 20s | Reducir a 5-10s para fallo rapido |
+| Elemento | Estado | Detalles |
+|----------|--------|----------|
+| MySQL `max_connections` | **HECHO** | Configurado a 300 via `--max-connections=300` en `docker-compose.yml` |
+| Pool de conexiones | **HECHO** | `connection_limit=20` en docker-compose.yml y `.env.example` (alineados) |
+| Timeout del pool | **HECHO** | 20s configurado |
 | Limites de recursos del backend | **HECHO** | `mem_limit` y `cpus` configurados en `docker-compose.yml` |
-| Driver de logging | Ninguno | Agregar `json-file` con max-size/max-file |
+| Driver de logging | **HECHO** | `json-file` con `max-size: 10m`, `max-file: 3` en todos los servicios |
 | Secretos | **HECHO** | Movidos a archivo `.env`, sin defaults hardcodeados en compose |
-| Politica de reinicio | **HECHO** | `restart: unless-stopped` configurado |
+| Politica de reinicio | **HECHO** | `restart: unless-stopped` (dev), `restart: always` (override prod) |
 | Volumen de backup | No configurado | Agregar mount de volumen para backup de MySQL |
 
 ### 5.2 Variables de Entorno
@@ -216,14 +216,21 @@ Actualmente opcional pero necesario para:
 - Invalidacion de cache de feature flags (multiples pods)
 - Gestion de sesiones (futuro)
 
-### 5.4 Dockerfile de Produccion
+### 5.4 Dockerfile de Produccion — **HECHO**
 
-El Dockerfile actual esta orientado a desarrollo. Un Dockerfile de produccion necesita:
-- Build multi-stage (etapa de build + etapa de runtime)
-- Usuario no-root
-- Sin dependencias de desarrollo en imagen final
-- Instruccion de health check
-- Manejo adecuado de senales (`tini` o `dumb-init`)
+`backend/Dockerfile.prod` implementa:
+- Build multi-stage (etapas builder + runner)
+- Usuario no-root `nodejs` (UID 1001)
+- Solo dependencias de produccion (`npm ci --omit=dev`)
+- Instruccion de health check (`wget /health`)
+- Manejo adecuado de senales via `tini` (reenvio de SIGTERM en PID 1)
+
+Override de produccion: `docker-compose.prod.yml` agrega proxy reverso Nginx con SSL (Let's Encrypt via certbot), elimina volumenes de hot-reload, y establece `restart: always`.
+
+```bash
+# Desplegar a produccion
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
 
 ---
 
@@ -242,7 +249,7 @@ El Dockerfile actual esta orientado a desarrollo. Un Dockerfile de produccion ne
 - [x] **Corregir pool de conexiones** para no exceder `max_connections` *(configurado a 20)*
 - [x] **Mover secretos** fuera de `docker-compose.yml` *(movidos a .env)*
 - [x] **Agregar `express.json({ limit: '1mb' })`** *(hecho)*
-- [ ] **Configurar CORS** para dominio de produccion
+- [x] **Configurar CORS** para dominio de produccion *(lee variable `CORS_ORIGINS` — `app.ts:24-34`)*
 - [ ] **Establecer `NODE_ENV=production`**
 - [ ] **Ejecutar compilacion TypeScript** (`npx tsc --noEmit`) - verificar cero errores
 - [ ] **Ejecutar tests de integracion** (`npm test -- tenantIsolation.test.ts`)
@@ -329,10 +336,10 @@ El Dockerfile actual esta orientado a desarrollo. Un Dockerfile de produccion ne
 | Sin integracion APM | No se puede rastrear latencia de requests | ALTA |
 | Sin logging estructurado | Dificultad para parsear logs a escala | ALTA |
 | Sin rastreo de errores (Sentry/Datadog) | Fallos silenciosos en produccion | ALTA |
-| Sin IDs de correlacion | No se pueden rastrear requests entre servicios | MEDIA |
+| ~~Sin IDs de correlacion~~ | **HECHO** — middleware de correlation ID en `app.ts:58` | ~~MEDIA~~ |
 | Sin endpoint de metricas | No se pueden monitorear KPIs de negocio | MEDIA |
 | Sin monitoreo de consultas BD | No se pueden detectar consultas lentas | MEDIA |
-| Falta `prisma.$disconnect()` | Fuga de conexiones al apagar | BAJA |
+| ~~Falta `prisma.$disconnect()`~~ | **HECHO** — shutdown graceful con disconnect en `server.ts:36-81` | ~~BAJA~~ |
 
 ---
 
@@ -356,10 +363,12 @@ El Dockerfile actual esta orientado a desarrollo. Un Dockerfile de produccion ne
 - Autenticacion WebSocket y salas con scope por tenant (JWT + salas `tenant:${tenantId}:*`)
 - Idempotencia respaldada por Redis (con fallback en memoria)
 - Rotacion de refresh token (cookie HttpOnly 7 dias, modelo `RefreshToken`)
+- Headers de seguridad (Helmet con CSP, HSTS) — `app.ts:53-57`
+- IDs de correlacion — `app.ts:58`
+- Shutdown graceful con `prisma.$disconnect()` — `server.ts:36-81`
 
 ### Aun No Implementado
 
-- Headers de seguridad (CSP, HSTS) - necesita personalizacion de Helmet
 - Documentacion de API (Swagger/OpenAPI)
 - Pipeline CI/CD con gates de seguridad
 - Pruebas de penetracion

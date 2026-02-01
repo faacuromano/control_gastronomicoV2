@@ -1,13 +1,16 @@
 # =============================================================================
-# Backend - Production Dockerfile (Multi-Stage Build)
+# Backend - Dockerfile de Produccion (Multi-Stage Build)
 # =============================================================================
 # Stage 1: Builder - Compile TypeScript and generate Prisma client
-# Stage 2: Runner - Minimal production image with only necessary files
+# Stage 2: Runner - Minimal production image with tini for signal handling
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 # =============================================================================
 
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Stage 1: Builder
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -28,23 +31,21 @@ RUN npx prisma generate
 # Copy source code and build configuration
 COPY tsconfig.json ./
 COPY src ./src/
-COPY scripts ./scripts/
-COPY migration-scripts ./migration-scripts/
 
 # Compile TypeScript to JavaScript
 RUN npm run build
 
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Stage 2: Production Runner
-# -----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-# Install OpenSSL for Prisma
-RUN apk add --no-cache openssl
+# Install tini for proper PID 1 signal handling, and OpenSSL for Prisma
+RUN apk add --no-cache tini openssl
 
-# Create non-root user for security
+# Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
@@ -53,7 +54,7 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 # Install ONLY production dependencies
-RUN npm ci --only=production && \
+RUN npm ci --omit=dev && \
     npm cache clean --force
 
 # Generate Prisma client in production
@@ -62,22 +63,20 @@ RUN npx prisma generate
 # Copy compiled JavaScript from builder stage
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 
-# Copy migration scripts (needed for deployment)
-COPY --chown=nodejs:nodejs migration-scripts ./migration-scripts/
-COPY --chown=nodejs:nodejs scripts ./scripts/
-
 # Set environment to production
 ENV NODE_ENV=production
+ENV PORT=3001
 
 # Switch to non-root user
 USER nodejs
 
-# Expose application port
 EXPOSE 3001
 
-# Health check (optional but recommended for production)
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+# Health check against the /health endpoint
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3001/health || exit 1
 
-# Start the application
+# Use tini as entrypoint for proper signal forwarding (SIGTERM, SIGINT)
+ENTRYPOINT ["/sbin/tini", "--"]
+
 CMD ["node", "dist/server.js"]

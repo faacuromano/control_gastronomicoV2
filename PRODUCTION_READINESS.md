@@ -178,15 +178,15 @@ npx prisma generate
 
 ### 5.1 Docker Configuration Fixes
 
-| Item | Current | Required |
-|------|---------|----------|
-| MySQL `max_connections` | 151 (default) | 300+ or reduce pool to 100 |
-| Connection pool | `connection_limit=200` | Reduce to 100 or increase MySQL |
-| Pool timeout | 20s | Reduce to 5-10s for fast-fail |
+| Item | Status | Details |
+|------|--------|---------|
+| MySQL `max_connections` | **DONE** | Set to 300 via `--max-connections=300` in `docker-compose.yml` |
+| Connection pool | **DONE** | `connection_limit=20` in docker-compose.yml and `.env.example` (aligned) |
+| Pool timeout | **DONE** | 20s configured |
 | Backend resource limits | **DONE** | `mem_limit` and `cpus` configured in `docker-compose.yml` |
-| Logging driver | None | Add `json-file` with max-size/max-file |
+| Logging driver | **DONE** | `json-file` with `max-size: 10m`, `max-file: 3` on all services |
 | Secrets | **DONE** | Moved to `.env` file, no hardcoded defaults in compose |
-| Restart policy | **DONE** | `restart: unless-stopped` configured |
+| Restart policy | **DONE** | `restart: unless-stopped` (dev), `restart: always` (prod override) |
 | Backup volume | Not configured | Add volume mount for MySQL data backup |
 
 ### 5.2 Environment Variables
@@ -216,14 +216,21 @@ Currently optional but needed for:
 - Feature flag cache invalidation (multi-pod)
 - Session management (future)
 
-### 5.4 Production Dockerfile
+### 5.4 Production Dockerfile — **DONE**
 
-The current Dockerfile is development-oriented. A production Dockerfile needs:
-- Multi-stage build (build stage + runtime stage)
-- Non-root user
-- No dev dependencies in final image
-- Health check instruction
-- Proper signal handling (`tini` or `dumb-init`)
+`backend/Dockerfile.prod` implements:
+- Multi-stage build (builder + runner stages)
+- Non-root `nodejs` user (UID 1001)
+- Production-only dependencies (`npm ci --omit=dev`)
+- Health check instruction (`wget /health`)
+- Proper signal handling via `tini` (PID 1 SIGTERM forwarding)
+
+Production overlay: `docker-compose.prod.yml` adds Nginx reverse proxy with SSL (Let's Encrypt via certbot), removes dev hot-reload volumes, and sets `restart: always`.
+
+```bash
+# Deploy to production
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
 
 ---
 
@@ -242,7 +249,7 @@ The current Dockerfile is development-oriented. A production Dockerfile needs:
 - [x] **Fix connection pool** to not exceed `max_connections` *(set to 20)*
 - [x] **Move secrets** out of `docker-compose.yml` *(moved to .env)*
 - [x] **Add `express.json({ limit: '1mb' })`** *(done)*
-- [ ] **Configure CORS** for production domain
+- [x] **Configure CORS** for production domain *(reads `CORS_ORIGINS` env var — `app.ts:24-34`)*
 - [ ] **Set `NODE_ENV=production`**
 - [ ] **Run TypeScript compilation** (`npx tsc --noEmit`) - verify zero errors
 - [ ] **Run integration tests** (`npm test -- tenantIsolation.test.ts`)
@@ -329,10 +336,10 @@ The current Dockerfile is development-oriented. A production Dockerfile needs:
 | No APM integration | Cannot trace request latency | HIGH |
 | No structured logging | Log parsing difficult at scale | HIGH |
 | No error tracking (Sentry/Datadog) | Silent failures in production | HIGH |
-| No correlation IDs | Cannot trace requests across services | MEDIUM |
+| ~~No correlation IDs~~ | **DONE** — `app.ts:58` correlation ID middleware | ~~MEDIUM~~ |
 | No metrics endpoint | Cannot monitor business KPIs | MEDIUM |
 | No database query monitoring | Cannot detect slow queries | MEDIUM |
-| Missing `prisma.$disconnect()` | Connection leak on shutdown | LOW |
+| ~~Missing `prisma.$disconnect()`~~ | **DONE** — `server.ts:36-81` graceful shutdown with disconnect | ~~LOW~~ |
 
 ---
 
@@ -356,10 +363,12 @@ The current Dockerfile is development-oriented. A production Dockerfile needs:
 - WebSocket authentication and tenant-scoped rooms (JWT + `tenant:${tenantId}:*` rooms)
 - Redis-backed idempotency (with in-memory fallback)
 - Refresh token rotation (7-day HttpOnly cookie, `RefreshToken` model)
+- Security headers (Helmet with CSP, HSTS) — `app.ts:53-57`
+- Correlation IDs — `app.ts:58`
+- Graceful shutdown with `prisma.$disconnect()` — `server.ts:36-81`
 
 ### Not Yet Implemented
 
-- Security headers (CSP, HSTS) - needs Helmet customization
 - API documentation (Swagger/OpenAPI)
 - CI/CD pipeline with security gates
 - Penetration testing
