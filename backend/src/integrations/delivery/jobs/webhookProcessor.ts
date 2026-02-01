@@ -162,39 +162,36 @@ async function processNewOrder(
 ): Promise<void> {
   const { externalId, platform, items } = normalizedOrder;
 
-  // 1. Obtener plataforma de DB (fuera de transacción - solo lectura)
-  const deliveryPlatform = await prisma.deliveryPlatform.findUnique({
-    where: { code: platform },
-  });
-
-  if (!deliveryPlatform) {
-    throw new Error(`Platform ${platform} not found in database`);
-  }
-
-  // 2. Resolver Tenant (Multi-Tenancy)
-  // Intentamos obtener el tenantId a partir del storeId (restaurant.id en PedidosYa)
+  // FIX P0-SEC: Resolve tenant FIRST via storeId, then find tenant-scoped platform
+  // 1. Resolver Tenant (Multi-Tenancy)
   let tenantId: number | null = null;
+  let deliveryPlatform: any = null;
 
   if (normalizedOrder.storeId) {
+    // Find tenant config by storeId + platform code via the platform's tenantConfig
     const tenantConfig = await prisma.tenantPlatformConfig.findFirst({
       where: {
-        deliveryPlatformId: deliveryPlatform.id,
         storeId: normalizedOrder.storeId,
+        deliveryPlatform: { code: platform },
       },
-      select: { tenantId: true },
+      select: { tenantId: true, deliveryPlatformId: true },
     });
 
     if (tenantConfig) {
       tenantId = tenantConfig.tenantId;
+      // Now get the tenant-scoped platform
+      deliveryPlatform = await prisma.deliveryPlatform.findFirst({
+        where: { id: tenantConfig.deliveryPlatformId, tenantId },
+      });
     } else {
-      logger.warn('Tenant not found for storeId, defaulting to NULL (legacy)', {
+      logger.warn('Tenant not found for storeId', {
         storeId: normalizedOrder.storeId,
         platform: normalizedOrder.platform,
       });
     }
   }
 
-  if (!tenantId) {
+  if (!tenantId || !deliveryPlatform) {
     throw new Error(`Cannot create delivery order: tenantId could not be resolved for storeId=${normalizedOrder.storeId}, platform=${normalizedOrder.platform}`);
   }
 

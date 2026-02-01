@@ -32,14 +32,23 @@ const orderService = new OrderService();
 const analyticsService = new AnalyticsService();
 
 beforeAll(async () => {
-  // Clean up any existing test data (order matters due to foreign key constraints)
-  await prisma.order.deleteMany({ where: { tenant: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } } } });
-  await prisma.client.deleteMany({ where: { tenant: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } } } });
-  await prisma.product.deleteMany({ where: { tenant: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } } } });
-  await prisma.category.deleteMany({ where: { tenant: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } } } });
-  await prisma.user.deleteMany({ where: { tenant: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } } } }); // Users first
-  await prisma.role.deleteMany({ where: { tenant: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } } } }); // Then roles
-  await prisma.tenant.deleteMany({ where: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } } });
+  // Clean up any existing test data
+  // Use raw SQL for Order to bypass soft-delete extension and Restrict FK constraints
+  const existingTenants = await prisma.tenant.findMany({
+    where: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } },
+    select: { id: true }
+  });
+  const ids = existingTenants.map(t => t.id);
+  if (ids.length > 0) {
+    await prisma.$executeRawUnsafe(`DELETE FROM \`Order\` WHERE tenantId IN (${ids.join(',')})`);
+    await prisma.client.deleteMany({ where: { tenantId: { in: ids } } });
+    await prisma.product.deleteMany({ where: { tenantId: { in: ids } } });
+    await prisma.category.deleteMany({ where: { tenantId: { in: ids } } });
+    await prisma.user.deleteMany({ where: { tenantId: { in: ids } } });
+    await prisma.role.deleteMany({ where: { tenantId: { in: ids } } });
+    await prisma.tenantConfig.deleteMany({ where: { tenantId: { in: ids } } });
+    await prisma.tenant.deleteMany({ where: { id: { in: ids } } });
+  }
 
   // Create Tenant 1
   tenant1 = await prisma.tenant.create({
@@ -173,14 +182,26 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Clean up test data (order matters due to foreign key constraints)
-  await prisma.order.deleteMany({ where: { tenant: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } } } });
-  await prisma.client.deleteMany({ where: { tenant: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } } } });
-  await prisma.product.deleteMany({ where: { tenant: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } } } });
-  await prisma.category.deleteMany({ where: { tenant: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } } } });
-  await prisma.user.deleteMany({ where: { tenant: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } } } }); // Users first
-  await prisma.role.deleteMany({ where: { tenant: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } } } }); // Then roles
-  await prisma.tenant.deleteMany({ where: { code: { in: ['TEST_TENANT_1', 'TEST_TENANT_2'] } } });
+  // Clean up test data using raw SQL to bypass soft-delete middleware
+  // and respect FK constraint order (children before parents)
+  const tenantCodes = ['TEST_TENANT_1', 'TEST_TENANT_2'];
+  const tenantIds = await prisma.tenant.findMany({
+    where: { code: { in: tenantCodes } },
+    select: { id: true }
+  });
+  const ids = tenantIds.map(t => t.id);
+
+  if (ids.length > 0) {
+    // Use raw SQL for hard deletes to bypass soft-delete extension on Order
+    await prisma.$executeRawUnsafe(`DELETE FROM \`Order\` WHERE tenantId IN (${ids.join(',')})`);
+    await prisma.client.deleteMany({ where: { tenantId: { in: ids } } });
+    await prisma.product.deleteMany({ where: { tenantId: { in: ids } } });
+    await prisma.category.deleteMany({ where: { tenantId: { in: ids } } });
+    await prisma.user.deleteMany({ where: { tenantId: { in: ids } } });
+    await prisma.role.deleteMany({ where: { tenantId: { in: ids } } });
+    await prisma.tenantConfig.deleteMany({ where: { tenantId: { in: ids } } });
+    await prisma.tenant.deleteMany({ where: { id: { in: ids } } });
+  }
 
   await prisma.$disconnect();
 });

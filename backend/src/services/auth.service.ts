@@ -7,6 +7,18 @@ import { ValidationError, UnauthorizedError, ConflictError } from '../utils/erro
 import { logger } from '../utils/logger';
 
 // =============================================================================
+// PIN LOOKUP HELPER (FIX P0-PERF-001)
+// =============================================================================
+/**
+ * Generate a deterministic SHA-256 lookup hash for a PIN.
+ * Used for O(1) database lookup instead of O(n) bcrypt scan.
+ * The bcrypt hash is still used for final verification (defense in depth).
+ */
+const generatePinLookup = (pin: string): string => {
+    return crypto.createHash('sha256').update(pin).digest('hex');
+};
+
+// =============================================================================
 // SECURITY CONSTANTS
 // =============================================================================
 export const BCRYPT_SALT_ROUNDS = 10;
@@ -286,25 +298,47 @@ export const loginWithPin = async (pin: string, tenantId: number) => {
         throw new ValidationError('Invalid format', validation.error);
     }
 
-    // 2. Find all active users with a PIN in this tenant, then bcrypt-verify
-    // NOTE: pinLookup O(1) optimization requires DB migration (pinLookup column).
-    // Until migration is applied, we use the simpler scan approach.
-    const candidates = await prisma.user.findMany({
+    // 2. FIX P0-PERF-001: O(1) PIN lookup using SHA-256 pinLookup column
+    const pinLookupHash = generatePinLookup(pin);
+    let candidate = await prisma.user.findFirst({
         where: {
             tenantId,
-            pinHash: { not: null },
+            pinLookup: pinLookupHash,
             isActive: true
         },
         include: { role: true }
     });
 
-    // 3. Compare PIN with each candidate's bcrypt hash
-    let user = null;
-    for (const candidate of candidates) {
-        if (await bcrypt.compare(pin, candidate.pinHash!)) {
-            user = candidate;
-            break;
+    // Graceful backfill: if no candidate found via pinLookup, try legacy O(n) scan
+    // for users who existed before the pinLookup migration
+    if (!candidate) {
+        const legacyCandidates = await prisma.user.findMany({
+            where: {
+                tenantId,
+                pinHash: { not: null },
+                pinLookup: null, // Only scan users without pinLookup
+                isActive: true
+            },
+            include: { role: true }
+        });
+        for (const legacy of legacyCandidates) {
+            if (await bcrypt.compare(pin, legacy.pinHash!)) {
+                candidate = legacy;
+                // Backfill pinLookup for this user
+                await prisma.user.update({
+                    where: { id: legacy.id },
+                    data: { pinLookup: pinLookupHash }
+                });
+                logger.info(`[AUTH] Backfilled pinLookup for user ${legacy.id}`);
+                break;
+            }
         }
+    }
+
+    // 3. Verify PIN with bcrypt (defense in depth against SHA-256 collisions)
+    let user = null;
+    if (candidate && candidate.pinHash && await bcrypt.compare(pin, candidate.pinHash)) {
+        user = candidate;
     }
 
     // SECURITY: Don't reveal if PIN exists or not
@@ -362,31 +396,30 @@ export const register = async (data: RegisterData) => {
         throw new ConflictError('User with this email already exists');
     }
 
-    // 3. Check PIN uniqueness — scan all users with a PIN in this tenant
-    // NOTE: pinLookup O(1) optimization deferred until DB migration is applied
-    const existingUsers = await prisma.user.findMany({
+    // 3. FIX P0-PERF-002: O(1) PIN uniqueness check using pinLookup
+    const pinLookupHash = generatePinLookup(data.pinCode);
+    const existingPinUser = await prisma.user.findFirst({
         where: {
             tenantId: data.tenantId,
-            pinHash: { not: null }
+            pinLookup: pinLookupHash
         }
     });
-    for (const existingUser of existingUsers) {
-        if (await bcrypt.compare(data.pinCode, existingUser.pinHash!)) {
-            throw new ConflictError('PIN already in use');
-        }
+    if (existingPinUser) {
+        throw new ConflictError('PIN already in use');
     }
 
     // 4. Hash Password and PIN
     const passwordHash = await bcrypt.hash(data.password, BCRYPT_SALT_ROUNDS);
     const pinHash = await bcrypt.hash(data.pinCode, BCRYPT_SALT_ROUNDS);
 
-    // 5. Create User
+    // 5. Create User with pinLookup for O(1) auth
     const user = await prisma.user.create({
         data: {
             email: data.email,
             passwordHash,
             name: data.name,
             pinHash,
+            pinLookup: pinLookupHash,
             roleId: data.roleId,
             tenantId: data.tenantId
         },
@@ -539,6 +572,7 @@ export const registerTenant = async (data: RegisterTenantData) => {
         // Generate random PIN for fallback/convenience
         const pinCode = Math.floor(100000 + Math.random() * 900000).toString();
         const pinHash = await bcrypt.hash(pinCode, BCRYPT_SALT_ROUNDS);
+        const pinLookup = generatePinLookup(pinCode);
 
         const user = await tx.user.create({
             data: {
@@ -548,6 +582,7 @@ export const registerTenant = async (data: RegisterTenantData) => {
                 email: data.email,
                 passwordHash,
                 pinHash,
+                pinLookup,
                 isActive: true
             }
         });

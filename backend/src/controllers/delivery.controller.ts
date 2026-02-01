@@ -23,26 +23,27 @@ export const getPlatformById = asyncHandler(async (req: Request, res: Response) 
     sendSuccess(res, platform);
 });
 
+// FIX P0-SEC-001: All platform CRUD scoped by tenantId from authenticated user
 export const createPlatform = asyncHandler(async (req: Request, res: Response) => {
-    const platform = await deliveryService.createPlatform(req.body);
+    const platform = await deliveryService.createPlatform(req.user!.tenantId!, req.body);
     sendSuccess(res, platform, undefined, 201);
 });
 
 export const updatePlatform = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
-    const platform = await deliveryService.updatePlatform(id, req.body);
+    const platform = await deliveryService.updatePlatform(id, req.user!.tenantId!, req.body);
     sendSuccess(res, platform);
 });
 
 export const togglePlatform = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
-    const platform = await deliveryService.togglePlatform(id);
+    const platform = await deliveryService.togglePlatform(id, req.user!.tenantId!);
     sendSuccess(res, platform);
 });
 
 export const deletePlatform = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
-    await deliveryService.deletePlatform(id);
+    await deliveryService.deletePlatform(id, req.user!.tenantId!);
     sendSuccess(res, { message: 'Platform deleted' });
 });
 

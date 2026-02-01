@@ -35,6 +35,7 @@ model Tenant {
   suppliers             Supplier[]
   purchaseOrders        PurchaseOrder[]
   paymentMethodConfigs  PaymentMethodConfig[]
+  deliveryPlatforms     DeliveryPlatform[]
   deliveryDrivers       DeliveryDriver[]
   auditLogs             AuditLog[]
   qrCodes               QrCode[]
@@ -115,8 +116,7 @@ model User {
   name                String
   email               String? // Not unique globally anymore, or should it? Usually email IS global, but let's scope it for now
   pinHash             String?     @db.VarChar(60)
-  // pinLookup deferred — add back when DB migration is applied
-  // pinLookup           String?     @db.VarChar(16)
+  pinLookup           String?     @db.VarChar(64) // FIX P0-PERF-001: SHA-256 of full PIN for O(1) lookup
   passwordHash        String?
   uiSettings          Json?
   orders              Order[]     @relation("OrderServer")
@@ -132,6 +132,7 @@ model User {
   @@unique([tenantId, email])
   @@index([tenantId])
   @@index([roleId])
+  @@index([tenantId, pinLookup]) // FIX P0-PERF-001: O(1) PIN lookup
 }
 
 model RefreshToken {
@@ -402,7 +403,7 @@ model Invoice {
   tenantId      Int
   tenant        Tenant      @relation(fields: [tenantId], references: [id])
   orderId       Int         @unique
-  order         Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order         Order       @relation(fields: [orderId], references: [id], onDelete: Restrict) // FIX P0-DATA-001: Protect fiscal documents from cascade deletion
   invoiceNumber String // Unique per Tenant
   type          InvoiceType @default(RECEIPT)
   clientName    String?
@@ -472,10 +473,13 @@ model Order {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   closedAt            DateTime?
+  deletedAt           DateTime?         // FIX P0-DATA-002: Soft-delete to preserve financial records
   businessDate        DateTime          @db.Date
   items               OrderItem[]
   payments            Payment[]
   invoice             Invoice?
+  currentTable        Table?            @relation("TableCurrentOrder") // FIX P0-DATA-003
+  currentDriver       DeliveryDriver?   @relation("DriverCurrentOrder") // FIX P0-DATA-003
 
   @@unique([tenantId, businessDate, orderNumber]) // Unique per Tenant per Day
   @@index([tenantId])
@@ -523,7 +527,7 @@ model OrderItem {
   tenantId  Int
   tenant    Tenant              @relation(fields: [tenantId], references: [id])
   orderId   Int
-  order     Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order     Order               @relation(fields: [orderId], references: [id], onDelete: Restrict) // FIX P0-DATA-002: Prevent destruction of financial records
   productId Int
   product   Product             @relation(fields: [productId], references: [id])
   quantity  Int
@@ -608,7 +612,8 @@ model Table {
   x              Int?
   y              Int?
   status         TableStatus @default(FREE)
-  currentOrderId Int?
+  currentOrderId Int?        @unique // FIX P0-DATA-003: FK constraint prevents stale pointers
+  currentOrder   Order?      @relation("TableCurrentOrder", fields: [currentOrderId], references: [id], onDelete: SetNull)
   orders         Order[]
   qrCodes        QrCode[]
   createdAt      DateTime    @default(now())
@@ -671,7 +676,7 @@ model Payment {
   tenantId    Int
   tenant      Tenant        @relation(fields: [tenantId], references: [id])
   orderId     Int
-  order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Restrict) // FIX P0-DATA-002: Prevent destruction of financial records
   shiftId     Int?
   shift       CashShift?    @relation(fields: [shiftId], references: [id])
   amount      Decimal       @db.Decimal(10, 2)
@@ -809,10 +814,13 @@ enum FulfillmentType {
   SELF_DELIVERY // Delivery con flota propia del local
 }
 
-// 1. GLOBAL PLATFORM CATALOG (e.g. "Rappi", "PedidosYa")
+// 1. TENANT-SCOPED PLATFORM CATALOG (e.g. "Rappi", "PedidosYa")
+// FIX P0-SEC-001/002/003: Added tenantId to prevent cross-tenant platform access
 model DeliveryPlatform {
   id            Int                    @id @default(autoincrement())
-  code          String                 @unique // PEDIDOSYA, RAPPI, GLOVO
+  tenantId      Int
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id])
+  code          String                 // PEDIDOSYA, RAPPI, GLOVO
   name          String
   isEnabled     Boolean                @default(false)
   // LEGACY FIELDS - Kept for migration, will be removed later
@@ -825,6 +833,9 @@ model DeliveryPlatform {
   productPrices ProductChannelPrice[]
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
 }
 
 // 2. TENANT-SPECIFIC CONFIGURATION
@@ -871,7 +882,8 @@ model DeliveryDriver {
   licensePlate   String?
   isActive       Boolean     @default(true)
   isAvailable    Boolean     @default(true)
-  currentOrderId Int?
+  currentOrderId Int?        @unique // FIX P0-DATA-003: FK constraint prevents stale pointers
+  currentOrder   Order?      @relation("DriverCurrentOrder", fields: [currentOrderId], references: [id], onDelete: SetNull)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   orders         Order[]     @relation("DeliveryDriverOrders")

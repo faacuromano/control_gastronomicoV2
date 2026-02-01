@@ -37,6 +37,7 @@ class DeliveryService {
 
     async getAllPlatforms(tenantId: number): Promise<DeliveryPlatform[]> {
         return prisma.deliveryPlatform.findMany({
+            where: { tenantId },
             include: {
                 tenantConfigs: { where: { tenantId } }
             },
@@ -45,8 +46,8 @@ class DeliveryService {
     }
 
     async getPlatformById(id: number, tenantId: number): Promise<DeliveryPlatform> {
-        const platform = await prisma.deliveryPlatform.findUnique({
-            where: { id },
+        const platform = await prisma.deliveryPlatform.findFirst({
+            where: { id, tenantId },
             include: {
                 tenantConfigs: { where: { tenantId } }
             }
@@ -58,17 +59,19 @@ class DeliveryService {
     }
 
     async getPlatformByCode(code: string, tenantId: number): Promise<DeliveryPlatform | null> {
-        return prisma.deliveryPlatform.findUnique({
-            where: { code },
+        return prisma.deliveryPlatform.findFirst({
+            where: { code, tenantId },
             include: {
                 tenantConfigs: { where: { tenantId } }
             }
         });
     }
 
-    async createPlatform(data: PlatformCreateData): Promise<DeliveryPlatform> {
+    // FIX P0-SEC-001: All platform CRUD now scoped by tenantId
+    async createPlatform(tenantId: number, data: PlatformCreateData): Promise<DeliveryPlatform> {
         return prisma.deliveryPlatform.create({
             data: {
+                tenantId,
                 code: data.code.toUpperCase(),
                 name: data.name,
                 apiKey: data.apiKey ?? null,
@@ -78,41 +81,49 @@ class DeliveryService {
         });
     }
 
-    async updatePlatform(id: number, data: PlatformUpdateData): Promise<DeliveryPlatform> {
-        const platform = await prisma.deliveryPlatform.findUnique({ where: { id } });
+    // FIX P0-SEC-002: Update scoped by tenantId
+    async updatePlatform(id: number, tenantId: number, data: PlatformUpdateData): Promise<DeliveryPlatform> {
+        const platform = await prisma.deliveryPlatform.findFirst({ where: { id, tenantId } });
         if (!platform) {
             throw new NotFoundError('Platform not found');
         }
-        return prisma.deliveryPlatform.update({
-            where: { id },
+        const result = await prisma.deliveryPlatform.updateMany({
+            where: { id, tenantId },
             data
         });
+        if (result.count === 0) {
+            throw new NotFoundError('Platform not found');
+        }
+        return prisma.deliveryPlatform.findFirst({ where: { id, tenantId } }) as Promise<DeliveryPlatform>;
     }
 
-    async togglePlatform(id: number): Promise<DeliveryPlatform> {
-        const platform = await prisma.deliveryPlatform.findUnique({ where: { id } });
+    // FIX P0-SEC-003: Toggle scoped by tenantId
+    async togglePlatform(id: number, tenantId: number): Promise<DeliveryPlatform> {
+        const platform = await prisma.deliveryPlatform.findFirst({ where: { id, tenantId } });
         if (!platform) {
             throw new NotFoundError('Platform not found');
         }
-        return prisma.deliveryPlatform.update({
-            where: { id },
+        await prisma.deliveryPlatform.updateMany({
+            where: { id, tenantId },
             data: { isEnabled: !platform.isEnabled }
         });
+        return prisma.deliveryPlatform.findFirst({ where: { id, tenantId } }) as Promise<DeliveryPlatform>;
     }
 
-    async deletePlatform(id: number): Promise<void> {
-        const platform = await prisma.deliveryPlatform.findUnique({ where: { id } });
+    // FIX P0-SEC-003: Delete scoped by tenantId
+    async deletePlatform(id: number, tenantId: number): Promise<void> {
+        const platform = await prisma.deliveryPlatform.findFirst({ where: { id, tenantId } });
         if (!platform) {
             throw new NotFoundError('Platform not found');
         }
-        await prisma.deliveryPlatform.delete({
-            where: { id }
+        await prisma.deliveryPlatform.deleteMany({
+            where: { id, tenantId }
         });
     }
 
     async getEnabledPlatforms(tenantId: number): Promise<DeliveryPlatform[]> {
         return prisma.deliveryPlatform.findMany({
-            where: { isEnabled: true },
+            where: { tenantId, isEnabled: true },
             include: {
                 tenantConfigs: { where: { tenantId } }
             },

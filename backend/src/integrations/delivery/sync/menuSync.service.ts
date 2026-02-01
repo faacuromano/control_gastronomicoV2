@@ -194,12 +194,13 @@ class MenuSyncService {
     platformId: number,
     triggeredBy: 'MANUAL' | 'SCHEDULE' | 'PRODUCT_UPDATE' = 'MANUAL'
   ): Promise<string> {
-    const platform = await prisma.deliveryPlatform.findUnique({
-      where: { id: platformId },
+    // FIX P0-SEC: Scope platform lookup by tenantId
+    const platform = await prisma.deliveryPlatform.findFirst({
+      where: { id: platformId, tenantId },
     });
 
     if (!platform) {
-      throw new Error(`Platform ${platformId} not found`);
+      throw new Error(`Platform ${platformId} not found for tenant ${tenantId}`);
     }
 
     const jobData: any = { // TODO: Update MenuSyncJobData type

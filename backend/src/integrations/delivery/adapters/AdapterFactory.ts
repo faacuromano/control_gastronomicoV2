@@ -83,10 +83,11 @@ class AdapterFactoryClass {
    * @param code - Código de la plataforma (RAPPI, GLOVO, etc.)
    * @returns Adapter correspondiente
    */
-  async getByPlatformCode(code: string): Promise<AbstractDeliveryAdapter> {
-    const platform = await prisma.deliveryPlatform.findUnique({
-      where: { code: code.toUpperCase() },
-    });
+  async getByPlatformCode(code: string, tenantId?: number): Promise<AbstractDeliveryAdapter> {
+    // FIX P0-SEC: code is now unique per tenant, not globally
+    const where: any = { code: code.toUpperCase() };
+    if (tenantId) where.tenantId = tenantId;
+    const platform = await prisma.deliveryPlatform.findFirst({ where });
 
     if (!platform) {
       throw new NotFoundError(`Plataforma de delivery con código=${code}`);
@@ -106,10 +107,10 @@ class AdapterFactoryClass {
    * 
    * @returns Array de adapters activos
    */
-  async getActiveAdapters(): Promise<AbstractDeliveryAdapter[]> {
-    const platforms = await prisma.deliveryPlatform.findMany({
-      where: { isEnabled: true },
-    });
+  async getActiveAdapters(tenantId?: number): Promise<AbstractDeliveryAdapter[]> {
+    const where: any = { isEnabled: true };
+    if (tenantId) where.tenantId = tenantId;
+    const platforms = await prisma.deliveryPlatform.findMany({ where });
 
     const adapters: AbstractDeliveryAdapter[] = [];
 

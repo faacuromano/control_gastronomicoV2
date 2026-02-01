@@ -100,8 +100,9 @@ export class AuditService {
     /**
      * Query audit logs with filters
      */
+    // FIX P1-SEC-002: tenantId is now REQUIRED to prevent cross-tenant audit log exposure
     async query(filters: {
-        tenantId?: number;
+        tenantId: number;
         userId?: number;
         entity?: string;
         entityId?: number;
@@ -113,13 +114,15 @@ export class AuditService {
     }) {
         // Build where clause dynamically to avoid undefined values
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const where: any = {};
-        
-        if (filters.tenantId !== undefined) where.tenantId = filters.tenantId;
+        const where: any = {
+            tenantId: filters.tenantId // Always required
+        };
+
         if (filters.userId !== undefined) where.userId = filters.userId;
         if (filters.entity !== undefined) where.entity = filters.entity;
         if (filters.entityId !== undefined) where.entityId = filters.entityId;
         if (filters.action !== undefined) where.action = filters.action;
+        // Note: tenantId is set above as required — no conditional needed
         
         if (filters.startDate || filters.endDate) {
             where.createdAt = {};
