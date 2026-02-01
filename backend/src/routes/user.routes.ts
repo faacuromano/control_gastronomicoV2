@@ -10,6 +10,7 @@ import { Router } from 'express';
 import { getRoles, createRole, deleteRole } from '../controllers/role.controller';
 import { listUsers, getUserById, createUser, updateUser, deleteUser, getUsersWithCapability } from '../controllers/user.controller';
 import { authenticate, authorize } from '../middleware/auth';
+import { apiRateLimiter } from '../middleware/rateLimit';
 
 const router = Router();
 
@@ -22,11 +23,11 @@ router.get('/', authenticate, listUsers);
 // Get single user - ADMIN only
 router.get('/:id', authenticate, authorize(['ADMIN']), getUserById);
 
-// Create user - ADMIN only
-router.post('/', authenticate, authorize(['ADMIN']), createUser);
+// Create user - ADMIN only (rate limited to prevent PIN enumeration P1-010)
+router.post('/', authenticate, authorize(['ADMIN']), apiRateLimiter, createUser);
 
-// Update user - ADMIN only
-router.put('/:id', authenticate, authorize(['ADMIN']), updateUser);
+// Update user - ADMIN only (rate limited to prevent PIN enumeration P1-010)
+router.put('/:id', authenticate, authorize(['ADMIN']), apiRateLimiter, updateUser);
 
 // Delete (deactivate) user - ADMIN only
 router.delete('/:id', authenticate, authorize(['ADMIN']), deleteUser);

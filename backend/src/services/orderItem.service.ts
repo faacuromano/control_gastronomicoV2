@@ -35,6 +35,7 @@ export class OrderItemService {
     async validateAndCalculateItems(
         tx: Prisma.TransactionClient,
         items: OrderItemInput[],
+        tenantId: number,
         stockEnabled: boolean = true
     ): Promise<ItemCalculationResult> {
         let subtotal = 0;
@@ -48,7 +49,7 @@ export class OrderItemService {
         
         // Batch fetch products with ingredients
         const products = await tx.product.findMany({
-            where: { id: { in: productIds } },
+            where: { id: { in: productIds }, tenantId },
             include: { 
                 ingredients: { 
                     include: { ingredient: true }
@@ -58,9 +59,9 @@ export class OrderItemService {
 
         // SECURITY: Batch fetch modifier prices from database
         // This ensures we use the real price, not whatever the frontend sends
-        const modifierOptions = allModifierIds.length > 0 
+        const modifierOptions = allModifierIds.length > 0
             ? await tx.modifierOption.findMany({
-                where: { id: { in: allModifierIds } },
+                where: { id: { in: allModifierIds }, tenantId },
                 select: { id: true, priceOverlay: true, name: true }
             })
             : [];

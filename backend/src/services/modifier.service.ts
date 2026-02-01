@@ -1,11 +1,12 @@
-import { PrismaClient, ModifierGroup, ModifierOption } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
+import { ModifierGroup, ModifierOption } from '@prisma/client';
+import { NotFoundError, ConflictError } from '../utils/errors';
 
 export interface CreateGroupInput {
   name: string;
   minSelection?: number;
   maxSelection?: number;
+  tenantId: number;
 }
 
 export interface UpdateGroupInput {
@@ -29,8 +30,9 @@ export interface UpdateOptionInput {
 }
 
 export const modifierService = {
-  getAllGroups: async () => {
+  getAllGroups: async (tenantId: number) => {
     return prisma.modifierGroup.findMany({
+      where: { tenantId },
       include: {
         options: {
             include: {
@@ -43,9 +45,9 @@ export const modifierService = {
     });
   },
 
-  getGroupById: async (id: number) => {
-    return prisma.modifierGroup.findUnique({
-      where: { id },
+  getGroupById: async (id: number, tenantId: number) => {
+    return prisma.modifierGroup.findFirst({
+      where: { id, tenantId },
       include: {
         options: {
             include: {
@@ -59,6 +61,7 @@ export const modifierService = {
   createGroup: async (data: CreateGroupInput) => {
     return prisma.modifierGroup.create({
       data: {
+        tenantId: data.tenantId,
         name: data.name,
         minSelection: data.minSelection ?? 0,
         maxSelection: data.maxSelection ?? 1
@@ -66,36 +69,51 @@ export const modifierService = {
     });
   },
 
-  updateGroup: async (id: number, data: UpdateGroupInput) => {
-    return prisma.modifierGroup.update({
-      where: { id },
+  updateGroup: async (id: number, tenantId: number, data: UpdateGroupInput) => {
+    // Verify ownership
+    const group = await prisma.modifierGroup.findFirst({ where: { id, tenantId } });
+    if (!group) throw new NotFoundError('Modifier Group');
+
+    // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+    return prisma.modifierGroup.updateMany({
+      where: { id, tenantId },
       data
     });
   },
 
-  deleteGroup: async (id: number) => {
+  deleteGroup: async (id: number, tenantId: number) => {
+    // Verify ownership
+    const group = await prisma.modifierGroup.findFirst({ where: { id, tenantId } });
+    if (!group) throw new NotFoundError('Modifier Group');
+
     // Check if used by products
     const usage = await prisma.productModifierGroup.count({
-        where: { modifierGroupId: id }
+        where: { modifierGroupId: id, tenantId }
     });
     if (usage > 0) {
-        throw new Error('Cannot delete group used by products');
+        throw new ConflictError('Cannot delete group used by products');
     }
-    
+
     // Delete options first (cascade usually handles this but explicit is safer to avoid orphans if cascade missing)
     await prisma.modifierOption.deleteMany({
-        where: { modifierGroupId: id }
+        where: { modifierGroupId: id, tenantId }
     });
 
-    return prisma.modifierGroup.delete({
-      where: { id }
+    // defense-in-depth: deleteMany ensures tenantId is in the WHERE clause
+    return prisma.modifierGroup.deleteMany({
+      where: { id, tenantId }
     });
   },
 
   // Options Management
-  addOption: async (groupId: number, data: CreateOptionInput) => {
+  addOption: async (groupId: number, tenantId: number, data: CreateOptionInput) => {
+    // Verify Group Ownership
+    const group = await prisma.modifierGroup.findFirst({ where: { id: groupId, tenantId } });
+    if (!group) throw new NotFoundError('Modifier Group');
+
     return prisma.modifierOption.create({
       data: {
+        tenantId,
         modifierGroupId: groupId,
         name: data.name,
         priceOverlay: data.priceOverlay ?? 0,
@@ -105,22 +123,38 @@ export const modifierService = {
     });
   },
 
-  updateOption: async (optionId: number, data: UpdateOptionInput) => {
-    return prisma.modifierOption.update({
-      where: { id: optionId },
+  updateOption: async (optionId: number, tenantId: number, data: UpdateOptionInput) => {
+    // Verify Option Ownership via tenantId on ModifierOption
+    const option = await prisma.modifierOption.findFirst({
+        where: { id: optionId, tenantId },
+        include: { group: true }
+    });
+
+    if (!option) {
+        throw new NotFoundError('Modifier Option');
+    }
+
+    // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+    return prisma.modifierOption.updateMany({
+      where: { id: optionId, tenantId },
       data: data as any
     });
   },
 
-  deleteOption: async (optionId: number) => {
-    // Check usage in orders? 
-    // If used in historic orders, maybe soft delete? 
-    // Current schema doesn't have soft delete for options.
-    // For now hard delete, might break historic data if not cautious.
-    // Ideally should be soft delete or blocked.
-    // Assuming simple CRUD for now.
-    return prisma.modifierOption.delete({
-      where: { id: optionId }
+  deleteOption: async (optionId: number, tenantId: number) => {
+    // Verify Option Ownership via tenantId on ModifierOption
+    const option = await prisma.modifierOption.findFirst({
+        where: { id: optionId, tenantId },
+        include: { group: true }
+    });
+
+    if (!option) {
+        throw new NotFoundError('Modifier Option');
+    }
+
+    // defense-in-depth: deleteMany ensures tenantId is in the WHERE clause
+    return prisma.modifierOption.deleteMany({
+      where: { id: optionId, tenantId }
     });
   }
 };

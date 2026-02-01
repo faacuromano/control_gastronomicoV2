@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { prisma } from '../lib/prisma';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/asyncHandler';
+import { clientService } from '../services/client.service';
 
 const createClientSchema = z.object({
   name: z.string().min(1),
@@ -13,57 +13,20 @@ const createClientSchema = z.object({
 
 export const searchClients = asyncHandler(async (req: Request, res: Response) => {
     const { q } = req.query;
-    
-    // If no query, return recent clients (e.g. last 20)
-    if (!q || typeof q !== 'string' || !q.trim()) {
-      const recentClients = await prisma.client.findMany({
-          take: 20,
-          orderBy: { id: 'desc' }
-      });
-      return res.json(recentClients);
-    }
-
-    const clients = await prisma.client.findMany({
-      where: {
-        OR: [
-          { name: { contains: q } }, 
-          { phone: { contains: q } }
-        ]
-      },
-      take: 20
-    });
-
+    const clients = await clientService.search(
+        req.user!.tenantId!,
+        typeof q === 'string' ? q : undefined
+    );
     res.json(clients);
 });
 
 export const createClient = asyncHandler(async (req: Request, res: Response) => {
     const data = createClientSchema.parse(req.body);
-    
-    // Check if phone exists
-    if (data.phone) {
-        const existing = await prisma.client.findUnique({ where: { phone: data.phone } });
-        if (existing) {
-             // For POS convenience, let's update address if provided
-             const updated = await prisma.client.update({
-                 where: { id: existing.id },
-                 data: { 
-                     address: data.address || existing.address,
-                     name: data.name // Update name if changed?
-                 }
-             });
-             return res.json(updated);
-        }
+    const { client, created } = await clientService.createOrUpdate(req.user!.tenantId!, data);
+
+    if (!client) {
+        return res.status(404).json({ success: false, error: 'Client not found' });
     }
 
-    const client = await prisma.client.create({
-      data: {
-          name: data.name,
-          phone: data.phone || null,
-          email: data.email || null,
-          address: data.address || null,
-          taxId: data.taxId || null
-      }
-    });
-
-    res.json(client);
+    res.status(created ? 201 : 200).json(client);
 });

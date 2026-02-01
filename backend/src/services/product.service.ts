@@ -21,27 +21,38 @@ const ProductSchema = z.object({
     modifierIds: z.array(z.number()).optional()
 });
 
-export const getProducts = async (where: Prisma.ProductWhereInput = {}) => {
-    return await prisma.product.findMany({
-        where,
-        include: { 
-            category: true, 
-            ingredients: { include: { ingredient: true } },
-            modifiers: { // ProductModifierGroup
-                include: {
-                    modifierGroup: {
-                        include: { options: true }
+export const getProducts = async (tenantId: number, where: Prisma.ProductWhereInput = {}, page = 1, limit = 500) => {
+    const take = Math.min(limit, 500);
+    const skip = (page - 1) * take;
+    const filter = { ...where, tenantId };
+
+    const [data, total] = await Promise.all([
+        prisma.product.findMany({
+            where: filter,
+            include: {
+                category: true,
+                ingredients: { include: { ingredient: true } },
+                modifiers: {
+                    include: {
+                        modifierGroup: {
+                            include: { options: true }
+                        }
                     }
                 }
-            }
-        },
-        orderBy: { name: 'asc' }
-    });
+            },
+            orderBy: { name: 'asc' },
+            skip,
+            take
+        }),
+        prisma.product.count({ where: filter })
+    ]);
+
+    return { data, total, page, limit: take };
 };
 
-export const getProductById = async (id: number) => {
-    const product = await prisma.product.findUnique({
-        where: { id },
+export const getProductById = async (id: number, tenantId: number) => {
+    const product = await prisma.product.findFirst({
+        where: { id, tenantId },
         include: { 
             category: true, 
             ingredients: { include: { ingredient: true } }, 
@@ -58,20 +69,16 @@ export const getProductById = async (id: number) => {
     return product;
 };
 
-export const createProduct = async (data: any) => {
-    const validation = ProductSchema.safeParse(data);
-    if (!validation.success) {
-        throw new ValidationError('Invalid data', validation.error.issues);
-    }
+const prepareProductData = (
+    data: z.infer<typeof ProductSchema>,
+    tenantId: number
+): Prisma.ProductUncheckedCreateInput => {
+    const { ingredients, modifierIds, ...productData } = data;
 
-    const category = await prisma.category.findUnique({ where: { id: validation.data.categoryId } });
-    if (!category) throw new ValidationError('Invalid Category ID');
-
-    const { ingredients, modifierIds, ...productData } = validation.data;
-
-    const createData: any = {
+    const createData: Prisma.ProductUncheckedCreateInput = {
         ...productData,
-        productType: productData.productType,
+        tenantId,
+        productType: productData.productType ?? 'SIMPLE',
         description: productData.description ?? null,
         image: productData.image ?? null,
         isStockable: productData.isStockable ?? true,
@@ -81,6 +88,7 @@ export const createProduct = async (data: any) => {
     if (ingredients && ingredients.length > 0) {
         createData.ingredients = {
             create: ingredients.map(ing => ({
+                tenantId,
                 ingredientId: ing.ingredientId,
                 quantity: ing.quantity
             }))
@@ -90,10 +98,47 @@ export const createProduct = async (data: any) => {
     if (modifierIds && modifierIds.length > 0) {
         createData.modifiers = {
             create: modifierIds.map(groupId => ({
+                tenantId,
                 modifierGroupId: groupId
             }))
         };
     }
+
+    return createData;
+};
+
+export const createProduct = async (data: any) => {
+    const validation = ProductSchema.safeParse(data);
+    if (!validation.success) {
+        throw new ValidationError('Invalid data', validation.error.issues);
+    }
+    
+    // Validate Tenant context (must be passed in data)
+    const tenantId = data.tenantId;
+    if (!tenantId) throw new ValidationError('Tenant ID required');
+
+    const category = await prisma.category.findFirst({ where: { id: validation.data.categoryId, tenantId } });
+    if (!category) throw new ValidationError('Invalid Category ID for this tenant');
+
+    const { ingredients, modifierIds, ...productData } = validation.data;
+
+    // Validate relationships belong to tenant
+    if (ingredients && ingredients.length > 0) {
+        const ingIds = ingredients.map(i => i.ingredientId);
+        const count = await prisma.ingredient.count({
+            where: { id: { in: ingIds }, tenantId }
+        });
+        if (count !== ingIds.length) throw new ValidationError('One or more ingredients do not belong to this tenant');
+    }
+
+    if (modifierIds && modifierIds.length > 0) {
+         const count = await prisma.modifierGroup.count({
+            where: { id: { in: modifierIds }, tenantId }
+        });
+        if (count !== modifierIds.length) throw new ValidationError('One or more modifier groups do not belong to this tenant');
+    }
+
+    const createData = prepareProductData(validation.data, tenantId);
 
     return await prisma.product.create({
         data: createData,
@@ -101,18 +146,18 @@ export const createProduct = async (data: any) => {
     });
 };
 
-export const updateProduct = async (id: number, data: any) => {
+export const updateProduct = async (id: number, tenantId: number, data: any) => {
     const validation = ProductSchema.partial().safeParse(data);
     if (!validation.success) {
         throw new ValidationError('Invalid data', validation.error.issues);
     }
 
-    const exists = await prisma.product.findUnique({ where: { id } });
+    const exists = await prisma.product.findFirst({ where: { id, tenantId } });
     if (!exists) throw new NotFoundError('Product');
 
     if (validation.data.categoryId) {
-        const category = await prisma.category.findUnique({ where: { id: validation.data.categoryId } });
-        if (!category) throw new ValidationError('Invalid Category ID');
+        const category = await prisma.category.findFirst({ where: { id: validation.data.categoryId, tenantId } });
+        if (!category) throw new ValidationError('Invalid Category ID for this tenant');
     }
 
     const { ingredients, modifierIds, ...productData } = validation.data;
@@ -126,10 +171,11 @@ export const updateProduct = async (id: number, data: any) => {
     return await prisma.$transaction(async (tx) => {
         if (ingredients) {
             // Delete existing
-            await tx.productIngredient.deleteMany({ where: { productId: id } });
+            await tx.productIngredient.deleteMany({ where: { productId: id, tenantId } });
             // Create new
             await tx.productIngredient.createMany({
                 data: ingredients.map(ing => ({
+                    tenantId,
                     productId: id,
                     ingredientId: ing.ingredientId,
                     quantity: ing.quantity
@@ -139,16 +185,18 @@ export const updateProduct = async (id: number, data: any) => {
 
         if (modifierIds) {
             // Delete existing modifiers
-            await tx.productModifierGroup.deleteMany({ where: { productId: id } });
+            await tx.productModifierGroup.deleteMany({ where: { productId: id, tenantId } });
             // Create new
             await tx.productModifierGroup.createMany({
                  data: modifierIds.map(groupId => ({
+                    tenantId,
                     productId: id,
                     modifierGroupId: groupId
                 }))
             });
         }
 
+        // SAFE: findFirst L144 verifies tenant ownership
         return await tx.product.update({
             where: { id },
             data: updateData,
@@ -157,23 +205,23 @@ export const updateProduct = async (id: number, data: any) => {
     });
 };
 
-export const toggleProductActive = async (id: number) => {
-    const product = await prisma.product.findUnique({ where: { id } });
+export const toggleProductActive = async (id: number, tenantId: number) => {
+    const product = await prisma.product.findFirst({ where: { id, tenantId } });
     if (!product) throw new NotFoundError('Product');
 
-    return await prisma.product.update({
-        where: { id },
+    return await prisma.product.updateMany({
+        where: { id, tenantId },
         data: { isActive: !product.isActive }
     });
 };
 
-export const deleteProduct = async (id: number) => {
+export const deleteProduct = async (id: number, tenantId: number) => {
     // Check if exists
-    const product = await prisma.product.findUnique({ where: { id } });
+    const product = await prisma.product.findFirst({ where: { id, tenantId } });
     if (!product) throw new NotFoundError('Product');
 
-    return await prisma.product.update({
-        where: { id },
+    return await prisma.product.updateMany({
+        where: { id, tenantId },
         data: { isActive: false }
     });
 };

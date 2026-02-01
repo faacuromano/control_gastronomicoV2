@@ -56,13 +56,21 @@ class TableService {
     }
 
     // Operations
-    async openTable(id: number, pax: number = 1): Promise<{ id: number; orderNumber: number }> {
+    /**
+     * Opens a table, marks it as OCCUPIED, and creates an order for it.
+     * Backend handles both status change and order creation atomically.
+     */
+    async openTable(id: number, pax = 1): Promise<any> {
         const response = await api.post(`/tables/${id}/open`, { pax });
         return response.data.data;
     }
 
-    async closeTable(id: number, payments: { method: string; amount: number }[]): Promise<{ orderId: number; total: number; paid: number; status: string }> {
-        const response = await api.post(`/tables/${id}/close`, { payments });
+    /**
+     * Closes a table: processes payment on the active order and marks table as FREE.
+     * Backend handles payment recording + order close + table status atomically.
+     */
+    async closeTable(id: number, payments?: { method: string; amount: number }[]): Promise<any> {
+        const response = await api.post(`/tables/${id}/close`, payments ? { payments } : undefined);
         return response.data.data;
     }
     async updatePositions(updates: { id: number; x: number; y: number }[]): Promise<void> {

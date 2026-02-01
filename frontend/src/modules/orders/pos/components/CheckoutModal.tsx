@@ -13,7 +13,7 @@ import { Receipt } from './Receipt';
 interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (method: string, payments?: { method: string; amount: number }[]) => Promise<any>;
+  onConfirm: (method: string, payments?: { method: string; amount: number }[], discount?: number) => Promise<any>;
   tableMode?: boolean; // When true, don't create order, just pass payments to parent
   tableId?: number; // Table ID for fetching fresh order total
   totalAmount?: number; // Override store total (used for tables with existing items)
@@ -311,7 +311,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
         // But now we show success screen with print option!
         if (tableMode) {
             try {
-                await onConfirm('SPLIT', paymentData);
+                await onConfirm('SPLIT', paymentData, totalDiscounts > 0 ? totalDiscounts : undefined);
                 // Show success screen with cached order (since table is now free)
                 if (cachedOrder) {
                     setCompletedOrder(cachedOrder);
@@ -328,7 +328,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
         // Delegate order creation to parent (POSPage)
         const order = await onConfirm(
             paymentData.length === 1 ? paymentData[0].method : 'SPLIT',
-            paymentData
+            paymentData,
+            totalDiscounts > 0 ? totalDiscounts : undefined
         );
 
         if (order) {

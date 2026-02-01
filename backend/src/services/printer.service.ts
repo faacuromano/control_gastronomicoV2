@@ -43,9 +43,9 @@ export class PrinterService {
     /**
      * Get printer config from database by ID
      */
-    private async getPrinterConfig(printerId: number): Promise<PrinterConfig> {
-        const printer = await prisma.printer.findUnique({
-            where: { id: printerId }
+    private async getPrinterConfig(printerId: number, tenantId: number): Promise<PrinterConfig> {
+        const printer = await prisma.printer.findFirst({
+            where: { id: printerId, tenantId }
         });
 
         if (!printer) {
@@ -148,7 +148,7 @@ export class PrinterService {
     /**
      * Generate a buffer-only ticket (for preview or local printing)
      */
-    async generateOrderTicket(orderId: number): Promise<Buffer> {
+    async generateOrderTicket(orderId: number, tenantId: number): Promise<Buffer> {
         // Use dummy interface for buffer generation only
         const printer = this.createPrinter({
             type: 'EPSON',
@@ -156,8 +156,8 @@ export class PrinterService {
             interface: 'tcp://0.0.0.0'
         });
 
-        const order = await this.getOrderForPrint(orderId);
-        await this.buildTicketContent(printer, order);
+        const order = await this.getOrderForPrint(orderId, tenantId);
+        await this.buildTicketContent(printer, order, tenantId);
         
         return printer.getBuffer();
     }
@@ -165,12 +165,12 @@ export class PrinterService {
     /**
      * Print order ticket to a specific printer by printer ID
      */
-    async printOrderToDevice(orderId: number, printerId: number): Promise<boolean> {
-        const config = await this.getPrinterConfig(printerId);
+    async printOrderToDevice(orderId: number, printerId: number, tenantId: number): Promise<boolean> {
+        const config = await this.getPrinterConfig(printerId, tenantId);
         const printer = this.createPrinter(config);
 
-        const order = await this.getOrderForPrint(orderId);
-        await this.buildTicketContent(printer, order);
+        const order = await this.getOrderForPrint(orderId, tenantId);
+        await this.buildTicketContent(printer, order, tenantId);
 
         if (config.connectionType === 'USB' && config.windowsName) {
             // Use Windows raw printing for USB printers
@@ -197,8 +197,8 @@ export class PrinterService {
     /**
      * Print test page to verify printer connection
      */
-    async printTestPage(printerId: number): Promise<boolean> {
-        const config = await this.getPrinterConfig(printerId);
+    async printTestPage(printerId: number, tenantId: number): Promise<boolean> {
+        const config = await this.getPrinterConfig(printerId, tenantId);
         const printer = this.createPrinter(config);
 
         printer.clear();
@@ -248,9 +248,9 @@ export class PrinterService {
     /**
      * Get order with all relations needed for printing
      */
-    private async getOrderForPrint(orderId: number) {
-        const order = await prisma.order.findUnique({
-            where: { id: orderId },
+    private async getOrderForPrint(orderId: number, tenantId: number) {
+        const order = await prisma.order.findFirst({
+            where: { id: orderId, tenantId },
             include: {
                 items: {
                     include: {
@@ -272,9 +272,9 @@ export class PrinterService {
     /**
      * Build the ticket content on a printer instance
      */
-    private async buildTicketContent(printer: ThermalPrinter, order: any): Promise<void> {
+    private async buildTicketContent(printer: ThermalPrinter, order: any, tenantId: number): Promise<void> {
         // Get business name from config
-        const config = await prisma.tenantConfig.findFirst();
+        const config = await prisma.tenantConfig.findFirst({ where: { tenantId } });
         const businessName = config?.businessName || 'RESTAURANTE';
 
         printer.clear();

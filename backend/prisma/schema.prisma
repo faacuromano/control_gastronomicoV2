@@ -7,23 +7,74 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// FIX P1-001 PHASE 3: Multi-Tenancy
+// Every record belongs to a Tenant
+model Tenant {
+  id                    Int                    @id @default(autoincrement())
+  name                  String
+  code                  String                 @unique // "default", "franchise_1"
+  activeSubscription    Boolean                @default(true)
+  configs               TenantConfig[]
+  users                 User[]
+  roles                 Role[]
+  categories            Category[]
+  products              Product[]
+  tables                Table[]
+  areas                 Area[]
+  clients               Client[]
+  orders                Order[]
+  shifts                CashShift[]
+  sequences             OrderSequence[]
+  printers              Printer[]
+  platformConfigs       TenantPlatformConfig[]
+  invoices              Invoice[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  modifierGroups        ModifierGroup[]
+  ingredients           Ingredient[]
+  suppliers             Supplier[]
+  purchaseOrders        PurchaseOrder[]
+  paymentMethodConfigs  PaymentMethodConfig[]
+  deliveryDrivers       DeliveryDriver[]
+  auditLogs             AuditLog[]
+  qrCodes               QrCode[]
+  // New multi-tenant relations
+  stockMovements        StockMovement[]
+  payments              Payment[]
+  orderItems            OrderItem[]
+  orderItemModifiers    OrderItemModifier[]
+  purchaseOrderItems    PurchaseOrderItem[]
+  modifierOptions       ModifierOption[]
+  productIngredients    ProductIngredient[]
+  productModifierGroups ProductModifierGroup[]
+  areaPrinterOverrides  AreaPrinterOverride[]
+  productChannelPrices  ProductChannelPrice[]
+  taxRates              TaxRate[]
+  refreshTokens         RefreshToken[]
+}
+
 model TenantConfig {
-  id                 Int        @id @default(1)
+  id                 Int        @id @default(autoincrement())
+  tenantId           Int
+  tenant             Tenant     @relation(fields: [tenantId], references: [id])
   businessName       String
   enableStock        Boolean    @default(true)
   enableDelivery     Boolean    @default(true)
   enableKDS          Boolean    @default(false)
   enableFiscal       Boolean    @default(false)
   enableDigital      Boolean    @default(false)
-  enableBlindCount   Boolean    @default(false) // Arqueo ciego: oculta monto esperado al cerrar turno
+  enableBlindCount   Boolean    @default(false)
   currencySymbol     String     @default("$")
+  defaultTaxRate     Decimal    @default(0) @db.Decimal(5, 2) // Default tax rate percentage (e.g. 21.00 for 21%)
   // QR Menu Configuration
   qrMenuEnabled      Boolean    @default(false)
   qrMenuMode         QrMenuMode @default(INTERACTIVE)
-  qrSelfOrderEnabled Boolean    @default(false) // Permitir pedidos desde celular
-  qrMenuPdfUrl       String? // URL del PDF si mode=STATIC
-  qrMenuBannerUrl    String? // Banner opcional para menú
-  qrMenuTheme        Json? // Colores, tipografía personalizada
+  qrSelfOrderEnabled Boolean    @default(false)
+  qrMenuPdfUrl       String?
+  qrMenuBannerUrl    String?
+  qrMenuTheme        Json?
+
+  @@index([tenantId])
 }
 
 // FIX P1-001 PHASE 2: Hourly-based sharding to eliminate lock contention
@@ -32,65 +83,104 @@ model TenantConfig {
 // PERFORMANCE: Latency expected to drop from 1200ms to ~50ms
 model OrderSequence {
   id           Int      @id @default(autoincrement())
-  sequenceKey  String   @unique @db.VarChar(12)  // Format: "YYYYMMDDHH" (e.g., "2026011914")
+  tenantId     Int
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  sequenceKey  String   @db.VarChar(50) // "TENANT_1_DATE_20260119"
   currentValue Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  @@index([sequenceKey])
+  @@unique([tenantId, sequenceKey]) // Tenant scoped sequence
+  @@index([tenantId])
 }
 
 model Role {
   id          Int    @id @default(autoincrement())
-  name        String @unique
+  tenantId    Int
+  tenant      Tenant @relation(fields: [tenantId], references: [id])
+  name        String // Not unique globally anymore
   permissions Json
   users       User[]
+
+  @@unique([tenantId, name]) // Unique per tenant
+  @@index([tenantId])
 }
 
 model User {
   id                  Int         @id @default(autoincrement())
+  tenantId            Int
+  tenant              Tenant      @relation(fields: [tenantId], references: [id])
   roleId              Int
   role                Role        @relation(fields: [roleId], references: [id])
   name                String
-  email               String?     @unique
-  pinHash             String?     @db.VarChar(60)  // bcrypt hash, uniqueness verified in code
+  email               String? // Not unique globally anymore, or should it? Usually email IS global, but let's scope it for now
+  pinHash             String?     @db.VarChar(60)
+  // pinLookup deferred — add back when DB migration is applied
+  // pinLookup           String?     @db.VarChar(16)
   passwordHash        String?
   uiSettings          Json?
   orders              Order[]     @relation("OrderServer")
   deliveries          Order[]     @relation("OrderDriver")
   shifts              CashShift[]
+  refreshTokens       RefreshToken[]
   isActive            Boolean     @default(true)
-  failedLoginAttempts Int         @default(0) // Count of consecutive failed PIN attempts
-  lockedUntil         DateTime? // Account locked until this time (null = not locked)
+  failedLoginAttempts Int         @default(0)
+  lockedUntil         DateTime?
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
+  @@unique([tenantId, email])
+  @@index([tenantId])
   @@index([roleId])
+}
+
+model RefreshToken {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token       String   @unique @db.VarChar(64) // SHA-256 hash of the token
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([expiresAt]) // For cleanup queries
 }
 
 model Category {
   id               Int                   @id @default(autoincrement())
+  tenantId         Int
+  tenant           Tenant                @relation(fields: [tenantId], references: [id])
   name             String
   printerId        Int?
   printer          Printer?              @relation(fields: [printerId], references: [id])
   products         Product[]
-  printerOverrides AreaPrinterOverride[] // Areas that override this category's printer
+  printerOverrides AreaPrinterOverride[]
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
+  @@unique([tenantId, name])
+  @@index([tenantId])
   @@index([printerId])
 }
 
 model Printer {
   id             Int                   @id @default(autoincrement())
+  tenantId       Int
+  tenant         Tenant                @relation(fields: [tenantId], references: [id])
   name           String
   connectionType PrinterConnection     @default(NETWORK)
-  ipAddress      String? // For NETWORK type: IP address (port 9100 default)
-  windowsName    String? // For USB type: Windows printer name
+  ipAddress      String?
+  windowsName    String?
   categories     Category[]
-  areaOverrides  AreaPrinterOverride[] // Areas using this printer as override
+  areaOverrides  AreaPrinterOverride[]
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
 }
 
 enum PrinterConnection {
@@ -100,6 +190,8 @@ enum PrinterConnection {
 
 model Product {
   id            Int                    @id @default(autoincrement())
+  tenantId      Int
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id])
   categoryId    Int
   category      Category               @relation(fields: [categoryId], references: [id])
   name          String
@@ -112,10 +204,13 @@ model Product {
   modifiers     ProductModifierGroup[]
   isActive      Boolean                @default(true)
   orderItems    OrderItem[]
-  channelPrices ProductChannelPrice[] // Precios específicos por plataforma de delivery
+  channelPrices ProductChannelPrice[]
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
 
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive, categoryId])
+  @@index([tenantId])
   @@index([categoryId])
 }
 
@@ -127,6 +222,8 @@ enum ProductType {
 
 model ModifierGroup {
   id           Int                    @id @default(autoincrement())
+  tenantId     Int
+  tenant       Tenant                 @relation(fields: [tenantId], references: [id])
   name         String
   minSelection Int                    @default(0)
   maxSelection Int                    @default(1)
@@ -134,21 +231,29 @@ model ModifierGroup {
   products     ProductModifierGroup[]
   createdAt    DateTime               @default(now())
   updatedAt    DateTime               @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
 }
 
 model ProductModifierGroup {
+  tenantId        Int
+  tenant          Tenant        @relation(fields: [tenantId], references: [id])
   productId       Int
   modifierGroupId Int
   product         Product       @relation(fields: [productId], references: [id])
   modifierGroup   ModifierGroup @relation(fields: [modifierGroupId], references: [id])
 
   @@id([productId, modifierGroupId])
+  @@index([tenantId])
   @@index([modifierGroupId])
   @@index([productId])
 }
 
 model ModifierOption {
   id              Int                 @id @default(autoincrement())
+  tenantId        Int
+  tenant          Tenant              @relation(fields: [tenantId], references: [id])
   modifierGroupId Int
   group           ModifierGroup       @relation(fields: [modifierGroupId], references: [id])
   name            String
@@ -159,26 +264,34 @@ model ModifierOption {
   qtyUsed         Decimal?            @default(1)
   orderModifiers  OrderItemModifier[]
 
+  @@index([tenantId])
   @@index([modifierGroupId])
   @@index([ingredientId])
 }
 
 model Ingredient {
   id                 Int                 @id @default(autoincrement())
+  tenantId           Int
+  tenant             Tenant              @relation(fields: [tenantId], references: [id])
   name               String
   unit               String
   cost               Decimal             @db.Decimal(10, 4)
   stock              Decimal             @db.Decimal(10, 4)
-  minStock           Decimal             @default(0)
+  minStock           Decimal             @default(0) @db.Decimal(10, 4)
   products           ProductIngredient[]
   modifiers          ModifierOption[]
   movements          StockMovement[]
   purchaseOrderItems PurchaseOrderItem[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
 }
 
 model ProductIngredient {
+  tenantId     Int
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
   productId    Int
   ingredientId Int
   quantity     Decimal    @db.Decimal(10, 4)
@@ -186,12 +299,15 @@ model ProductIngredient {
   ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
 
   @@id([productId, ingredientId])
+  @@index([tenantId])
   @@index([ingredientId])
   @@index([productId])
 }
 
 model StockMovement {
   id           Int           @id @default(autoincrement())
+  tenantId     Int
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
   ingredientId Int
   ingredient   Ingredient    @relation(fields: [ingredientId], references: [id])
   type         StockMoveType
@@ -199,7 +315,11 @@ model StockMovement {
   reason       String? // Reason for movement (e.g. "Order #123", "Expired")
   createdAt    DateTime      @default(now())
 
+  @@index([tenantId])
   @@index([ingredientId])
+  // Composite indexes for history queries
+  @@index([tenantId, createdAt])
+  @@index([ingredientId, createdAt])
 }
 
 enum StockMoveType {
@@ -211,6 +331,8 @@ enum StockMoveType {
 
 model Supplier {
   id             Int             @id @default(autoincrement())
+  tenantId       Int
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
   name           String
   phone          String?
   email          String?
@@ -222,11 +344,22 @@ model Supplier {
   updatedAt      DateTime        @updatedAt
 
   @@index([name])
+  @@index([tenantId])
+}
+
+enum PurchaseStatus {
+  PENDING
+  ORDERED
+  PARTIAL
+  RECEIVED
+  CANCELLED
 }
 
 model PurchaseOrder {
   id          Int                 @id @default(autoincrement())
-  orderNumber Int                 @unique
+  tenantId    Int
+  tenant      Tenant              @relation(fields: [tenantId], references: [id])
+  orderNumber Int
   supplierId  Int
   supplier    Supplier            @relation(fields: [supplierId], references: [id])
   status      PurchaseStatus      @default(PENDING)
@@ -239,13 +372,17 @@ model PurchaseOrder {
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
 
+  @@unique([tenantId, orderNumber])
   @@index([supplierId])
   @@index([status])
   @@index([orderedAt])
+  @@index([tenantId])
 }
 
 model PurchaseOrderItem {
   id              Int           @id @default(autoincrement())
+  tenantId        Int
+  tenant          Tenant        @relation(fields: [tenantId], references: [id])
   purchaseOrderId Int
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
   ingredientId    Int
@@ -253,32 +390,30 @@ model PurchaseOrderItem {
   quantity        Decimal       @db.Decimal(10, 4)
   unitCost        Decimal       @db.Decimal(10, 4)
 
+  @@index([tenantId])
   @@index([purchaseOrderId])
   @@index([ingredientId])
-}
-
-enum PurchaseStatus {
-  PENDING
-  ORDERED
-  PARTIAL
-  RECEIVED
-  CANCELLED
 }
 
 // ==================== INVOICING ====================
 
 model Invoice {
   id            Int         @id @default(autoincrement())
+  tenantId      Int
+  tenant        Tenant      @relation(fields: [tenantId], references: [id])
   orderId       Int         @unique
-  order         Order       @relation(fields: [orderId], references: [id])
-  invoiceNumber String      @unique
+  order         Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  invoiceNumber String // Unique per Tenant
   type          InvoiceType @default(RECEIPT)
   clientName    String?
-  clientTaxId   String? // CUIT/DNI
+  clientTaxId   String?
   subtotal      Decimal     @db.Decimal(10, 2)
   tax           Decimal     @default(0) @db.Decimal(10, 2)
   total         Decimal     @db.Decimal(10, 2)
   createdAt     DateTime    @default(now())
+
+  @@unique([tenantId, invoiceNumber])
+  @@index([tenantId])
 }
 
 enum InvoiceType {
@@ -286,18 +421,34 @@ enum InvoiceType {
   INVOICE_B // Factura B (Consumidor Final)
 }
 
+model TaxRate {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  name        String   // e.g. "IVA 21%", "IVA 10.5%", "Exento"
+  rate        Decimal  @db.Decimal(5, 2) // Percentage (e.g. 21.00)
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
 model Order {
   id                  Int               @id @default(autoincrement())
-  orderNumber         Int // FIX P1-001: Removed @unique, now uses composite unique constraint below
+  tenantId            Int
+  tenant              Tenant            @relation(fields: [tenantId], references: [id])
+  orderNumber         Int
   channel             OrderChannel      @default(POS)
   externalId          String?
-  externalPayload     Json? // Payload raw del webhook para debugging/auditoría
+  externalPayload     Json?
   peopleCount         Int               @default(1)
   status              OrderStatus       @default(OPEN)
   paymentStatus       PaymentStatus     @default(PENDING)
   subtotal            Decimal           @default(0) @db.Decimal(10, 2)
   discount            Decimal           @default(0) @db.Decimal(10, 2)
-  tip                 Decimal           @default(0) @db.Decimal(10, 2) // Total tips for this order
+  tip                 Decimal           @default(0) @db.Decimal(10, 2)
   total               Decimal           @default(0) @db.Decimal(10, 2)
   tableId             Int?
   table               Table?            @relation(fields: [tableId], references: [id])
@@ -307,36 +458,40 @@ model Order {
   server              User?             @relation("OrderServer", fields: [serverId], references: [id])
   driverId            Int?
   driver              User?             @relation("OrderDriver", fields: [driverId], references: [id])
-  deliveryAddress     String? // Dirección específica de esta entrega
-  deliveryNotes       String? // Notas de entrega ("Tocar timbre 2B")
+  deliveryAddress     String?
+  deliveryNotes       String?
   // Delivery Integration fields
   fulfillmentType     FulfillmentType   @default(DINE_IN)
-  deliveryPlatformId  Int? // Plataforma externa (Rappi, PedidosYa, etc.)
+  deliveryPlatformId  Int?
   deliveryPlatform    DeliveryPlatform? @relation("PlatformOrders", fields: [deliveryPlatformId], references: [id])
-  deliveryDriverId    Int? // Driver de flota propia
+  deliveryDriverId    Int?
   deliveryDriver      DeliveryDriver?   @relation("DeliveryDriverOrders", fields: [deliveryDriverId], references: [id])
-  estimatedDeliveryAt DateTime? // Hora estimada de entrega
-  deliveryFee         Decimal?          @db.Decimal(10, 2) // Costo de envío
-  platformCommission  Decimal?          @db.Decimal(10, 2) // Comisión pagada a plataforma
+  estimatedDeliveryAt DateTime?
+  deliveryFee         Decimal?          @db.Decimal(10, 2)
+  platformCommission  Decimal?          @db.Decimal(10, 2)
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   closedAt            DateTime?
-  businessDate        DateTime          @db.Date // Para agrupar ventas por "Día Operativo"
+  businessDate        DateTime          @db.Date
   items               OrderItem[]
   payments            Payment[]
   invoice             Invoice?
 
-  @@unique([businessDate, orderNumber]) // FIX P1-001: Composite unique - allows same orderNumber on different days
+  @@unique([tenantId, businessDate, orderNumber]) // Unique per Tenant per Day
+  @@index([tenantId])
   @@index([tableId])
   @@index([clientId])
   @@index([serverId])
   @@index([driverId])
   @@index([deliveryPlatformId])
   @@index([deliveryDriverId])
-  @@index([businessDate])
   @@index([createdAt])
-  @@index([externalId]) // Para búsquedas rápidas por ID externo (Rappi, Glovo)
-  @@index([orderNumber]) // FIX P1-001: Add index for fast lookups by orderNumber alone
+  @@index([externalId])
+  // Composite indexes for common query patterns
+  @@index([tenantId, status])
+  @@index([tenantId, businessDate, status])
+  @@index([tenantId, paymentStatus])
+  @@index([tenantId, channel])
 }
 
 enum OrderChannel {
@@ -365,8 +520,10 @@ enum PaymentStatus {
 
 model OrderItem {
   id        Int                 @id @default(autoincrement())
+  tenantId  Int
+  tenant    Tenant              @relation(fields: [tenantId], references: [id])
   orderId   Int
-  order     Order               @relation(fields: [orderId], references: [id])
+  order     Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId Int
   product   Product             @relation(fields: [productId], references: [id])
   quantity  Int
@@ -375,7 +532,10 @@ model OrderItem {
   status    ItemStatus          @default(PENDING)
   notes     String?
 
+  @@index([tenantId])
   @@index([orderId])
+  @@index([orderId, productId])
+  @@index([orderId, status])
   @@index([productId])
 }
 
@@ -388,23 +548,31 @@ enum ItemStatus {
 
 model OrderItemModifier {
   id               Int            @id @default(autoincrement())
+  tenantId         Int
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
   orderItemId      Int
-  orderItem        OrderItem      @relation(fields: [orderItemId], references: [id])
+  orderItem        OrderItem      @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
   modifierOptionId Int
   modifierOption   ModifierOption @relation(fields: [modifierOptionId], references: [id])
   priceCharged     Decimal        @db.Decimal(10, 2)
 
+  @@index([tenantId])
   @@index([orderItemId])
   @@index([modifierOptionId])
 }
 
 model Area {
   id               Int                   @id @default(autoincrement())
+  tenantId         Int
+  tenant           Tenant                @relation(fields: [tenantId], references: [id])
   name             String
   tables           Table[]
-  printerOverrides AreaPrinterOverride[] // Override print routing for this area
+  printerOverrides AreaPrinterOverride[]
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
 }
 
 // Print Routing Override per Area (Toast-style)
@@ -412,6 +580,8 @@ model Area {
 // Example: "Terraza" area sends all drinks to "Printer Terraza" instead of "Bar Printer"
 model AreaPrinterOverride {
   id         Int       @id @default(autoincrement())
+  tenantId   Int
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
   areaId     Int
   area       Area      @relation(fields: [areaId], references: [id], onDelete: Cascade)
   categoryId Int? // If null, applies to ALL categories (area-wide override)
@@ -422,6 +592,7 @@ model AreaPrinterOverride {
   updatedAt  DateTime  @updatedAt
 
   @@unique([areaId, categoryId]) // One override per category per area
+  @@index([tenantId])
   @@index([areaId])
   @@index([categoryId])
   @@index([printerId])
@@ -429,6 +600,8 @@ model AreaPrinterOverride {
 
 model Table {
   id             Int         @id @default(autoincrement())
+  tenantId       Int
+  tenant         Tenant      @relation(fields: [tenantId], references: [id])
   areaId         Int
   area           Area        @relation(fields: [areaId], references: [id])
   name           String
@@ -437,10 +610,12 @@ model Table {
   status         TableStatus @default(FREE)
   currentOrderId Int?
   orders         Order[]
-  qrCodes        QrCode[] // QR codes asociados a esta mesa
+  qrCodes        QrCode[]
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
+  @@unique([tenantId, name])
+  @@index([tenantId])
   @@index([areaId])
 }
 
@@ -453,8 +628,10 @@ enum TableStatus {
 
 model Client {
   id            Int      @id @default(autoincrement())
+  tenantId      Int
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
   name          String
-  phone         String?  @unique
+  phone         String?
   email         String?
   address       String?
   taxId         String?
@@ -463,27 +640,38 @@ model Client {
   orders        Order[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  @@unique([tenantId, phone]) // Unique per tenant
+  @@unique([tenantId, email])
+  @@index([tenantId])
 }
 
 model CashShift {
   id           Int       @id @default(autoincrement())
+  tenantId     Int
+  tenant       Tenant    @relation(fields: [tenantId], references: [id])
   userId       Int
   user         User      @relation(fields: [userId], references: [id])
   startTime    DateTime  @default(now())
   endTime      DateTime?
   startAmount  Decimal   @db.Decimal(10, 2)
   endAmount    Decimal?  @db.Decimal(10, 2)
-  businessDate DateTime  @db.Date // Día operativo del turno
+  businessDate DateTime  @db.Date
   payments     Payment[]
 
+  @@index([tenantId])
   @@index([userId])
   @@index([businessDate])
+  // Composite index for open shift lookups
+  @@index([tenantId, userId, endTime])
 }
 
 model Payment {
   id          Int           @id @default(autoincrement())
+  tenantId    Int
+  tenant      Tenant        @relation(fields: [tenantId], references: [id])
   orderId     Int
-  order       Order         @relation(fields: [orderId], references: [id])
+  order       Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
   shiftId     Int?
   shift       CashShift?    @relation(fields: [shiftId], references: [id])
   amount      Decimal       @db.Decimal(10, 2)
@@ -492,8 +680,13 @@ model Payment {
   externalRef String?
   createdAt   DateTime      @default(now())
 
+  @@index([tenantId])
   @@index([orderId])
   @@index([shiftId])
+  // Composite indexes for shift reports and payment analytics
+  @@index([shiftId, method])
+  @@index([tenantId, method])
+  @@index([tenantId, createdAt])
 }
 
 enum PaymentMethod {
@@ -507,18 +700,25 @@ enum PaymentMethod {
 // Dynamic payment method configuration
 model PaymentMethodConfig {
   id        Int      @id @default(autoincrement())
-  code      String   @unique // Matches PaymentMethod enum value
+  tenantId  Int
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  code      String // Matches PaymentMethod enum value
   name      String // Display name: "Efectivo", "Tarjeta", etc.
   icon      String? // Lucide icon name
   isActive  Boolean  @default(true)
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
 }
 
 // Audit log for tracking critical actions
 model AuditLog {
   id        Int         @id @default(autoincrement())
+  tenantId  Int
+  tenant    Tenant      @relation(fields: [tenantId], references: [id])
   userId    Int?
   action    AuditAction
   entity    String // Table/model name: 'Order', 'Payment', 'CashShift'
@@ -532,6 +732,10 @@ model AuditLog {
   @@index([entity, entityId])
   @@index([action])
   @@index([createdAt])
+  @@index([tenantId])
+  // Composite indexes for tenant audit reports
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entity, entityId])
 }
 
 enum AuditAction {
@@ -564,6 +768,8 @@ enum AuditAction {
   USER_DELETED
   ROLE_CHANGED
   CONFIG_CHANGED
+  // Sync
+  SYNC_COMPLETED
 }
 
 // ============================================================================
@@ -577,6 +783,8 @@ enum QrMenuMode {
 
 model QrCode {
   id            Int       @id @default(autoincrement())
+  tenantId      Int
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
   code          String    @unique @db.VarChar(12) // UUID corto para URL
   tableId       Int? // null = QR genérico (no asociado a mesa)
   table         Table?    @relation(fields: [tableId], references: [id])
@@ -587,6 +795,7 @@ model QrCode {
   updatedAt     DateTime  @updatedAt
 
   @@index([tableId])
+  @@index([tenantId])
 }
 
 // ============================================================================
@@ -600,34 +809,61 @@ enum FulfillmentType {
   SELF_DELIVERY // Delivery con flota propia del local
 }
 
+// 1. GLOBAL PLATFORM CATALOG (e.g. "Rappi", "PedidosYa")
 model DeliveryPlatform {
-  id                      Int                   @id @default(autoincrement())
-  code                    String                @unique // PEDIDOSYA, RAPPI, GLOVO, etc.
-  name                    String
-  isEnabled               Boolean               @default(false)
-  apiKey                  String?               @db.VarChar(500) // Encrypted API key
-  webhookSecret           String?               @db.VarChar(500) // Para validar webhooks entrantes
-  storeId                 String? // ID del local en la plataforma
-  menuSyncEnabled         Boolean               @default(false) // Sincronizar menú automáticamente
-  lastSyncAt              DateTime?
-  commissionRate          Decimal?              @db.Decimal(5, 2) // Porcentaje de comisión (ej: 15.00)
-  // ============ SAFETY LOCK (Margin Warning Protocol) ============
-  // Campos para el protocolo de consentimiento de margen.
-  // El usuario DEBE aceptar el riesgo de usar precios base antes de activar.
-  defaultMarkup           Decimal?              @db.Decimal(5, 2) // Markup automático sugerido (ej: 25.00 = +25%)
-  marginConsentAcceptedAt DateTime? // Timestamp cuando el usuario aceptó el riesgo
-  marginConsentAcceptedBy Int? // ID del usuario que aceptó
-  useFallbackPricing      Boolean               @default(false) // Si true, usa precio base + markup cuando no hay precio específico
-  // ================================================================
-  config                  Json? // Configuración adicional específica
-  createdAt               DateTime              @default(now())
-  updatedAt               DateTime              @updatedAt
-  orders                  Order[]               @relation("PlatformOrders")
-  productPrices           ProductChannelPrice[] // Precios específicos por producto
+  id            Int                    @id @default(autoincrement())
+  code          String                 @unique // PEDIDOSYA, RAPPI, GLOVO
+  name          String
+  isEnabled     Boolean                @default(false)
+  // LEGACY FIELDS - Kept for migration, will be removed later
+  apiKey        String?                @db.VarChar(500)
+  webhookSecret String?                @db.VarChar(500)
+  storeId       String?
+  // End Legacy
+  tenantConfigs TenantPlatformConfig[]
+  orders        Order[]                @relation("PlatformOrders")
+  productPrices ProductChannelPrice[]
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+}
+
+// 2. TENANT-SPECIFIC CONFIGURATION
+model TenantPlatformConfig {
+  id                 Int              @id @default(autoincrement())
+  tenantId           Int
+  tenant             Tenant           @relation(fields: [tenantId], references: [id])
+  deliveryPlatformId Int
+  deliveryPlatform   DeliveryPlatform @relation(fields: [deliveryPlatformId], references: [id])
+
+  // Credentials & Config
+  storeId       String? // Tenant's Store ID on platform
+  apiKey        String? @db.Text
+  webhookSecret String? @db.Text
+
+  menuSyncEnabled Boolean   @default(false)
+  lastSyncAt      DateTime?
+  commissionRate  Decimal?  @db.Decimal(5, 2)
+  isActive        Boolean   @default(false)
+
+  // Safety Lock matches Platform logic, but scoped to tenant
+  defaultMarkup      Decimal? @db.Decimal(5, 2)
+  useFallbackPricing Boolean  @default(false)
+
+  // Margin Consent (Safety Lock)
+  marginConsentAcceptedAt DateTime?
+  marginConsentAcceptedBy Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, deliveryPlatformId]) // One config per platform per tenant
+  @@index([tenantId])
 }
 
 model DeliveryDriver {
   id             Int         @id @default(autoincrement())
+  tenantId       Int
+  tenant         Tenant      @relation(fields: [tenantId], references: [id])
   name           String
   phone          String
   email          String?
@@ -639,6 +875,9 @@ model DeliveryDriver {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   orders         Order[]     @relation("DeliveryDriverOrders")
+
+  @@unique([tenantId, phone])
+  @@index([tenantId])
 }
 
 enum VehicleType {
@@ -656,6 +895,8 @@ enum VehicleType {
 
 model ProductChannelPrice {
   id                 Int              @id @default(autoincrement())
+  tenantId           Int
+  tenant             Tenant           @relation(fields: [tenantId], references: [id])
   productId          Int
   product            Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
   deliveryPlatformId Int
@@ -667,6 +908,7 @@ model ProductChannelPrice {
   updatedAt          DateTime         @updatedAt
 
   @@unique([productId, deliveryPlatformId]) // Un precio por producto por plataforma
+  @@index([tenantId])
   @@index([deliveryPlatformId])
   @@index([productId])
 }

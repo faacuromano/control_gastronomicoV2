@@ -170,7 +170,7 @@ export const POSPage: React.FC = () => {
       setIsCheckoutOpen(true); // Proceed to Checkout Modal
   };
 
-  const handleCheckout = async (method: string, payments?: { method: string; amount: number }[]) => {
+  const handleCheckout = async (method: string, payments?: { method: string; amount: number }[], discount?: number) => {
     // If modal sends COMPLETED, just close (legacy/unused?)
     if (method === 'COMPLETED') {
          setIsCheckoutOpen(false);
@@ -198,19 +198,24 @@ export const POSPage: React.FC = () => {
         }
     }
 
-    // CASE 1: Table checkout - Process payment (items already in order or just autosaved)
+    // CASE 1: Table checkout - Close table with payment (atomic operation)
     if (existingOrderId && tableId && action === 'checkout') {
         try {
-            console.log('[POSPage] Closing table:', tableId, 'with payments:', paymentData);
-            const result = await tableService.closeTable(tableId, paymentData);
-            console.log('[POSPage] Table close result:', result);
+            console.log('[POSPage] Closing table with payment:', tableId);
+
+            // Backend closeTableWithPayment handles payment + order close + table FREE atomically
+            await tableService.closeTable(tableId, paymentData);
+            console.log('[POSPage] Table closed successfully');
             clearCart();
             setIsCheckoutOpen(false);
             navigate('/tables');
             return;
-        } catch (error) {
-            console.error("Table close failed", error);
-            alert("Error al cerrar la mesa");
+        } catch (error: any) {
+            console.error("Table checkout failed", error);
+            const errorMessage = error?.response?.data?.error?.message
+                || error?.message
+                || "Error al procesar el pago de la mesa";
+            alert(errorMessage);
             return;
         }
     }
@@ -247,7 +252,8 @@ export const POSPage: React.FC = () => {
               tableId: tableId ? Number(tableId) : undefined,
               clientId: selectedClient?.id,
               // FIX: Only send deliveryData if it actually has an address
-              ...(currentPendingData?.address ? { deliveryData: currentPendingData } : {})
+              ...(currentPendingData?.address ? { deliveryData: currentPendingData } : {}),
+              ...(discount ? { discount } : {})
         };
 
         const order = await orderService.create(createPayload);

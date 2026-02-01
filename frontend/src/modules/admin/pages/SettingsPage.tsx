@@ -85,11 +85,12 @@ export const SettingsPage: React.FC = () => {
     const handleSave = async () => {
         setSaving(true);
         try {
+            // Properly structure the payload with nested features object
             await configService.updateConfig({
                 businessName,
                 currencySymbol,
-                ...features
-            } as any);
+                features
+            });
             setHasChanges(false);
             // Force reload to update Header navigation
             window.location.reload();

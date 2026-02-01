@@ -11,7 +11,7 @@ const loyaltyService = new LoyaltyService();
  */
 export const getBalance = asyncHandler(async (req: Request, res: Response) => {
     const clientId = parseInt(req.params.id as string);
-    const balance = await loyaltyService.getBalance(clientId);
+    const balance = await loyaltyService.getBalance(clientId, req.user!.tenantId!);
     sendSuccess(res, balance);
 });
 
@@ -23,7 +23,7 @@ export const redeemPoints = asyncHandler(async (req: Request, res: Response) => 
     const clientId = parseInt(req.params.id as string);
     const { points } = req.body;
     
-    const discountAmount = await loyaltyService.redeemPoints(clientId, points);
+    const discountAmount = await loyaltyService.redeemPoints(clientId, points, req.user!.tenantId!);
     
     sendSuccess(res, {
         message: 'Points redeemed successfully',
@@ -40,7 +40,7 @@ export const addWalletFunds = asyncHandler(async (req: Request, res: Response) =
     const clientId = parseInt(req.params.id as string);
     const { amount } = req.body;
     
-    const newBalance = await loyaltyService.addWalletFunds(clientId, amount);
+    const newBalance = await loyaltyService.addWalletFunds(clientId, amount, req.user!.tenantId!);
     
     sendSuccess(res, {
         message: 'Funds added successfully',
@@ -56,7 +56,7 @@ export const useWalletFunds = asyncHandler(async (req: Request, res: Response) =
     const clientId = parseInt(req.params.id as string);
     const { amount } = req.body;
     
-    const amountUsed = await loyaltyService.useWalletFunds(clientId, amount);
+    const amountUsed = await loyaltyService.useWalletFunds(clientId, amount, req.user!.tenantId!);
     
     sendSuccess(res, {
         message: 'Wallet funds applied',

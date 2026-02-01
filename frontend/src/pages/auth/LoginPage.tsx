@@ -1,18 +1,23 @@
 import { useState } from 'react';
 import { useAuthStore } from '../../store/auth.store';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Mail, Users } from 'lucide-react';
+import { Lock, Mail, Users, Building2 } from 'lucide-react';
+import { getErrorMessage, isErrorStatus } from '../../lib/errorUtils';
+import api from '../../lib/api';
 
 export default function LoginPage() {
     const [mode, setMode] = useState<'pin' | 'email'>('pin');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [pin, setPin] = useState('');
+    const [businessCode, setBusinessCode] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
     const login = useAuthStore((state) => state.login);
     const loginPin = useAuthStore((state) => state.loginPin);
+    const setTenant = useAuthStore((state) => state.setTenant);
+    const storedTenantId = useAuthStore((state) => state.tenantId);
     const navigate = useNavigate();
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -21,14 +26,35 @@ export default function LoginPage() {
         setLoading(true);
 
         try {
+            // Resolve tenant if not already set and business code provided
+            if (!storedTenantId) {
+                if (!businessCode.trim()) {
+                    setError('Please enter your business code.');
+                    setLoading(false);
+                    return;
+                }
+                const tenantRes = await api.get(`/auth/tenant/${encodeURIComponent(businessCode.trim())}`);
+                setTenant(tenantRes.data.data.tenantId);
+            }
+
             if (mode === 'email') {
-                await login(password, email);
+                await login(email, password);
             } else {
                 await loginPin(pin);
             }
             navigate('/');
         } catch (err: any) {
-            setError('Invalid credentials');
+            let message = getErrorMessage(err, 'Invalid credentials. Please try again.');
+
+            if (isErrorStatus(err, 429)) {
+                message = 'Too many failed attempts. Please try again in 15 minutes.';
+            } else if (isErrorStatus(err, 403)) {
+                message = 'Account is locked. Please contact your administrator.';
+            } else if (isErrorStatus(err, 404)) {
+                message = 'Business not found. Check your business code.';
+            }
+
+            setError(message);
         } finally {
             setLoading(false);
         }
@@ -73,6 +99,23 @@ export default function LoginPage() {
                     )}
 
                     <form onSubmit={handleSubmit} className="space-y-4">
+                        {!storedTenantId && (
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Business Name</label>
+                                <div className="relative">
+                                    <Building2 className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                                    <input
+                                        type="text"
+                                        value={businessCode}
+                                        onChange={(e) => setBusinessCode(e.target.value)}
+                                        className="w-full pl-9 pr-3 py-2 bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
+                                        placeholder="Business name or code"
+                                        required={!storedTenantId}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
                         {mode === 'email' ? (
                             <>
                                 <div className="space-y-2">

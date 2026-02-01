@@ -63,6 +63,7 @@ export class DiscountService {
      */
     async applyDiscount(
         input: ApplyDiscountInput,
+        tenantId: number,
         context: AuditContext
     ): Promise<DiscountResult> {
         // Validate discount type
@@ -84,24 +85,28 @@ export class DiscountService {
         }
         
         const result = await prisma.$transaction(async (tx) => {
-            // 1. Get the order
-            const order = await tx.order.findUnique({
-                where: { id: input.orderId }
+            // Acquire exclusive row lock to prevent concurrent discount race condition
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${input.orderId} AND tenantId = ${tenantId} FOR UPDATE`;
+
+            // 1. Get the order with existing payments (tenant-isolated)
+            const order = await tx.order.findFirst({
+                where: { id: input.orderId, tenantId },
+                include: { payments: true }
             });
-            
+
             if (!order) {
                 throw new NotFoundError('Order');
             }
-            
+
             // 2. Check if order is modifiable
             if (order.paymentStatus === 'PAID') {
                 throw new ValidationError('Cannot apply discount to a paid order');
             }
-            
+
             const subtotal = Number(order.subtotal);
             const previousDiscount = Number(order.discount);
             const previousTotal = Number(order.total);
-            
+
             // 3. Calculate discount amount
             let discountAmount: number;
             if (input.type === 'PERCENTAGE') {
@@ -109,30 +114,39 @@ export class DiscountService {
             } else {
                 discountAmount = input.value;
             }
-            
-            // 4. Clamp discount to not exceed subtotal
-            if (discountAmount > subtotal) {
-                discountAmount = subtotal;
+
+            // 4. Clamp total discount to not exceed subtotal
+            const totalDiscount = Math.min(previousDiscount + discountAmount, subtotal);
+            discountAmount = totalDiscount - previousDiscount;
+            const newTotal = Math.max(subtotal - totalDiscount, 0);
+
+            // 5. Recalculate paymentStatus — existing payments may now cover the new total
+            const totalPaid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+            let newPaymentStatus: string = order.paymentStatus;
+            if (totalPaid >= newTotal) {
+                newPaymentStatus = 'PAID';
+            } else if (totalPaid > 0) {
+                newPaymentStatus = 'PARTIAL';
             }
-            
-            // Add to existing discount
-            const totalDiscount = previousDiscount + discountAmount;
-            const newTotal = subtotal - totalDiscount;
-            
-            // 5. Update order
+
+            // SAFE: tx.order.findFirst verifies tenant ownership
+            const isNowPaid = newPaymentStatus === 'PAID';
             await tx.order.update({
                 where: { id: input.orderId },
                 data: {
                     discount: totalDiscount,
-                    total: newTotal
+                    total: newTotal,
+                    paymentStatus: newPaymentStatus as any,
+                    ...(isNowPaid && !order.closedAt ? { closedAt: new Date() } : {})
                 }
             });
-            
+
             return {
                 previousTotal,
                 discountAmount,
                 newTotal,
-                totalDiscount
+                totalDiscount,
+                paymentStatus: newPaymentStatus
             };
         });
         
@@ -176,37 +190,56 @@ export class DiscountService {
      */
     async removeDiscount(
         orderId: number,
+        tenantId: number,
         context: AuditContext
     ): Promise<DiscountResult> {
         const result = await prisma.$transaction(async (tx) => {
-            const order = await tx.order.findUnique({
-                where: { id: orderId }
+            // Acquire exclusive row lock to prevent concurrent discount race condition
+            await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND tenantId = ${tenantId} FOR UPDATE`;
+
+            const order = await tx.order.findFirst({
+                where: { id: orderId, tenantId },
+                include: { payments: true }
             });
-            
+
             if (!order) {
                 throw new NotFoundError('Order');
             }
-            
+
             if (order.paymentStatus === 'PAID') {
                 throw new ValidationError('Cannot remove discount from a paid order');
             }
-            
+
             const previousDiscount = Number(order.discount);
             const subtotal = Number(order.subtotal);
             const previousTotal = Number(order.total);
-            
+            const newTotal = subtotal;
+
+            // Recalculate paymentStatus with the restored total
+            const totalPaid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0);
+            let newPaymentStatus: string = order.paymentStatus;
+            if (totalPaid >= newTotal) {
+                newPaymentStatus = 'PAID';
+            } else if (totalPaid > 0) {
+                newPaymentStatus = 'PARTIAL';
+            } else {
+                newPaymentStatus = 'PENDING';
+            }
+
+            // SAFE: tx.order.findFirst verifies tenant ownership
             await tx.order.update({
                 where: { id: orderId },
                 data: {
                     discount: 0,
-                    total: subtotal
+                    total: newTotal,
+                    paymentStatus: newPaymentStatus as any
                 }
             });
-            
+
             return {
                 previousTotal,
                 discountRemoved: previousDiscount,
-                newTotal: subtotal
+                newTotal
             };
         });
         

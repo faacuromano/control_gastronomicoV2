@@ -49,7 +49,7 @@ export const getPublicMenu = asyncHandler(async (req: Request, res: Response) =>
     }
 
     // For interactive mode, return full menu
-    const menu = await qrService.getPublicMenu();
+    const menu = await qrService.getPublicMenu(qr.tenantId);
     
     sendSuccess(res, {
         mode: 'INTERACTIVE',
@@ -71,8 +71,8 @@ export const getPublicMenu = asyncHandler(async (req: Request, res: Response) =>
  * Get QR menu configuration
  * GET /api/v1/admin/qr/config
  */
-export const getConfig = asyncHandler(async (_req: Request, res: Response) => {
-    const config = await qrService.getConfig();
+export const getConfig = asyncHandler(async (req: Request, res: Response) => {
+    const config = await qrService.getConfig(req.user!.tenantId!);
     sendSuccess(res, config);
 });
 
@@ -81,7 +81,7 @@ export const getConfig = asyncHandler(async (_req: Request, res: Response) => {
  * PATCH /api/v1/admin/qr/config
  */
 export const updateConfig = asyncHandler(async (req: Request, res: Response) => {
-    const config = await qrService.updateConfig(req.body);
+    const config = await qrService.updateConfig(req.user!.tenantId!, req.body);
     sendSuccess(res, config);
 });
 
@@ -89,8 +89,8 @@ export const updateConfig = asyncHandler(async (req: Request, res: Response) => 
  * Get all QR codes
  * GET /api/v1/admin/qr/codes
  */
-export const getAllCodes = asyncHandler(async (_req: Request, res: Response) => {
-    const codes = await qrService.getAllQrCodes();
+export const getAllCodes = asyncHandler(async (req: Request, res: Response) => {
+    const codes = await qrService.getAllQrCodes(req.user!.tenantId!);
     sendSuccess(res, codes);
 });
 
@@ -100,7 +100,7 @@ export const getAllCodes = asyncHandler(async (_req: Request, res: Response) => 
  */
 export const generateCode = asyncHandler(async (req: Request, res: Response) => {
     const { tableId } = req.body;
-    const code = await qrService.generateQrCode(tableId);
+    const code = await qrService.generateQrCode(req.user!.tenantId!, tableId);
     sendSuccess(res, code, undefined, 201);
 });
 
@@ -110,7 +110,7 @@ export const generateCode = asyncHandler(async (req: Request, res: Response) => 
  */
 export const toggleCode = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
-    const code = await qrService.toggleQrCode(id);
+    const code = await qrService.toggleQrCode(id, req.user!.tenantId!);
     sendSuccess(res, code);
 });
 
@@ -120,6 +120,6 @@ export const toggleCode = asyncHandler(async (req: Request, res: Response) => {
  */
 export const deleteCode = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
-    await qrService.deleteQrCode(id);
+    await qrService.deleteQrCode(id, req.user!.tenantId!);
     sendSuccess(res, { message: 'QR code deleted' });
 });

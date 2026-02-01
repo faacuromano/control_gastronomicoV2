@@ -29,12 +29,12 @@ export const registerMovement = asyncHandler(async (req: Request, res: Response)
         return res.status(400).json({ success: false, error: "Quantity must be positive for PURCHASE/SALE/WASTE" });
     }
 
-    const result = await stockService.register(data.ingredientId, data.type, data.quantity, data.reason);
+    const result = await stockService.register(data.ingredientId, req.user!.tenantId!, data.type, data.quantity, data.reason);
     res.status(201).json({ success: true, data: result });
 });
 
 export const getMovementHistory = asyncHandler(async (req: Request, res: Response) => {
     const ingredientId = req.query.ingredientId ? parseInt(req.query.ingredientId as string) : undefined;
-    const history = await stockService.getHistory(ingredientId);
+    const history = await stockService.getHistory(req.user!.tenantId!, ingredientId);
     res.json({ success: true, data: history });
 });

@@ -19,8 +19,10 @@ const supplierSchema = z.object({
  * Get all suppliers
  */
 export const getSuppliers = asyncHandler(async (req: Request, res: Response) => {
-  const suppliers = await supplierService.getAll();
-  res.json({ success: true, data: suppliers });
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const limit = Math.max(1, parseInt(req.query.limit as string) || 200);
+  const result = await supplierService.getAll(req.user!.tenantId!, page, limit);
+  res.json({ success: true, ...result });
 });
 
 /**
@@ -28,7 +30,7 @@ export const getSuppliers = asyncHandler(async (req: Request, res: Response) => 
  */
 export const getSupplierById = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
-  const supplier = await supplierService.getById(id);
+  const supplier = await supplierService.getById(id, req.user!.tenantId!);
   res.json({ success: true, data: supplier });
 });
 
@@ -38,7 +40,7 @@ export const getSupplierById = asyncHandler(async (req: Request, res: Response) 
 export const createSupplier = asyncHandler(async (req: Request, res: Response) => {
   const parsed = supplierSchema.parse(req.body);
   // Type assertion needed due to Prisma exactOptionalPropertyTypes incompatibility
-  const supplier = await supplierService.create(parsed as Prisma.SupplierCreateInput);
+  const supplier = await supplierService.create(req.user!.tenantId!, parsed as Prisma.SupplierCreateInput);
   res.status(201).json({ success: true, data: supplier });
 });
 
@@ -49,7 +51,7 @@ export const updateSupplier = asyncHandler(async (req: Request, res: Response) =
   const id = parseInt(req.params.id as string);
   const parsed = supplierSchema.partial().parse(req.body);
   // Type assertion needed due to Prisma exactOptionalPropertyTypes incompatibility
-  const supplier = await supplierService.update(id, parsed as Prisma.SupplierUpdateInput);
+  const supplier = await supplierService.update(id, req.user!.tenantId!, parsed as Prisma.SupplierUpdateInput);
   res.json({ success: true, data: supplier });
 });
 
@@ -58,6 +60,6 @@ export const updateSupplier = asyncHandler(async (req: Request, res: Response) =
  */
 export const deleteSupplier = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
-  await supplierService.delete(id);
+  await supplierService.delete(id, req.user!.tenantId!);
   res.json({ success: true, message: 'Proveedor eliminado correctamente' });
 });

@@ -22,7 +22,7 @@ export const generateInvoice = asyncHandler(async (req: Request, res: Response) 
         clientName: parsed.clientName,
         clientTaxId: parsed.clientTaxId
     };
-    const invoice = await invoiceService.generateInvoice(data);
+    const invoice = await invoiceService.generateInvoice(req.user!.tenantId!, data);
     
     res.status(201).json({
         success: true,
@@ -39,7 +39,7 @@ export const getByOrderId = asyncHandler(async (req: Request, res: Response) => 
     if (isNaN(orderId)) {
         throw new Error('Invalid order ID');
     }
-    const invoice = await invoiceService.getByOrderId(orderId);
+    const invoice = await invoiceService.getByOrderId(orderId, req.user!.tenantId!);
     
     res.json({
         success: true,
@@ -56,7 +56,7 @@ export const getByInvoiceNumber = asyncHandler(async (req: Request, res: Respons
     if (!invoiceNumber) {
         throw new Error('Invoice number required');
     }
-    const invoice = await invoiceService.getByInvoiceNumber(invoiceNumber);
+    const invoice = await invoiceService.getByInvoiceNumber(invoiceNumber, req.user!.tenantId!);
     
     res.json({
         success: true,
@@ -82,7 +82,7 @@ export const getAll = asyncHandler(async (req: Request, res: Response) => {
         filters.endDate = new Date(endDate as string);
     }
     
-    const invoices = await invoiceService.getAll(filters);
+    const invoices = await invoiceService.getAll(req.user!.tenantId!, filters);
     
     res.json({
         success: true,

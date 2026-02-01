@@ -76,17 +76,37 @@ export const KitchenPage: React.FC = () => {
 
   const handleStatusChange = async (orderId: number, status: string) => {
       try {
-          await orderService.updateStatus(orderId, status);
+          const updatedOrder = await orderService.updateStatus(orderId, status);
+          // Update local state immediately with API response
+          setOrders(prev => prev.map(o => o.id === orderId ? updatedOrder : o));
       } catch (e) {
           console.error("Failed to update status", e);
+      }
+  };
+
+  const handleItemChange = async (itemId: number, status: string) => {
+      // Optimistic update: reflect item status change immediately
+      setOrders(prev => prev.map(order => ({
+          ...order,
+          items: order.items.map((item: any) =>
+              item.id === itemId ? { ...item, status } : item
+          )
+      })));
+      try {
+          await orderService.updateItemStatus(itemId, status);
+      } catch (e) {
+          console.error("Failed item update", e);
+          // Revert on failure by reloading
+          loadActiveOrders();
       }
   };
 
   const handleMarkServed = async (orderId: number) => {
       try {
           await orderService.markAllItemsServed(orderId);
-          // Optionally also set order to DELIVERED for table orders
-          await orderService.updateStatus(orderId, 'DELIVERED');
+          const updatedOrder = await orderService.updateStatus(orderId, 'DELIVERED');
+          // Remove delivered order from KDS
+          setOrders(prev => prev.filter(o => o.id !== orderId));
       } catch (e) {
           console.error("Failed to mark items as served", e);
       }
@@ -143,17 +163,11 @@ export const KitchenPage: React.FC = () => {
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 space-y-4 scrollbar-thin scrollbar-thumb-border">
                         {pendingOrders.map(order => (
-                            <TicketCard 
-                                key={order.id} 
-                                order={order} 
-                                onStatusChange={handleStatusChange} 
-                                onItemChange={async (itemId, status) => {
-                                    try {
-                                        await orderService.updateItemStatus(itemId, status);
-                                    } catch (e) {
-                                        console.error("Failed item update", e);
-                                    }
-                                }}
+                            <TicketCard
+                                key={order.id}
+                                order={order}
+                                onStatusChange={handleStatusChange}
+                                onItemChange={handleItemChange}
                             />
                         ))}
                          {pendingOrders.length === 0 && (
@@ -176,17 +190,11 @@ export const KitchenPage: React.FC = () => {
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 space-y-4 scrollbar-thin scrollbar-thumb-border">
                         {prepOrders.map(order => (
-                            <TicketCard 
-                                key={order.id} 
-                                order={order} 
-                                onStatusChange={handleStatusChange} 
-                                onItemChange={async (itemId, status) => {
-                                    try {
-                                        await orderService.updateItemStatus(itemId, status);
-                                    } catch (e) {
-                                        console.error("Failed item update", e);
-                                    }
-                                }}
+                            <TicketCard
+                                key={order.id}
+                                order={order}
+                                onStatusChange={handleStatusChange}
+                                onItemChange={handleItemChange}
                             />
                         ))}
                     </div>

@@ -98,7 +98,11 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({ table, onClo
         try {
             setLoading(true);
             setError(null);
+
+            // Backend openTable creates the order atomically and returns it
             const order = await tableService.openTable(table.id, pax);
+
+            // Navigate to POS with the order created by the backend
             navigate(`/ventas?orderId=${order.id}&tableId=${table.id}`);
             onClose();
             onTableUpdated?.();

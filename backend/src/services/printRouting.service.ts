@@ -52,10 +52,10 @@ export class PrintRoutingService {
      * @param orderId - Order ID to route
      * @returns RoutingResult with routes and unrouted items
      */
-    async getRoutingForOrder(orderId: number): Promise<RoutingResult> {
+    async getRoutingForOrder(orderId: number, tenantId: number): Promise<RoutingResult> {
         // 1. Get order with items, products, categories
-        const order = await prisma.order.findUnique({
-            where: { id: orderId },
+        const order = await prisma.order.findFirst({
+            where: { id: orderId, tenantId },
             include: {
                 table: {
                     include: {
@@ -163,13 +163,14 @@ export class PrintRoutingService {
      * @param areaId - Optional area ID for override lookup
      */
     async getRoutingForItems(
+        tenantId: number,
         items: Array<{ productId: number; quantity: number; notes?: string }>,
         areaId?: number
     ): Promise<RoutingResult> {
         // Get products with categories
         const productIds = items.map(i => i.productId);
         const products = await prisma.product.findMany({
-            where: { id: { in: productIds } },
+            where: { id: { in: productIds }, tenantId },
             include: {
                 category: {
                     include: { printer: true }
@@ -184,8 +185,12 @@ export class PrintRoutingService {
         let areaWideOverride: { printerId: number; printerName: string } | null = null;
 
         if (areaId) {
+            // Verify area ownership
+            const area = await prisma.area.findFirst({ where: { id: areaId, tenantId } });
+            if (!area) throw new Error('Area not found or access denied');
+
             const overrides = await prisma.areaPrinterOverride.findMany({
-                where: { areaId },
+                where: { areaId, tenantId },
                 include: { printer: true }
             });
 
@@ -265,13 +270,15 @@ export class PrintRoutingService {
     /**
      * Get all printers configured for routing (for admin UI).
      */
-    async getRoutingConfiguration() {
+    async getRoutingConfiguration(tenantId: number) {
         const [categories, areas, printers] = await Promise.all([
             prisma.category.findMany({
+                where: { tenantId },
                 include: { printer: true },
                 orderBy: { name: 'asc' }
             }),
             prisma.area.findMany({
+                where: { tenantId },
                 include: {
                     printerOverrides: {
                         include: { printer: true, category: true }
@@ -280,6 +287,7 @@ export class PrintRoutingService {
                 orderBy: { name: 'asc' }
             }),
             prisma.printer.findMany({
+                where: { tenantId },
                 orderBy: { name: 'asc' }
             })
         ]);
@@ -313,9 +321,14 @@ export class PrintRoutingService {
     /**
      * Set category default printer.
      */
-    async setCategoryPrinter(categoryId: number, printerId: number | null) {
-        return prisma.category.update({
-            where: { id: categoryId },
+    async setCategoryPrinter(tenantId: number, categoryId: number, printerId: number | null) {
+        // Verify ownership
+        const category = await prisma.category.findFirst({ where: { id: categoryId, tenantId } });
+        if (!category) throw new Error('Category not found');
+
+        // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+        return prisma.category.updateMany({
+            where: { id: categoryId, tenantId },
             data: { printerId }
         });
     }
@@ -324,21 +337,26 @@ export class PrintRoutingService {
      * Set area printer override.
      * If categoryId is null, sets an area-wide override (all categories).
      */
-    async setAreaOverride(areaId: number, categoryId: number | null, printerId: number) {
+    async setAreaOverride(tenantId: number, areaId: number, categoryId: number | null, printerId: number) {
+        // Verify ownership of area
+        const area = await prisma.area.findFirst({ where: { id: areaId, tenantId } });
+        if (!area) throw new Error('Area not found');
+
         // Prisma doesn't generate compound unique for nullable fields correctly
         // Use upsert with where clause that handles null
         const existing = await prisma.areaPrinterOverride.findFirst({
-            where: { areaId, categoryId }
+            where: { areaId, categoryId, tenantId }
         });
 
         if (existing) {
-            return prisma.areaPrinterOverride.update({
-                where: { id: existing.id },
+            // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+            return prisma.areaPrinterOverride.updateMany({
+                where: { id: existing.id, tenantId },
                 data: { printerId }
             });
         } else {
             return prisma.areaPrinterOverride.create({
-                data: { areaId, categoryId, printerId }
+                data: { tenantId, areaId, categoryId, printerId }
             });
         }
     }
@@ -346,15 +364,20 @@ export class PrintRoutingService {
     /**
      * Remove area printer override.
      */
-    async removeAreaOverride(areaId: number, categoryId: number | null) {
+    async removeAreaOverride(tenantId: number, areaId: number, categoryId: number | null) {
+        // Verify ownership
+        const area = await prisma.area.findFirst({ where: { id: areaId, tenantId } });
+        if (!area) throw new Error('Area not found');
+
         // Find and delete since compound unique with nullable doesn't work directly
         const existing = await prisma.areaPrinterOverride.findFirst({
-            where: { areaId, categoryId }
+            where: { areaId, categoryId, tenantId }
         });
 
         if (existing) {
-            return prisma.areaPrinterOverride.delete({
-                where: { id: existing.id }
+            // defense-in-depth: deleteMany ensures tenantId is in the WHERE clause
+            return prisma.areaPrinterOverride.deleteMany({
+                where: { id: existing.id, tenantId }
             });
         }
         return null;
@@ -363,15 +386,15 @@ export class PrintRoutingService {
     /**
      * Set area-wide override (all categories go to one printer).
      */
-    async setAreaWideOverride(areaId: number, printerId: number) {
-        return this.setAreaOverride(areaId, null, printerId);
+    async setAreaWideOverride(tenantId: number, areaId: number, printerId: number) {
+        return this.setAreaOverride(tenantId, areaId, null, printerId);
     }
 
     /**
      * Remove area-wide override.
      */
-    async removeAreaWideOverride(areaId: number) {
-        return this.removeAreaOverride(areaId, null);
+    async removeAreaWideOverride(tenantId: number, areaId: number) {
+        return this.removeAreaOverride(tenantId, areaId, null);
     }
 }
 

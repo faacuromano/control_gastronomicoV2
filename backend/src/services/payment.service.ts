@@ -32,7 +32,7 @@ export interface PaymentProcessingResult {
     paymentsToCreate: {
         amount: number;
         method: PaymentMethod;
-        shiftId: number;
+        shiftId: number | null;
     }[];
     /** Calculated payment status based on total paid */
     paymentStatus: PaymentStatus;
@@ -70,7 +70,7 @@ export class PaymentService {
      */
     processPayments(
         orderTotal: number,
-        shiftId: number,
+        shiftId: number | null,
         singlePaymentMethod?: PaymentMethod,
         splitPayments?: PaymentInput[]
     ): PaymentProcessingResult {

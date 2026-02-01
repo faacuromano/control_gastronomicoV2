@@ -41,6 +41,7 @@ export class OrderTransferService {
         itemIds: number[],
         fromTableId: number,
         toTableId: number,
+        tenantId: number,
         context: AuditContext
     ): Promise<TransferResult> {
         if (fromTableId === toTableId) {
@@ -49,9 +50,9 @@ export class OrderTransferService {
         
         const result = await prisma.$transaction(async (tx) => {
             // 1. Get source table and its current order (open/confirmed)
-            const fromTable = await tx.table.findUnique({
-                where: { id: fromTableId },
-                include: { 
+            const fromTable = await tx.table.findFirst({
+                where: { id: fromTableId, tenantId },
+                include: {
                     orders: {
                         where: { status: { in: ['OPEN', 'CONFIRMED'] } },
                         take: 1,
@@ -60,7 +61,11 @@ export class OrderTransferService {
                 }
             });
             
-            const sourceOrder = fromTable?.orders[0];
+            if (!fromTable) {
+                throw new NotFoundError('Source table');
+            }
+
+            const sourceOrder = fromTable.orders[0];
             if (!sourceOrder) {
                 throw new ValidationError('Source table has no open order');
             }
@@ -69,7 +74,8 @@ export class OrderTransferService {
             const items = await tx.orderItem.findMany({
                 where: {
                     id: { in: itemIds },
-                    orderId: sourceOrder.id
+                    orderId: sourceOrder.id,
+                    tenantId
                 },
                 include: { modifiers: true }
             });
@@ -79,8 +85,8 @@ export class OrderTransferService {
             }
             
             // 3. Get or create target order
-            const toTable = await tx.table.findUnique({
-                where: { id: toTableId },
+            const toTable = await tx.table.findFirst({
+                where: { id: toTableId, tenantId },
                 include: {
                     orders: {
                         where: { status: { in: ['OPEN', 'CONFIRMED'] } },
@@ -104,15 +110,20 @@ export class OrderTransferService {
                 targetOrderId = targetOrder.id;
             } else {
                 // Create new order for target table
+                const { orderNumberService } = await import('./orderNumber.service');
+                const businessDate = getBusinessDate();
+                const { orderNumber } = await orderNumberService.getNextOrderNumber(tx, tenantId, businessDate);
+
                 const newOrder = await tx.order.create({
                     data: {
-                        orderNumber: 0, // Will be assigned
+                        tenantId,
+                        orderNumber,
                         channel: sourceOrder.channel,
                         status: 'OPEN',
                         paymentStatus: 'PENDING',
                         subtotal: 0,
                         total: 0,
-                        businessDate: getBusinessDate(), // FIX P1-001: Use 6 AM cutoff logic
+                        businessDate,
                         tableId: toTableId,
                         serverId: sourceOrder.serverId
                     }
@@ -121,24 +132,27 @@ export class OrderTransferService {
                 newOrderCreated = true;
                 
                 // Update target table
-                await tx.table.update({
-                    where: { id: toTableId },
-                    data: { 
+                const tableUpdateResult = await tx.table.updateMany({
+                    where: { id: toTableId, tenantId },
+                    data: {
                         status: 'OCCUPIED',
-                        currentOrderId: newOrder.id 
+                        currentOrderId: newOrder.id
                     }
                 });
+                if (tableUpdateResult.count === 0) {
+                    throw new NotFoundError('Target table');
+                }
             }
             
             // 4. Move items to target order
             await tx.orderItem.updateMany({
-                where: { id: { in: itemIds } },
+                where: { id: { in: itemIds }, tenantId },
                 data: { orderId: targetOrderId }
             });
-            
+
             // 5. Recalculate source order totals
             const remainingSourceItems = await tx.orderItem.findMany({
-                where: { orderId: sourceOrder.id },
+                where: { orderId: sourceOrder.id, tenantId },
                 include: { modifiers: true }
             });
             
@@ -150,6 +164,7 @@ export class OrderTransferService {
                 }
             }
             
+            // SAFE: tx.table.findFirst at L53 verifies tenant ownership of source order
             await tx.order.update({
                 where: { id: sourceOrder.id },
                 data: {
@@ -160,19 +175,20 @@ export class OrderTransferService {
             
             // If source order has no items left, close it
             if (remainingSourceItems.length === 0) {
+                // SAFE: sourceOrder verified via tx.table.findFirst at L53
                 await tx.order.update({
                     where: { id: sourceOrder.id },
                     data: { status: 'CANCELLED' }
                 });
-                await tx.table.update({
-                    where: { id: fromTableId },
+                await tx.table.updateMany({
+                    where: { id: fromTableId, tenantId },
                     data: { status: 'FREE', currentOrderId: null }
                 });
             }
             
             // 6. Recalculate target order totals
             const targetItems = await tx.orderItem.findMany({
-                where: { orderId: targetOrderId },
+                where: { orderId: targetOrderId, tenantId },
                 include: { modifiers: true }
             });
             
@@ -184,6 +200,7 @@ export class OrderTransferService {
                 }
             }
             
+            // SAFE: targetOrderId is either from tx.table.findFirst at L88 or newly created at L117
             await tx.order.update({
                 where: { id: targetOrderId },
                 data: {

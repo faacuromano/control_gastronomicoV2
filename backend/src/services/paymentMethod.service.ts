@@ -13,8 +13,9 @@ export class PaymentMethodService {
   /**
    * Get all payment methods (for admin)
    */
-  async getAll() {
+  async getAll(tenantId: number) {
     return await prisma.paymentMethodConfig.findMany({
+      where: { tenantId },
       orderBy: { sortOrder: 'asc' }
     });
   }
@@ -22,9 +23,9 @@ export class PaymentMethodService {
   /**
    * Get only active payment methods (for POS/checkout)
    */
-  async getActive() {
+  async getActive(tenantId: number) {
     return await prisma.paymentMethodConfig.findMany({
-      where: { isActive: true },
+      where: { isActive: true, tenantId },
       orderBy: { sortOrder: 'asc' }
     });
   }
@@ -32,9 +33,9 @@ export class PaymentMethodService {
   /**
    * Get by ID
    */
-  async getById(id: number) {
-    const method = await prisma.paymentMethodConfig.findUnique({
-      where: { id }
+  async getById(id: number, tenantId: number) {
+    const method = await prisma.paymentMethodConfig.findFirst({
+      where: { id, tenantId }
     });
     if (!method) throw new NotFoundError('Payment Method');
     return method;
@@ -43,10 +44,10 @@ export class PaymentMethodService {
   /**
    * Create new payment method
    */
-  async create(data: PaymentMethodConfigInput) {
+  async create(tenantId: number, data: PaymentMethodConfigInput) {
     // Check unique code
-    const existing = await prisma.paymentMethodConfig.findUnique({
-      where: { code: data.code }
+    const existing = await prisma.paymentMethodConfig.findFirst({
+      where: { code: data.code, tenantId }
     });
     if (existing) {
       throw new ConflictError(`El código "${data.code}" ya existe`);
@@ -54,6 +55,7 @@ export class PaymentMethodService {
 
     return await prisma.paymentMethodConfig.create({
       data: {
+        tenantId,
         code: data.code.toUpperCase(),
         name: data.name,
         icon: data.icon ?? null,
@@ -66,22 +68,23 @@ export class PaymentMethodService {
   /**
    * Update payment method
    */
-  async update(id: number, data: Partial<PaymentMethodConfigInput>) {
-    const method = await prisma.paymentMethodConfig.findUnique({ where: { id } });
+  async update(id: number, tenantId: number, data: Partial<PaymentMethodConfigInput>) {
+    const method = await prisma.paymentMethodConfig.findFirst({ where: { id, tenantId } });
     if (!method) throw new NotFoundError('Payment Method');
 
     // If code is changing, check uniqueness
     if (data.code && data.code !== method.code) {
-      const existing = await prisma.paymentMethodConfig.findUnique({
-        where: { code: data.code }
+      const existing = await prisma.paymentMethodConfig.findFirst({
+        where: { code: data.code, tenantId }
       });
       if (existing) {
         throw new ConflictError(`El código "${data.code}" ya existe`);
       }
     }
 
-    return await prisma.paymentMethodConfig.update({
-      where: { id },
+    // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+    return await prisma.paymentMethodConfig.updateMany({
+      where: { id, tenantId },
       data: {
         ...(data.code && { code: data.code.toUpperCase() }),
         ...(data.name && { name: data.name }),
@@ -95,12 +98,13 @@ export class PaymentMethodService {
   /**
    * Toggle active status
    */
-  async toggleActive(id: number) {
-    const method = await prisma.paymentMethodConfig.findUnique({ where: { id } });
+  async toggleActive(id: number, tenantId: number) {
+    const method = await prisma.paymentMethodConfig.findFirst({ where: { id, tenantId } });
     if (!method) throw new NotFoundError('Payment Method');
 
-    return await prisma.paymentMethodConfig.update({
-      where: { id },
+    // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+    return await prisma.paymentMethodConfig.updateMany({
+      where: { id, tenantId },
       data: { isActive: !method.isActive }
     });
   }
@@ -108,19 +112,20 @@ export class PaymentMethodService {
   /**
    * Delete payment method
    */
-  async delete(id: number) {
-    const method = await prisma.paymentMethodConfig.findUnique({ where: { id } });
+  async delete(id: number, tenantId: number) {
+    const method = await prisma.paymentMethodConfig.findFirst({ where: { id, tenantId } });
     if (!method) throw new NotFoundError('Payment Method');
 
     // Could add check for existing payments using this method
     
-    await prisma.paymentMethodConfig.delete({ where: { id } });
+    // defense-in-depth: deleteMany ensures tenantId is in the WHERE clause
+    await prisma.paymentMethodConfig.deleteMany({ where: { id, tenantId } });
   }
 
   /**
    * Seed default payment methods
    */
-  async seedDefaults() {
+  async seedDefaults(tenantId: number) {
     const defaults = [
       { code: 'CASH', name: 'Efectivo', icon: 'Banknote', sortOrder: 1 },
       { code: 'CARD', name: 'Tarjeta', icon: 'CreditCard', sortOrder: 2 },
@@ -130,9 +135,17 @@ export class PaymentMethodService {
 
     for (const method of defaults) {
       await prisma.paymentMethodConfig.upsert({
-        where: { code: method.code },
+        where: {
+            tenantId_code: {
+                tenantId,
+                code: method.code
+            }
+        },
         update: {},
-        create: method
+        create: {
+            ...method,
+            tenantId
+        }
       });
     }
   }

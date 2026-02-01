@@ -194,6 +194,9 @@ export interface NormalizedOrder {
   
   /** Payload raw original para debugging */
   rawPayload: unknown;
+
+  /** Store ID from the external platform (for tenant resolution) */
+  storeId?: string;
 }
 
 // ============================================================================

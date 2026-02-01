@@ -20,6 +20,7 @@ export interface User {
     name: string;
     role: string;
     permissions: RolePermissions;
+    tenantId: number;
 }
 
 /**
@@ -33,20 +34,26 @@ export interface User {
 interface AuthState {
     user: User | null;
     isAuthenticated: boolean;
-    
+    tenantId: number | null;
+
     /**
      * Authenticate user with email and password.
      * Token is set via Set-Cookie header, not stored in JS.
      * @throws Error if credentials are invalid
      */
     login: (email: string, password: string) => Promise<void>;
-    
+
     /**
      * Authenticate user with 6-digit PIN.
      * Token is set via Set-Cookie header, not stored in JS.
      * @throws Error if PIN is invalid
      */
     loginPin: (pin: string) => Promise<void>;
+
+    /**
+     * Resolve tenant by business code and store the tenantId.
+     */
+    setTenant: (tenantId: number) => void;
     
     /**
      * Clear authentication state and log out user.
@@ -54,6 +61,12 @@ interface AuthState {
      */
     logout: () => Promise<void>;
     
+    /**
+     * Register a new tenant and admin user.
+     * Token is set via Set-Cookie header.
+     */
+    signup: (data: { businessName: string; name: string; email: string; password: string; phone?: string }) => Promise<void>;
+
     /**
      * Check if current user has permission for a specific action on a resource/module.
      * @param resource - The resource or module name (e.g., 'pos', 'orders', 'products')
@@ -74,19 +87,38 @@ export const useAuthStore = create<AuthState>()(
         (set, get) => ({
             user: null,
             isAuthenticated: false,
+            tenantId: null,
+
+            setTenant: (tenantId: number) => {
+                set({ tenantId });
+            },
 
             login: async (email: string, password: string) => {
-                const response = await api.post('/auth/login', { email, password });
-                // FIX P0-004: Token is in Set-Cookie header, not in response body
+                const tenantId = get().tenantId;
+                if (!tenantId) throw new Error('No business selected. Please enter your business code first.');
+                const response = await api.post('/auth/login', { email, password, tenantId });
                 const { user } = response.data.data;
-                set({ user, isAuthenticated: true });
+                set({ user, isAuthenticated: true, tenantId: user.tenantId });
             },
 
             loginPin: async (pin: string) => {
-                const response = await api.post('/auth/login/pin', { pin });
-                // FIX P0-004: Token is in Set-Cookie header, not in response body
+                const tenantId = get().tenantId;
+                if (!tenantId) throw new Error('No business selected. Please enter your business code first.');
+                const response = await api.post('/auth/login/pin', { pin, tenantId });
                 const { user } = response.data.data;
-                set({ user, isAuthenticated: true });
+                set({ user, isAuthenticated: true, tenantId: user.tenantId });
+            },
+
+            signup: async (data) => {
+                const response = await api.post('/auth/signup', data);
+                const { user } = response.data.data;
+                // Ensure user has role/permissions for the store
+                const userWithRole = {
+                    ...user,
+                    role: user.role || 'ADMIN',
+                    permissions: user.permissions || {}
+                };
+                set({ user: userWithRole, isAuthenticated: true });
             },
 
             logout: async () => {
@@ -97,6 +129,7 @@ export const useAuthStore = create<AuthState>()(
                     // Ignore errors on logout - clear local state anyway
                     console.warn('Logout API call failed, clearing local state');
                 }
+                // Preserve tenantId so next PIN login doesn't need business code again
                 set({ user: null, isAuthenticated: false });
             },
             
@@ -118,9 +151,10 @@ export const useAuthStore = create<AuthState>()(
         {
             name: 'auth-storage',
             // FIX P0-004: Only persist user data, not sensitive tokens
-            partialize: (state) => ({ 
-                user: state.user, 
-                isAuthenticated: state.isAuthenticated 
+            partialize: (state) => ({
+                user: state.user,
+                isAuthenticated: state.isAuthenticated,
+                tenantId: state.tenantId
             }),
         }
     )

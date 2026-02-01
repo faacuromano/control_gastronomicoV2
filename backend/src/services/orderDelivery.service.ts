@@ -9,6 +9,7 @@
 import { prisma } from '../lib/prisma';
 import { OrderStatus } from '@prisma/client';
 import { kdsService } from './kds.service';
+import { NotFoundError } from '../utils/errors';
 
 /**
  * Service for delivery-specific order operations.
@@ -20,11 +21,37 @@ export class OrderDeliveryService {
      * Assign a driver to an order.
      * Does not change order status - use OrderStatusService for that.
      */
-    async assignDriver(orderId: number, driverId: number) {
+    async assignDriver(orderId: number, driverId: number, tenantId: number) {
+        // Verify order belongs to tenant
+        const existingOrder = await prisma.order.findFirst({
+            where: {
+                id: orderId,
+                tenantId
+            }
+        });
+
+        if (!existingOrder) {
+            throw new NotFoundError('Order');
+        }
+
+        // Verify driver (User) belongs to tenant
+        const driver = await prisma.user.findFirst({
+            where: {
+                id: driverId,
+                tenantId,
+                isActive: true
+            }
+        });
+
+        if (!driver) {
+            throw new NotFoundError('Driver');
+        }
+
+        // SAFE: findFirst at L25 verifies tenant ownership before update
         const order = await prisma.order.update({
             where: { id: orderId },
             data: { driverId },
-            include: { 
+            include: {
                 driver: true,
                 items: {
                     include: {
@@ -34,10 +61,10 @@ export class OrderDeliveryService {
                 }
             }
         });
-        
+
         // Broadcast update
         kdsService.broadcastOrderUpdate(order);
-        
+
         return order;
     }
 
@@ -45,7 +72,7 @@ export class OrderDeliveryService {
      * Get active delivery orders (including delivered orders from today).
      * Used by delivery dashboard to display pending and recent deliveries.
      */
-    async getDeliveryOrders() {
+    async getDeliveryOrders(tenantId: number) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -59,6 +86,7 @@ export class OrderDeliveryService {
 
         return await prisma.order.findMany({
             where: {
+                tenantId,
                 // FIX: Only show orders with actual delivery fulfillment types
                 // This excludes POS and DINE_IN orders from the delivery dashboard
                 fulfillmentType: { in: ['PLATFORM_DELIVERY', 'SELF_DELIVERY', 'TAKEAWAY'] },
@@ -71,9 +99,14 @@ export class OrderDeliveryService {
                 ]
             },
             include: {
-                items: { include: { product: true, modifiers: { include: { modifierOption: true } } } },
-                client: true,
-                driver: true
+                items: {
+                    include: {
+                        product: { select: { id: true, name: true, price: true } },
+                        modifiers: { include: { modifierOption: { select: { id: true, name: true, priceOverlay: true } } } }
+                    }
+                },
+                client: { select: { id: true, name: true, phone: true } },
+                driver: { select: { id: true, name: true } }
             },
             orderBy: { createdAt: 'asc' }
         });

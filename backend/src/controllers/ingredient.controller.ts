@@ -16,8 +16,10 @@ const ingredientSchema = z.object({
 const updateIngredientSchema = ingredientSchema.partial();
 
 export const getIngredients = asyncHandler(async (req: Request, res: Response) => {
-  const ingredients = await ingredientService.getAll();
-  res.json({ success: true, data: ingredients });
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const limit = Math.max(1, parseInt(req.query.limit as string) || 200);
+  const result = await ingredientService.getAll(req.user!.tenantId!, page, limit);
+  res.json({ success: true, ...result });
 });
 
 export const getIngredientById = asyncHandler(async (req: Request, res: Response) => {
@@ -26,7 +28,7 @@ export const getIngredientById = asyncHandler(async (req: Request, res: Response
     return res.status(400).json({ success: false, error: 'Invalid ID' });
   }
 
-  const ingredient = await ingredientService.getById(id);
+  const ingredient = await ingredientService.getById(id, req.user!.tenantId!);
   if (!ingredient) {
     return res.status(404).json({ success: false, error: 'Ingredient not found' });
   }
@@ -35,7 +37,7 @@ export const getIngredientById = asyncHandler(async (req: Request, res: Response
 
 export const createIngredient = asyncHandler(async (req: Request, res: Response) => {
   const data = ingredientSchema.parse(req.body);
-  const ingredient = await ingredientService.create({
+  const ingredient = await ingredientService.create(req.user!.tenantId!, {
       ...data,
       minStock: data.minStock ?? 0 
   });
@@ -53,7 +55,7 @@ export const updateIngredient = asyncHandler(async (req: Request, res: Response)
       Object.entries(data).filter(([_, v]) => v !== undefined)
   );
 
-  const ingredient = await ingredientService.update(id, cleanData);
+  const ingredient = await ingredientService.update(id, req.user!.tenantId!, cleanData);
   res.json({ success: true, data: ingredient });
 });
 
@@ -63,6 +65,6 @@ export const deleteIngredient = asyncHandler(async (req: Request, res: Response)
     return res.status(400).json({ success: false, error: 'Invalid ID' });
   }
 
-  await ingredientService.delete(id);
+  await ingredientService.delete(id, req.user!.tenantId!);
   res.json({ success: true, message: 'Ingredient deleted' });
 });

@@ -4,7 +4,7 @@
  */
 
 import { Router } from 'express';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requirePermission } from '../middleware/auth';
 import { getTenantConfig, updateTenantConfig } from '../services/featureFlags.service';
 import { sendSuccess, sendError } from '../utils/response';
 import { Request, Response } from 'express';
@@ -18,8 +18,8 @@ const router = Router();
  */
 router.get('/config', authenticateToken, async (req: Request, res: Response) => {
     try {
-        const config = await getTenantConfig();
-        
+        const config = await getTenantConfig(req.user!.tenantId);
+
         // Return only necessary fields for frontend
         sendSuccess(res, {
             businessName: config.businessName,
@@ -41,14 +41,13 @@ router.get('/config', authenticateToken, async (req: Request, res: Response) => 
 /**
  * PATCH /api/v1/config
  * Update tenant configuration
- * Requires admin role (TODO: implement role check)
+ * Requires settings:update permission (admin role bypasses)
  */
-router.patch('/config', authenticateToken, async (req: Request, res: Response) => {
+router.patch('/config', authenticateToken, requirePermission('settings', 'update'), async (req: Request, res: Response) => {
     try {
-        // TODO: Check if user has admin role
         const updates = req.body;
         
-        const config = await updateTenantConfig(updates);
+        const config = await updateTenantConfig(updates, req.user!.tenantId);
         
         sendSuccess(res, {
             businessName: config.businessName,

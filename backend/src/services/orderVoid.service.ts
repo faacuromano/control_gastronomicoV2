@@ -61,7 +61,7 @@ export class OrderVoidService {
      * @param context - Audit context (user, IP)
      * @returns Result with new order total
      */
-    async voidItem(input: VoidItemInput, context: AuditContext): Promise<VoidItemResult> {
+    async voidItem(input: VoidItemInput, tenantId: number, context: AuditContext): Promise<VoidItemResult> {
         // Validate reason
         if (!VOID_REASONS.includes(input.reason)) {
             throw new ValidationError(`Invalid void reason: ${input.reason}`);
@@ -69,8 +69,11 @@ export class OrderVoidService {
         
         const result = await prisma.$transaction(async (tx) => {
             // 1. Get the item with product and order info
-            const item = await tx.orderItem.findUnique({
-                where: { id: input.orderItemId },
+            const item = await tx.orderItem.findFirst({
+                where: {
+                    id: input.orderItemId,
+                    order: { tenantId }
+                },
                 include: {
                     product: {
                         include: {
@@ -83,7 +86,7 @@ export class OrderVoidService {
                     order: true
                 }
             });
-            
+
             if (!item) {
                 throw new NotFoundError('OrderItem');
             }
@@ -108,6 +111,7 @@ export class OrderVoidService {
                     const qtyToRestore = Number(ing.quantity) * item.quantity;
                     await stockService.register(
                         ing.ingredientId,
+                        item.order.tenantId!,
                         StockMoveType.ADJUSTMENT, // Use ADJUSTMENT for reversal
                         qtyToRestore,
                         `Void item #${item.id} - ${input.reason}`,
@@ -124,16 +128,19 @@ export class OrderVoidService {
             
             // 5. Delete modifiers first, then the item
             await tx.orderItemModifier.deleteMany({
-                where: { orderItemId: item.id }
+                where: { orderItemId: item.id, tenantId }
             });
-            
-            await tx.orderItem.delete({
-                where: { id: item.id }
+
+            const deleteResult = await tx.orderItem.deleteMany({
+                where: { id: item.id, tenantId }
             });
-            
+            if (deleteResult.count === 0) {
+                throw new NotFoundError('OrderItem');
+            }
+
             // 6. Recalculate order totals
             const remainingItems = await tx.orderItem.findMany({
-                where: { orderId: item.orderId },
+                where: { orderId: item.orderId, tenantId },
                 include: { modifiers: true }
             });
             
@@ -145,6 +152,7 @@ export class OrderVoidService {
                 }
             }
             
+            // SAFE: tx.orderItem.findFirst at L72 verifies tenant ownership via order relation
             await tx.order.update({
                 where: { id: item.orderId },
                 data: {

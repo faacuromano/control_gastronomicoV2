@@ -1,10 +1,10 @@
 /**
  * @fileoverview Role Management Controller
- * 
+ *
  * @business_rule
  * - GET /roles: Authenticated users can list roles (for dropdowns)
  * - POST/DELETE: ADMIN role only
- * - System roles (id <= 5) cannot be deleted
+ * - System roles (ADMIN, CASHIER, WAITER, KITCHEN) cannot be deleted
  */
 
 import { Request, Response } from 'express';
@@ -21,6 +21,11 @@ const createRoleSchema = z.object({
  * Feature modules - Control Header/navigation visibility
  * These are the main sections of the application
  */
+/**
+ * System role names that cannot be deleted (seeded per tenant).
+ */
+const SYSTEM_ROLE_NAMES = ['ADMIN', 'CASHIER', 'WAITER', 'KITCHEN'] as const;
+
 const VALID_MODULES = [
     'pos',      // Punto de Venta
     'tables',   // Mesas
@@ -70,6 +75,7 @@ const updatePermissionsSchema = z.object({
  */
 export const getRoles = asyncHandler(async (req: Request, res: Response) => {
     const roles = await prisma.role.findMany({
+        where: { tenantId: req.user!.tenantId! },
         select: {
             id: true,
             name: true,
@@ -90,8 +96,8 @@ export const getRoleById = asyncHandler(async (req: Request, res: Response) => {
         throw new ValidationError('Invalid role ID');
     }
 
-    const role = await prisma.role.findUnique({
-        where: { id },
+    const role = await prisma.role.findFirst({
+        where: { id, tenantId: req.user!.tenantId! },
         include: {
             _count: {
                 select: { users: true }
@@ -114,13 +120,20 @@ export const createRole = asyncHandler(async (req: Request, res: Response) => {
     const { name } = createRoleSchema.parse(req.body);
 
     // Check if role with same name exists
-    const existing = await prisma.role.findUnique({ where: { name } });
+    // FIX: Role name is unique per Tenant. Use findFirst.
+    const existing = await prisma.role.findFirst({ 
+        where: { 
+            name, 
+            tenantId: req.user!.tenantId! 
+        } 
+    });
     if (existing) {
         throw new ConflictError('Role name already exists');
     }
 
     const role = await prisma.role.create({
         data: {
+            tenantId: req.user!.tenantId!,
             name,
             permissions: {} // Placeholder for future RBAC implementation
         }
@@ -153,19 +166,26 @@ export const updateRolePermissions = asyncHandler(async (req: Request, res: Resp
     }
 
     // Check role exists
-    const role = await prisma.role.findUnique({ where: { id } });
+    // Check role exists and belongs to tenant
+    const role = await prisma.role.findFirst({ 
+        where: { id, tenantId: req.user!.tenantId! } 
+    });
     if (!role) {
         throw new NotFoundError('Role');
     }
 
-    // Update permissions
-    const updatedRole = await prisma.role.update({
-        where: { id },
+    // Update permissions with tenantId guard
+    await prisma.role.updateMany({
+        where: { id, tenantId: req.user!.tenantId! },
         data: { permissions }
     });
 
-    res.json({ 
-        success: true, 
+    const updatedRole = await prisma.role.findFirst({
+        where: { id, tenantId: req.user!.tenantId! }
+    });
+
+    res.json({
+        success: true,
         data: updatedRole,
         message: 'Permissions updated successfully'
     });
@@ -173,28 +193,42 @@ export const updateRolePermissions = asyncHandler(async (req: Request, res: Resp
 
 /**
  * Delete a role
- * System roles (id <= 5) are protected
+ * System roles (ADMIN, CASHIER, WAITER, KITCHEN) are protected
  */
 export const deleteRole = asyncHandler(async (req: Request, res: Response) => {
     const idString = (req.params.id as string) || '';
     const id = parseInt(idString);
-    
+
     if (isNaN(id)) {
         throw new ValidationError('Invalid role ID');
     }
 
-    // Protect system roles
-    if (id <= 5) {
+    // Check role ownership
+    const role = await prisma.role.findFirst({
+        where: { id, tenantId: req.user!.tenantId! }
+    });
+    if (!role) {
+        throw new NotFoundError('Role');
+    }
+
+    // Protect system roles by name (works for all tenants)
+    if (SYSTEM_ROLE_NAMES.includes(role.name as typeof SYSTEM_ROLE_NAMES[number])) {
         throw new ForbiddenError('Cannot delete system roles');
     }
 
-    // Check if role has users
-    const usersCount = await prisma.user.count({ where: { roleId: id } });
+    // Check if role has users (scoped to tenant)
+    const usersCount = await prisma.user.count({
+        where: {
+            roleId: id,
+            tenantId: req.user!.tenantId!
+        }
+    });
     if (usersCount > 0) {
         throw new ValidationError(`Cannot delete role: ${usersCount} users are assigned to this role`);
     }
 
-    await prisma.role.delete({ where: { id } });
+    // Use deleteMany with tenantId for defense-in-depth (P0-005 fix)
+    await prisma.role.deleteMany({ where: { id, tenantId: req.user!.tenantId! } });
     res.json({ success: true, message: 'Role deleted successfully' });
 });
 

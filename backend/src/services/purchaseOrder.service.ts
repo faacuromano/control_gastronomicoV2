@@ -19,8 +19,9 @@ export class PurchaseOrderService {
   /**
    * Get all purchase orders with supplier info
    */
-  async getAll(status?: PurchaseStatus) {
-    const whereClause = status ? { status } : {};
+  async getAll(tenantId: number, status?: PurchaseStatus) {
+    const whereClause: any = { tenantId };
+    if (status) whereClause.status = status;
     
     return await prisma.purchaseOrder.findMany({
       where: whereClause,
@@ -32,16 +33,17 @@ export class PurchaseOrderService {
           select: { items: true }
         }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
+      take: 200
     });
   }
 
   /**
    * Get purchase order by ID with all details
    */
-  async getById(id: number) {
-    const order = await prisma.purchaseOrder.findUnique({
-      where: { id },
+  async getById(id: number, tenantId: number) {
+    const order = await prisma.purchaseOrder.findFirst({
+      where: { id, tenantId },
       include: {
         supplier: true,
         items: {
@@ -59,23 +61,13 @@ export class PurchaseOrderService {
   }
 
   /**
-   * Generate next order number
-   */
-  private async getNextOrderNumber(): Promise<number> {
-    const lastOrder = await prisma.purchaseOrder.findFirst({
-      orderBy: { orderNumber: 'desc' },
-      select: { orderNumber: true }
-    });
-    return (lastOrder?.orderNumber ?? 0) + 1;
-  }
-
-  /**
    * Create a new purchase order
+   * Uses transaction with retry logic to handle race conditions on order number generation
    */
-  async create(data: CreatePurchaseOrderInput) {
-    // Validate supplier exists
-    const supplier = await prisma.supplier.findUnique({
-      where: { id: data.supplierId }
+  async create(tenantId: number, data: CreatePurchaseOrderInput) {
+    // Validate supplier exists (outside transaction - read-only, safe)
+    const supplier = await prisma.supplier.findFirst({
+      where: { id: data.supplierId, tenantId }
     });
     if (!supplier || !supplier.isActive) {
       throw new NotFoundError('Supplier');
@@ -86,10 +78,10 @@ export class PurchaseOrderService {
       throw new ValidationError('La orden debe tener al menos un item');
     }
 
-    // Validate all ingredients exist
+    // Validate all ingredients exist (outside transaction - read-only, safe)
     const ingredientIds = data.items.map(i => i.ingredientId);
     const ingredients = await prisma.ingredient.findMany({
-      where: { id: { in: ingredientIds } }
+      where: { id: { in: ingredientIds }, tenantId }
     });
     if (ingredients.length !== ingredientIds.length) {
       throw new ValidationError('Uno o más ingredientes no existen');
@@ -101,41 +93,64 @@ export class PurchaseOrderService {
       subtotal += item.quantity * item.unitCost;
     }
 
-    const orderNumber = await this.getNextOrderNumber();
+    // Retry loop for race condition on order number
+    const MAX_RETRIES = 3;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        return await prisma.$transaction(async (tx) => {
+          // Generate order number INSIDE transaction to prevent race conditions
+          const lastOrder = await tx.purchaseOrder.findFirst({
+            where: { tenantId },
+            orderBy: { orderNumber: 'desc' },
+            select: { orderNumber: true }
+          });
+          const orderNumber = (lastOrder?.orderNumber ?? 0) + 1;
 
-    return await prisma.purchaseOrder.create({
-      data: {
-        orderNumber,
-        supplierId: data.supplierId,
-        status: 'PENDING',
-        subtotal,
-        total: subtotal, // No taxes for now
-        notes: data.notes ?? null,
-        items: {
-          create: data.items.map(item => ({
-            ingredientId: item.ingredientId,
-            quantity: item.quantity,
-            unitCost: item.unitCost
-          }))
+          return await tx.purchaseOrder.create({
+            data: {
+              tenantId,
+              orderNumber,
+              supplierId: data.supplierId,
+              status: 'PENDING',
+              subtotal,
+              total: subtotal, // No taxes for now
+              notes: data.notes ?? null,
+              items: {
+                create: data.items.map(item => ({
+                  tenantId,
+                  ingredientId: item.ingredientId,
+                  quantity: item.quantity,
+                  unitCost: item.unitCost
+                }))
+              }
+            },
+            include: {
+              supplier: true,
+              items: {
+                include: {
+                  ingredient: true
+                }
+              }
+            }
+          });
+        });
+      } catch (error: any) {
+        // Retry on unique constraint violation (P2002) for orderNumber
+        if (error.code === 'P2002' && attempt < MAX_RETRIES - 1) {
+          continue;
         }
-      },
-      include: {
-        supplier: true,
-        items: {
-          include: {
-            ingredient: true
-          }
-        }
+        throw error;
       }
-    });
+    }
+    throw new Error('Failed to create purchase order after maximum retries');
   }
 
   /**
    * Update purchase order status
    */
-  async updateStatus(id: number, status: PurchaseStatus) {
-    const order = await prisma.purchaseOrder.findUnique({
-      where: { id }
+  async updateStatus(id: number, tenantId: number, status: PurchaseStatus) {
+    const order = await prisma.purchaseOrder.findFirst({
+      where: { id, tenantId }
     });
 
     if (!order) throw new NotFoundError('Purchase Order');
@@ -148,8 +163,8 @@ export class PurchaseOrderService {
       throw new ConflictError('No se puede modificar una orden cancelada');
     }
 
-    return await prisma.purchaseOrder.update({
-      where: { id },
+    return await prisma.purchaseOrder.updateMany({
+      where: { id, tenantId },
       data: { status }
     });
   }
@@ -157,11 +172,11 @@ export class PurchaseOrderService {
   /**
    * Receive purchase order - updates stock
    */
-  async receivePurchaseOrder(id: number) {
+  async receivePurchaseOrder(id: number, tenantId: number) {
     return await prisma.$transaction(async (tx) => {
       // 1. Get order with items
-      const order = await tx.purchaseOrder.findUnique({
-        where: { id },
+      const order = await tx.purchaseOrder.findFirst({
+        where: { id, tenantId },
         include: { 
           items: {
             include: {
@@ -185,6 +200,7 @@ export class PurchaseOrderService {
       for (const item of order.items) {
         await stockService.register(
           item.ingredientId,
+          tenantId,
           StockMoveType.PURCHASE,
           Number(item.quantity),
           `Orden de Compra #${order.orderNumber}`,
@@ -193,6 +209,7 @@ export class PurchaseOrderService {
       }
 
       // 3. Mark as received
+      // SAFE: tx.findFirst L177 verifies tenant ownership
       return await tx.purchaseOrder.update({
         where: { id },
         data: {
@@ -214,9 +231,9 @@ export class PurchaseOrderService {
   /**
    * Cancel purchase order
    */
-  async cancel(id: number) {
-    const order = await prisma.purchaseOrder.findUnique({
-      where: { id }
+  async cancel(id: number, tenantId: number) {
+    const order = await prisma.purchaseOrder.findFirst({
+      where: { id, tenantId }
     });
 
     if (!order) throw new NotFoundError('Purchase Order');
@@ -225,8 +242,8 @@ export class PurchaseOrderService {
       throw new ConflictError('No se puede cancelar una orden ya recibida');
     }
 
-    return await prisma.purchaseOrder.update({
-      where: { id },
+    return await prisma.purchaseOrder.updateMany({
+      where: { id, tenantId },
       data: { status: 'CANCELLED' }
     });
   }
@@ -234,9 +251,9 @@ export class PurchaseOrderService {
   /**
    * Delete purchase order (only if PENDING)
    */
-  async delete(id: number) {
-    const order = await prisma.purchaseOrder.findUnique({
-      where: { id }
+  async delete(id: number, tenantId: number) {
+    const order = await prisma.purchaseOrder.findFirst({
+      where: { id, tenantId }
     });
 
     if (!order) throw new NotFoundError('Purchase Order');
@@ -245,8 +262,8 @@ export class PurchaseOrderService {
       throw new ConflictError('Solo se pueden eliminar órdenes pendientes');
     }
 
-    await prisma.purchaseOrder.delete({
-      where: { id }
+    await prisma.purchaseOrder.deleteMany({
+      where: { id, tenantId }
     });
   }
 }

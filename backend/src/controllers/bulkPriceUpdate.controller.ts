@@ -28,7 +28,8 @@ const ApplyUpdatesSchema = z.object({
  */
 export const getProductsForGrid = asyncHandler(async (req: Request, res: Response) => {
     const categoryId = req.query.categoryId ? parseInt(String(req.query.categoryId)) : undefined;
-    const products = await bulkPriceUpdateService.getProductsForPriceGrid({ categoryId });
+    const tenantId = req.user!.tenantId!;
+    const products = await bulkPriceUpdateService.getProductsForPriceGrid(tenantId, { categoryId });
     res.json({ success: true, data: products });
 });
 
@@ -37,7 +38,7 @@ export const getProductsForGrid = asyncHandler(async (req: Request, res: Respons
  * Get categories for filter dropdown
  */
 export const getCategories = asyncHandler(async (req: Request, res: Response) => {
-    const categories = await bulkPriceUpdateService.getCategories();
+    const categories = await bulkPriceUpdateService.getCategories(req.user!.tenantId!);
     res.json({ success: true, data: categories });
 });
 
@@ -51,8 +52,9 @@ export const previewChanges = asyncHandler(async (req: Request, res: Response) =
         throw new ValidationError('Invalid input', validation.error.issues);
     }
 
+    const tenantId = req.user!.tenantId!;
     const categoryId = req.query.categoryId ? parseInt(String(req.query.categoryId)) : undefined;
-    const products = await bulkPriceUpdateService.getProductsForPriceGrid({ categoryId });
+    const products = await bulkPriceUpdateService.getProductsForPriceGrid(tenantId, { categoryId });
     const previewed = bulkPriceUpdateService.previewBulkUpdate(products, validation.data);
 
     res.json({ success: true, data: previewed });
@@ -70,6 +72,7 @@ export const applyUpdates = asyncHandler(async (req: Request, res: Response) => 
 
     const ip = String(req.ip || 'unknown');
     const result = await bulkPriceUpdateService.applyBulkUpdate(
+        req.user!.tenantId!,
         validation.data.updates,
         {
             userId: (req as any).user?.id,
@@ -97,6 +100,7 @@ export const updateByCategory = asyncHandler(async (req: Request, res: Response)
 
     const ip = String(req.ip || 'unknown');
     const result = await bulkPriceUpdateService.updateByCategory(
+        req.user!.tenantId!,
         categoryId,
         validation.data,
         {

@@ -4,29 +4,31 @@ import { asyncHandler } from '../middleware/asyncHandler';
 import { analyticsService } from '../services/analytics.service';
 
 /**
- * Parse date range from query params
+ * Parse date range from query params with strict validation (P2-005 fix)
  */
 const dateRangeSchema = z.object({
-  startDate: z.string().optional(),
-  endDate: z.string().optional()
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD format').optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD format').optional()
 });
 
 function parseDateRange(query: any): { startDate: Date; endDate: Date } | undefined {
   const { startDate, endDate } = dateRangeSchema.parse(query);
-  
+
   if (!startDate || !endDate) {
     return undefined;
   }
-  
-  // Parse start date at beginning of day (in local timezone)
-  // Using Date(year, month, day) creates a date in LOCAL time, not UTC
+
   const startParts = startDate.split('-').map(Number);
   const start = new Date(startParts[0]!, startParts[1]! - 1, startParts[2]!, 0, 0, 0, 0);
-  
-  // Parse end date at END of day (23:59:59.999) in local timezone
+
   const endParts = endDate.split('-').map(Number);
   const end = new Date(endParts[0]!, endParts[1]! - 1, endParts[2]!, 23, 59, 59, 999);
-  
+
+  // Validate parsed dates are real dates
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    return undefined;
+  }
+
   return {
     startDate: start,
     endDate: end
@@ -48,7 +50,7 @@ function getTodayRange(): { startDate: Date; endDate: Date } {
  */
 export const getSalesSummary = asyncHandler(async (req: Request, res: Response) => {
   const range = parseDateRange(req.query) || getTodayRange();
-  const summary = await analyticsService.getSalesSummary(range);
+  const summary = await analyticsService.getSalesSummary(req.user!.tenantId!, range);
   res.json({ success: true, data: summary });
 });
 
@@ -58,7 +60,7 @@ export const getSalesSummary = asyncHandler(async (req: Request, res: Response) 
 export const getTopProducts = asyncHandler(async (req: Request, res: Response) => {
   const limit = parseInt(req.query.limit as string) || 10;
   const range = parseDateRange(req.query);
-  const products = await analyticsService.getTopProducts(limit, range);
+  const products = await analyticsService.getTopProducts(req.user!.tenantId!, limit, range);
   res.json({ success: true, data: products });
 });
 
@@ -67,7 +69,7 @@ export const getTopProducts = asyncHandler(async (req: Request, res: Response) =
  */
 export const getPaymentBreakdown = asyncHandler(async (req: Request, res: Response) => {
   const range = parseDateRange(req.query);
-  const breakdown = await analyticsService.getPaymentBreakdown(range);
+  const breakdown = await analyticsService.getPaymentBreakdown(req.user!.tenantId!, range);
   res.json({ success: true, data: breakdown });
 });
 
@@ -76,7 +78,7 @@ export const getPaymentBreakdown = asyncHandler(async (req: Request, res: Respon
  */
 export const getSalesByChannel = asyncHandler(async (req: Request, res: Response) => {
   const range = parseDateRange(req.query);
-  const channels = await analyticsService.getSalesByChannel(range);
+  const channels = await analyticsService.getSalesByChannel(req.user!.tenantId!, range);
   res.json({ success: true, data: channels });
 });
 
@@ -84,7 +86,7 @@ export const getSalesByChannel = asyncHandler(async (req: Request, res: Response
  * Get low stock items
  */
 export const getLowStockItems = asyncHandler(async (req: Request, res: Response) => {
-  const items = await analyticsService.getLowStockItems();
+  const items = await analyticsService.getLowStockItems(req.user!.tenantId!);
   res.json({ success: true, data: items });
 });
 
@@ -96,7 +98,7 @@ export const getDailySales = asyncHandler(async (req: Request, res: Response) =>
   const now = new Date();
   const defaultStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const range = parseDateRange(req.query) || { startDate: defaultStart, endDate: now };
-  
-  const sales = await analyticsService.getDailySales(range);
+
+  const sales = await analyticsService.getDailySales(req.user!.tenantId!, range);
   res.json({ success: true, data: sales });
 });

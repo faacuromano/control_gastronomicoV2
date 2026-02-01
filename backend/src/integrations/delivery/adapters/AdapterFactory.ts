@@ -28,7 +28,7 @@ import { logger } from '../../../utils/logger';
  */
 const ADAPTER_REGISTRY: Record<
   string,
-  new (platform: DeliveryPlatform) => AbstractDeliveryAdapter
+  new (platform: DeliveryPlatform, config?: any) => AbstractDeliveryAdapter
 > = {
   [DeliveryPlatformCode.RAPPI]: RappiAdapter,
   [DeliveryPlatformCode.PEDIDOSYA]: PedidosYaAdapter,
@@ -166,7 +166,35 @@ class AdapterFactoryClass {
   // MÉTODOS PRIVADOS
   // ============================================================================
 
-  private createAdapter(platform: DeliveryPlatform): AbstractDeliveryAdapter {
+  /**
+   * Obtiene un adapter configurado específicamente para un tenant.
+   * Esto permite usar credenciales específicas del tenant (storeId, apiKey, etc.)
+   * en lugar de las globales de la plataforma.
+   */
+  async getAdapterForTenant(
+    platformId: number, 
+    configOverrides: Partial<any>
+  ): Promise<AbstractDeliveryAdapter> {
+    const platform = await prisma.deliveryPlatform.findUnique({
+      where: { id: platformId },
+    });
+
+    if (!platform) {
+      throw new NotFoundError(`Plataforma de delivery con id=${platformId}`);
+    }
+
+    // No usamos cache global aquí porque la configuración es específica del tenant
+    return this.createAdapter(platform, configOverrides);
+  }
+
+  // ============================================================================
+  // MÉTODOS PRIVADOS
+  // ============================================================================
+
+  private createAdapter(
+    platform: DeliveryPlatform, 
+    configOverrides: Partial<any> = {}
+  ): AbstractDeliveryAdapter {
     const AdapterClass = ADAPTER_REGISTRY[platform.code.toUpperCase()];
 
     if (!AdapterClass) {
@@ -176,15 +204,20 @@ class AdapterFactoryClass {
       );
     }
 
-    const adapter = new AdapterClass(platform);
+    // Fusionar configuración base con overrides del tenant
+    // Los overrides tienen prioridad (ej: storeId del tenant sobre storeId de plataforma)
+    const adapter = new AdapterClass(platform, configOverrides);
     
-    // Guardar en cache
-    adapterCache.set(platform.id, adapter);
+    // Solo guardar en cache si NO hay overrides (instancia global)
+    if (Object.keys(configOverrides).length === 0) {
+      adapterCache.set(platform.id, adapter);
+    }
     
-    logger.debug('Adapter created and cached', {
+    logger.debug('Adapter created', {
       platformId: platform.id,
       platformCode: platform.code,
       adapterName: adapter.getName(),
+      hasOverrides: Object.keys(configOverrides).length > 0
     });
 
     return adapter;

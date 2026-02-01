@@ -28,7 +28,7 @@ export const openShift = asyncHandler(async (req: Request, res: Response) => {
     const userId = req.user?.id;
     if (!userId) throw new UnauthorizedError();
     
-    const result = await cashShiftService.openShift(userId, startAmount);
+    const result = await cashShiftService.openShift(req.user!.tenantId!, userId, startAmount);
     
     // Audit: Log shift opening
     await auditService.logCashShift('SHIFT_OPENED', result.id, getAuditContext(req), {
@@ -44,7 +44,7 @@ export const closeShiftWithCount = asyncHandler(async (req: Request, res: Respon
     const userId = req.user?.id;
     if (!userId) throw new UnauthorizedError();
     
-    const report = await cashShiftService.closeShiftWithCount(userId, countedCash);
+    const report = await cashShiftService.closeShiftWithCount(req.user!.tenantId!, userId, countedCash);
     
     // Audit: Log shift closing with cash count
     await auditService.logCashShift('SHIFT_CLOSED', report.shift.id, getAuditContext(req), {
@@ -62,7 +62,7 @@ export const getShiftReport = asyncHandler(async (req: Request, res: Response) =
     if (!shiftId || isNaN(shiftId)) {
         throw new ValidationError('Invalid shift ID');
     }
-    const report = await cashShiftService.getShiftReport(shiftId);
+    const report = await cashShiftService.getShiftReport(shiftId, req.user!.tenantId!);
     return sendSuccess(res, report);
 });
 
@@ -70,7 +70,7 @@ export const getCurrentShift = asyncHandler(async (req: Request, res: Response) 
     const userId = req.user?.id;
     if (!userId) throw new UnauthorizedError();
     
-    const result = await cashShiftService.getCurrentShift(userId);
+    const result = await cashShiftService.getCurrentShift(req.user!.tenantId!, userId);
     return sendSuccess(res, result);
 });
 
@@ -80,7 +80,7 @@ export const closeShift = asyncHandler(async (req: Request, res: Response) => {
     const userId = req.user?.id;
     if (!userId) throw new UnauthorizedError();
     
-    const result = await cashShiftService.closeShift(userId, endAmount);
+    const result = await cashShiftService.closeShift(req.user!.tenantId!, userId, endAmount);
     
     // Audit: Log shift closing
     await auditService.logCashShift('SHIFT_CLOSED', result.id, getAuditContext(req), {
@@ -112,6 +112,6 @@ export const getAllShifts = asyncHandler(async (req: Request, res: Response) => 
     if (fromDate) filters.fromDate = fromDate;
     if (userId) filters.userId = userId;
     
-    const shifts = await cashShiftService.getAll(filters);
+    const shifts = await cashShiftService.getAll(req.user!.tenantId!, filters);
     return sendSuccess(res, shifts);
 });

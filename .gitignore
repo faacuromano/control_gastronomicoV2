@@ -1,0 +1,22 @@
+# Environment variables (contain secrets)
+.env
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Archives
+*.zip
+
+# Logs
+*.log
+
+# Generated documentation (from audits)
+*_REPORT.md
+*_AUDIT*.md
+SESSION_FIXES_*.md

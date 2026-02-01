@@ -14,8 +14,8 @@ import { logger } from '../utils/logger';
 /**
  * Get print routing configuration (for admin UI).
  */
-export const getConfiguration = asyncHandler(async (_req: Request, res: Response) => {
-    const config = await printRoutingService.getRoutingConfiguration();
+export const getConfiguration = asyncHandler(async (req: Request, res: Response) => {
+    const config = await printRoutingService.getRoutingConfiguration(req.user!.tenantId!);
     res.json({ success: true, data: config });
 });
 
@@ -28,7 +28,7 @@ export const getOrderRouting = asyncHandler(async (req: Request, res: Response) 
         return res.status(400).json({ success: false, error: 'Invalid order ID' });
     }
 
-    const routing = await printRoutingService.getRoutingForOrder(orderId);
+    const routing = await printRoutingService.getRoutingForOrder(orderId, req.user!.tenantId!);
     res.json({ success: true, data: routing });
 });
 
@@ -50,7 +50,7 @@ export const setCategoryPrinter = asyncHandler(async (req: Request, res: Respons
 
     const { printerId } = setCategoryPrinterSchema.parse(req.body);
     
-    const category = await printRoutingService.setCategoryPrinter(categoryId, printerId);
+    const category = await printRoutingService.setCategoryPrinter(req.user!.tenantId!, categoryId, printerId);
     
     logger.info('Category printer updated', { categoryId, printerId });
     res.json({ success: true, data: category });
@@ -75,7 +75,7 @@ export const setAreaOverride = asyncHandler(async (req: Request, res: Response) 
 
     const { categoryId, printerId } = setAreaOverrideSchema.parse(req.body);
     
-    const override = await printRoutingService.setAreaOverride(areaId, categoryId, printerId);
+    const override = await printRoutingService.setAreaOverride(req.user!.tenantId!, areaId, categoryId, printerId);
     
     logger.info('Area printer override set', { areaId, categoryId, printerId });
     res.json({ success: true, data: override });
@@ -99,7 +99,7 @@ export const removeAreaOverride = asyncHandler(async (req: Request, res: Respons
 
     const { categoryId } = removeAreaOverrideSchema.parse(req.body);
     
-    await printRoutingService.removeAreaOverride(areaId, categoryId);
+    await printRoutingService.removeAreaOverride(req.user!.tenantId!, areaId, categoryId);
     
     logger.info('Area printer override removed', { areaId, categoryId });
     res.json({ success: true, message: 'Override removed' });

@@ -35,8 +35,10 @@ export class QrService {
      * Get QR menu configuration for public display
      * Includes check for global enableDigital flag
      */
-    async getConfig(): Promise<QrMenuConfig> {
-        const config = await prisma.tenantConfig.findFirst();
+    async getConfig(tenantId: number): Promise<QrMenuConfig> {
+        const config = await prisma.tenantConfig.findFirst({
+            where: { tenantId }
+        });
         
         if (!config) {
             throw new NotFoundError('Configuration not found');
@@ -59,7 +61,7 @@ export class QrService {
     /**
      * Update QR menu configuration
      */
-    async updateConfig(updates: Partial<{
+    async updateConfig(tenantId: number, updates: Partial<{
         qrMenuEnabled: boolean;
         qrMenuMode: 'INTERACTIVE' | 'STATIC';
         qrSelfOrderEnabled: boolean;
@@ -67,8 +69,12 @@ export class QrService {
         qrMenuBannerUrl: string | null;
         qrMenuTheme: any;
     }>): Promise<QrMenuConfig> {
+        const existingconfig = await prisma.tenantConfig.findFirst({ where: { tenantId } });
+        if (!existingconfig) throw new NotFoundError('Config not found');
+
+        // SAFE: findFirst at L72 verifies tenant ownership before update
         const config = await prisma.tenantConfig.update({
-            where: { id: 1 },
+            where: { id: existingconfig.id },
             data: updates
         });
 
@@ -87,12 +93,19 @@ export class QrService {
      * Generate a new QR code
      * @param tableId - Optional table ID (null for generic QR)
      */
-    async generateQrCode(tableId?: number): Promise<QrCodeData> {
+    async generateQrCode(tenantId: number, tableId?: number): Promise<QrCodeData> {
+        // Validate table ownership if provided
+        if (tableId) {
+            const table = await prisma.table.findFirst({ where: { id: tableId, tenantId } });
+            if (!table) throw new NotFoundError('Table not found or access denied');
+        }
+
         // Generate unique short code
         const code = nanoid(8);
 
         const qrCode = await prisma.qrCode.create({
             data: {
+                tenantId,
                 code,
                 tableId: tableId || null
             },
@@ -116,8 +129,9 @@ export class QrService {
     /**
      * Get all QR codes
      */
-    async getAllQrCodes(): Promise<QrCodeData[]> {
+    async getAllQrCodes(tenantId: number): Promise<QrCodeData[]> {
         const qrCodes = await prisma.qrCode.findMany({
+            where: { tenantId },
             include: {
                 table: { select: { name: true } }
             },
@@ -146,13 +160,9 @@ export class QrService {
         tableId: number | null;
         tableName: string | null;
         config: QrMenuConfig;
+        tenantId: number;
     }> {
-        // First check if the global module is enabled
-        const tenantConfig = await prisma.tenantConfig.findFirst();
-        if (!tenantConfig?.enableDigital) {
-            throw new NotFoundError('Digital menu module is disabled');
-        }
-
+        // Fetch QR Code first to identify tenant
         const qrCode = await prisma.qrCode.findUnique({
             where: { code },
             include: {
@@ -164,43 +174,57 @@ export class QrService {
             throw new NotFoundError('QR code not found or inactive');
         }
 
+        const qrTenantId = (qrCode as any).tenantId; // Cast as any if types not updated yet
+        if (!qrTenantId) throw new Error('QR Code has no tenant associated');
+
+        // Check if the global module is enabled FOR THIS TENANT
+        const tenantConfig = await prisma.tenantConfig.findFirst({ where: { tenantId: qrTenantId } });
+        if (!tenantConfig?.enableDigital) {
+            throw new NotFoundError('Digital menu module is disabled');
+        }
+
         // Increment scan count
-        await prisma.qrCode.update({
-            where: { id: qrCode.id },
+        await prisma.qrCode.updateMany({
+            where: { id: qrCode.id, tenantId: qrTenantId },
             data: {
                 scansCount: { increment: 1 },
                 lastScannedAt: new Date()
             }
         });
 
-        const config = await this.getConfig();
+        const config = await this.getConfig(qrTenantId);
 
         return {
             valid: true,
             tableId: qrCode.tableId,
             tableName: qrCode.table?.name || null,
-            config
+            config,
+            tenantId: qrTenantId
         };
     }
 
     /**
      * Delete a QR code
      */
-    async deleteQrCode(id: number): Promise<void> {
-        await prisma.qrCode.delete({
-            where: { id }
+    async deleteQrCode(id: number, tenantId: number): Promise<void> {
+        const exists = await prisma.qrCode.findFirst({ where: { id, tenantId } });
+        if (!exists) throw new NotFoundError('QR code not found');
+
+        await prisma.qrCode.deleteMany({
+            where: { id, tenantId }
         });
     }
 
     /**
      * Toggle QR code active status
      */
-    async toggleQrCode(id: number): Promise<QrCodeData> {
-        const current = await prisma.qrCode.findUnique({ where: { id } });
+    async toggleQrCode(id: number, tenantId: number): Promise<QrCodeData> {
+        const current = await prisma.qrCode.findFirst({ where: { id, tenantId } });
         if (!current) {
             throw new NotFoundError('QR code not found');
         }
 
+        // SAFE: findFirst L221 verifies tenant ownership
         const updated = await prisma.qrCode.update({
             where: { id },
             data: { isActive: !current.isActive },
@@ -223,13 +247,14 @@ export class QrService {
      * Get public menu data (products, categories)
      * Used for INTERACTIVE mode
      */
-    async getPublicMenu() {
+    async getPublicMenu(tenantId: number) {
         const [categories, products] = await Promise.all([
             prisma.category.findMany({
+                where: { tenantId },
                 orderBy: { name: 'asc' }
             }),
             prisma.product.findMany({
-                where: { isActive: true },
+                where: { isActive: true, tenantId },
                 include: {
                     category: { select: { id: true, name: true } }
                 },

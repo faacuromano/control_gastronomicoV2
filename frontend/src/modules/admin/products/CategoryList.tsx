@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { categoryService, type Category } from '../../../services/categoryService';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Loader2 } from 'lucide-react';
 
 export default function CategoryList() {
     const [categories, setCategories] = useState<Category[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [newCategoryName, setNewCategoryName] = useState('');
+    const [creating, setCreating] = useState(false);
 
     useEffect(() => {
         loadCategories();
@@ -25,14 +26,25 @@ export default function CategoryList() {
 
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!newCategoryName.trim()) return;
+        setError('');
 
+        if (!newCategoryName.trim()) {
+            setError('El nombre de la categoría es requerido');
+            return;
+        }
+
+        setCreating(true);
         try {
-            await categoryService.create({ name: newCategoryName });
+            await categoryService.create({ name: newCategoryName.trim() });
             setNewCategoryName('');
-            loadCategories();
-        } catch (err) {
-            setError('Failed to create category');
+            await loadCategories();
+        } catch (err: unknown) {
+            const message = (err && typeof err === 'object' && 'userMessage' in err)
+                ? (err as { userMessage: string }).userMessage
+                : 'Failed to create category';
+            setError(message);
+        } finally {
+            setCreating(false);
         }
     };
 
@@ -95,21 +107,31 @@ export default function CategoryList() {
             <form onSubmit={handleCreate} className="flex gap-4 p-4 bg-card rounded-lg border border-border">
                 <input
                     type="text"
-                    placeholder="New Category Name"
+                    placeholder="Nombre de la nueva categoría"
                     value={newCategoryName}
                     onChange={(e) => setNewCategoryName(e.target.value)}
-                    className="flex-1 px-3 py-2 bg-background border border-input rounded-md ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    disabled={creating}
+                    className="flex-1 px-3 py-2 bg-background border border-input rounded-md ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                 />
-                <button 
+                <button
                     type="submit"
-                    className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 flex items-center gap-2"
+                    disabled={creating}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    <Plus className="w-4 h-4" />
-                    Add
+                    {creating ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                        <Plus className="w-4 h-4" />
+                    )}
+                    {creating ? 'Creando...' : 'Add'}
                 </button>
             </form>
 
-            {error && <div className="text-destructive">{error}</div>}
+            {error && (
+                <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-md text-destructive text-sm">
+                    {error}
+                </div>
+            )}
 
             <div className="rounded-md border border-border bg-card">
                 <table className="w-full text-sm">

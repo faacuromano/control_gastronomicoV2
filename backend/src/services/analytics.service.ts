@@ -58,14 +58,18 @@ interface LowStockItem {
 export class AnalyticsService {
   /**
    * Get sales summary for a date range using database aggregation.
-   * 
+   *
    * PERFORMANCE: Uses Prisma aggregate instead of loading all orders.
    * O(1) database query instead of O(n) memory processing.
+   *
+   * @param tenantId - Tenant ID for multi-tenant isolation
+   * @param range - Date range for the query
    */
-  async getSalesSummary(range: DateRange): Promise<SalesSummary> {
+  async getSalesSummary(tenantId: number, range: DateRange): Promise<SalesSummary> {
     // Use database-level aggregation instead of loading all records
     const currentPeriod = await prisma.order.aggregate({
       where: {
+        tenantId, // Multi-tenant isolation
         createdAt: {
           gte: range.startDate,
           lte: range.endDate
@@ -87,6 +91,7 @@ export class AnalyticsService {
 
     const previousPeriod = await prisma.order.aggregate({
       where: {
+        tenantId, // Multi-tenant isolation
         createdAt: {
           gte: previousStart,
           lte: previousEnd
@@ -112,12 +117,17 @@ export class AnalyticsService {
 
   /**
    * Get top selling products using database aggregation.
-   * 
+   *
    * PERFORMANCE: Uses Prisma groupBy instead of loading all order items.
    * O(n products) instead of O(n order items).
+   *
+   * @param tenantId - Tenant ID for multi-tenant isolation
+   * @param limit - Maximum number of products to return
+   * @param range - Optional date range for the query
    */
-  async getTopProducts(limit: number = 10, range?: DateRange): Promise<TopProduct[]> {
+  async getTopProducts(tenantId: number, limit: number = 10, range?: DateRange): Promise<TopProduct[]> {
     const orderWhere: Prisma.OrderWhereInput = {
+      tenantId, // Multi-tenant isolation
       paymentStatus: 'PAID',
       ...(range && {
         createdAt: {
@@ -145,7 +155,10 @@ export class AnalyticsService {
     // Now fetch product names (only for top N products)
     const productIds = grouped.map(g => g.productId);
     const products = await prisma.product.findMany({
-      where: { id: { in: productIds } },
+      where: {
+        id: { in: productIds },
+        tenantId // Multi-tenant isolation
+      },
       select: { id: true, name: true, price: true }
     });
     const productMap = new Map(products.map(p => [p.id, p]));
@@ -179,9 +192,13 @@ export class AnalyticsService {
 
   /**
    * Get payment method breakdown using database groupBy.
+   *
+   * @param tenantId - Tenant ID for multi-tenant isolation
+   * @param range - Optional date range for the query
    */
-  async getPaymentBreakdown(range?: DateRange): Promise<PaymentBreakdown[]> {
+  async getPaymentBreakdown(tenantId: number, range?: DateRange): Promise<PaymentBreakdown[]> {
     const whereClause: Prisma.PaymentWhereInput = {
+      tenantId, // Multi-tenant isolation
       order: {
         paymentStatus: 'PAID',
         ...(range && {
@@ -214,9 +231,13 @@ export class AnalyticsService {
 
   /**
    * Get sales by channel using database groupBy.
+   *
+   * @param tenantId - Tenant ID for multi-tenant isolation
+   * @param range - Optional date range for the query
    */
-  async getSalesByChannel(range?: DateRange): Promise<ChannelSales[]> {
+  async getSalesByChannel(tenantId: number, range?: DateRange): Promise<ChannelSales[]> {
     const whereClause: Prisma.OrderWhereInput = {
+      tenantId, // Multi-tenant isolation
       paymentStatus: 'PAID',
       ...(range && {
         createdAt: {
@@ -247,10 +268,12 @@ export class AnalyticsService {
 
   /**
    * Get ingredients with stock below minimum using raw SQL for efficiency.
-   * 
+   *
    * PERFORMANCE: Uses database-level WHERE filter instead of loading all ingredients.
+   *
+   * @param tenantId - Tenant ID for multi-tenant isolation
    */
-  async getLowStockItems(): Promise<LowStockItem[]> {
+  async getLowStockItems(tenantId: number): Promise<LowStockItem[]> {
     // Use raw query to filter at database level
     const lowStock = await prisma.$queryRaw<{
       id: number;
@@ -259,11 +282,11 @@ export class AnalyticsService {
       stock: number;
       minStock: number;
     }[]>`
-      SELECT id, name, unit, 
-             CAST(stock AS DECIMAL(10,4)) as stock, 
+      SELECT id, name, unit,
+             CAST(stock AS DECIMAL(10,4)) as stock,
              CAST(minStock AS DECIMAL(10,4)) as minStock
-      FROM Ingredient 
-      WHERE stock < minStock
+      FROM Ingredient
+      WHERE tenantId = ${tenantId} AND stock < minStock
       ORDER BY (minStock - stock) DESC
     `;
 
@@ -279,14 +302,18 @@ export class AnalyticsService {
 
   /**
    * Get daily sales for charts using database groupBy with businessDate.
-   * 
+   *
    * PERFORMANCE: Uses groupBy on businessDate for efficient aggregation.
+   *
+   * @param tenantId - Tenant ID for multi-tenant isolation
+   * @param range - Date range for the query
    */
-  async getDailySales(range: DateRange): Promise<{ date: string; total: number; count: number }[]> {
+  async getDailySales(tenantId: number, range: DateRange): Promise<{ date: string; total: number; count: number }[]> {
     // Group by businessDate which is already a DATE type
     const dailySales = await prisma.order.groupBy({
       by: ['businessDate'],
       where: {
+        tenantId, // Multi-tenant isolation
         businessDate: {
           gte: range.startDate,
           lte: range.endDate

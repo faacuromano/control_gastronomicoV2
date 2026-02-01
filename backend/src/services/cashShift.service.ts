@@ -43,13 +43,7 @@ export class CashShiftService {
      * Open a new cash shift for a user.
      * FIX RC-004: Atomic transaction prevents double shift opening under concurrent requests.
      */
-    async openShift(userId: number, startAmount: number) {
-        // Verify user exists outside transaction (read-only, no race impact)
-        const user = await prisma.user.findUnique({ where: { id: userId } });
-        if (!user) {
-            throw new NotFoundError('User not found. Please log in again.');
-        }
-
+    async openShift(tenantId: number, userId: number, startAmount: number) {
         const businessDate = this.getBusinessDate(new Date());
 
         // FIX RC-004: Wrap check + create in atomic transaction
@@ -58,6 +52,7 @@ export class CashShiftService {
             const existingShift = await tx.cashShift.findFirst({
                 where: {
                     userId,
+                    tenantId,
                     endTime: null
                 }
             });
@@ -68,6 +63,7 @@ export class CashShiftService {
 
             return await tx.cashShift.create({
                 data: {
+                    tenantId,
                     userId,
                     startAmount,
                     businessDate,
@@ -84,12 +80,13 @@ export class CashShiftService {
      * Close the current shift for a user.
      * FIX RC-005: Atomic transaction prevents double closing under concurrent requests.
      */
-    async closeShift(userId: number, endAmount: number) {
+    async closeShift(tenantId: number, userId: number, endAmount: number) {
         // FIX RC-005: Entire operation in atomic transaction
         return await prisma.$transaction(async (tx) => {
             const currentShift = await tx.cashShift.findFirst({
                 where: {
                     userId,
+                    tenantId,
                     endTime: null
                 }
             });
@@ -98,15 +95,19 @@ export class CashShiftService {
                 throw new NotFoundError('No open shift found for this user');
             }
 
-            // Check for open tables inside transaction
+            // Check for open tables inside transaction (scoped to tenant)
             const openTables = await tx.table.count({
-                where: { status: 'OCCUPIED' }
+                where: {
+                    status: 'OCCUPIED',
+                    tenantId: currentShift.tenantId
+                }
             });
 
             if (openTables > 0) {
                 throw new ConflictError(`Cannot close shift. There are ${openTables} occupied tables. Please close them first.`);
             }
 
+            // SAFE: tx.cashShift.findFirst L86 verifies tenant ownership
             return await tx.cashShift.update({
                 where: { id: currentShift.id },
                 data: {
@@ -121,19 +122,16 @@ export class CashShiftService {
     }
 
     /**
-     * Close shift with blind count (arqueo ciego)
-     * The cashier counts cash without seeing expected amount first
-     */
-    /**
      * Close shift with blind count (arqueo ciego).
      * FIX RC-005: Atomic transaction prevents double closing under concurrent requests.
      */
-    async closeShiftWithCount(userId: number, countedCash: number) {
+    async closeShiftWithCount(tenantId: number, userId: number, countedCash: number) {
         // FIX RC-005: Wrap in transaction for atomicity
         const closedShiftId = await prisma.$transaction(async (tx) => {
             const currentShift = await tx.cashShift.findFirst({
                 where: {
                     userId,
+                    tenantId,
                     endTime: null
                 }
             });
@@ -142,16 +140,16 @@ export class CashShiftService {
                 throw new NotFoundError('No open shift found for this user');
             }
 
-            // Check for open tables inside transaction
+            // Check for open tables inside transaction (scoped to tenant)
             const openTables = await tx.table.count({
-                where: { status: 'OCCUPIED' }
+                where: { status: 'OCCUPIED', tenantId: currentShift.tenantId }
             });
 
             if (openTables > 0) {
                 throw new ConflictError(`Cannot close shift. There are ${openTables} occupied tables. Please close them first.`);
             }
 
-            // Close the shift
+            // SAFE: tx.cashShift.findFirst L134 verifies tenant ownership
             const closedShift = await tx.cashShift.update({
                 where: { id: currentShift.id },
                 data: {
@@ -167,16 +165,16 @@ export class CashShiftService {
         });
 
         // Return report (outside transaction - read-only)
-        return await this.getShiftReport(closedShiftId);
+        return await this.getShiftReport(closedShiftId, tenantId);
     }
 
     /**
      * Calculate expected cash for a shift
      * startAmount + cash payments received
      */
-    async calculateExpectedCash(shiftId: number): Promise<number> {
-        const shift = await prisma.cashShift.findUnique({
-            where: { id: shiftId }
+    async calculateExpectedCash(shiftId: number, tenantId: number): Promise<number> {
+        const shift = await prisma.cashShift.findFirst({
+            where: { id: shiftId, tenantId }
         });
 
         if (!shift) {
@@ -187,6 +185,7 @@ export class CashShiftService {
         const cashPayments = await prisma.payment.aggregate({
             where: {
                 shiftId: shiftId,
+                tenantId,
                 method: 'CASH'
             },
             _sum: {
@@ -203,9 +202,9 @@ export class CashShiftService {
     /**
      * Get detailed report for a shift
      */
-    async getShiftReport(shiftId: number): Promise<ShiftReport> {
-        const shift = await prisma.cashShift.findUnique({
-            where: { id: shiftId },
+    async getShiftReport(shiftId: number, tenantId: number): Promise<ShiftReport> {
+        const shift = await prisma.cashShift.findFirst({
+            where: { id: shiftId, tenantId },
             include: {
                 user: { select: { name: true } },
                 payments: true
@@ -219,7 +218,7 @@ export class CashShiftService {
         // Get payments grouped by method
         const paymentsByMethod = await prisma.payment.groupBy({
             by: ['method'],
-            where: { shiftId: shiftId },
+            where: { shiftId: shiftId, tenantId: shift.tenantId },
             _sum: { amount: true },
             _count: true
         });
@@ -264,10 +263,11 @@ export class CashShiftService {
         };
     }
 
-    async getCurrentShift(userId: number) {
+    async getCurrentShift(tenantId: number, userId: number) {
         return await prisma.cashShift.findFirst({
             where: {
                 userId,
+                tenantId,
                 endTime: null
             },
             include: {
@@ -277,8 +277,21 @@ export class CashShiftService {
     }
 
     async getShiftHistory(userId: number, limit = 10) {
+        // Get user to obtain tenantId for multi-tenant isolation
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { tenantId: true }
+        });
+
+        if (!user) {
+            throw new NotFoundError('User not found');
+        }
+
         return await prisma.cashShift.findMany({
-            where: { userId },
+            where: {
+                userId,
+                tenantId: user.tenantId
+            },
             orderBy: { startTime: 'desc' },
             take: limit
         });
@@ -288,8 +301,8 @@ export class CashShiftService {
      * Get all shifts with optional filters
      * Used by Dashboard analytics
      */
-    async getAll(filters?: { fromDate?: string; userId?: number }) {
-        const where: Prisma.CashShiftWhereInput = {};
+    async getAll(tenantId: number, filters?: { fromDate?: string; userId?: number }) {
+        const where: Prisma.CashShiftWhereInput = { tenantId };
 
         if (filters?.fromDate) {
             where.businessDate = {

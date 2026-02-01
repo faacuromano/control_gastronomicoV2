@@ -17,7 +17,7 @@ const updateSchema = createSchema.partial();
  * Get all payment methods (admin)
  */
 export const getAll = asyncHandler(async (req: Request, res: Response) => {
-  const methods = await paymentMethodService.getAll();
+  const methods = await paymentMethodService.getAll(req.user!.tenantId!);
   res.json({ success: true, data: methods });
 });
 
@@ -25,7 +25,7 @@ export const getAll = asyncHandler(async (req: Request, res: Response) => {
  * Get active payment methods (for POS)
  */
 export const getActive = asyncHandler(async (req: Request, res: Response) => {
-  const methods = await paymentMethodService.getActive();
+  const methods = await paymentMethodService.getActive(req.user!.tenantId!);
   res.json({ success: true, data: methods });
 });
 
@@ -34,7 +34,7 @@ export const getActive = asyncHandler(async (req: Request, res: Response) => {
  */
 export const getById = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
-  const method = await paymentMethodService.getById(id);
+  const method = await paymentMethodService.getById(id, req.user!.tenantId!);
   res.json({ success: true, data: method });
 });
 
@@ -43,7 +43,7 @@ export const getById = asyncHandler(async (req: Request, res: Response) => {
  */
 export const create = asyncHandler(async (req: Request, res: Response) => {
   const data = createSchema.parse(req.body);
-  const method = await paymentMethodService.create(data as any);
+  const method = await paymentMethodService.create(req.user!.tenantId!, data as any);
   res.status(201).json({ success: true, data: method });
 });
 
@@ -53,7 +53,7 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
 export const update = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   const data = updateSchema.parse(req.body);
-  const method = await paymentMethodService.update(id, data as any);
+  const method = await paymentMethodService.update(id, req.user!.tenantId!, data as any);
   res.json({ success: true, data: method });
 });
 
@@ -62,7 +62,7 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
  */
 export const toggleActive = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
-  const method = await paymentMethodService.toggleActive(id);
+  const method = await paymentMethodService.toggleActive(id, req.user!.tenantId!);
   res.json({ success: true, data: method });
 });
 
@@ -71,7 +71,7 @@ export const toggleActive = asyncHandler(async (req: Request, res: Response) => 
  */
 export const remove = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
-  await paymentMethodService.delete(id);
+  await paymentMethodService.delete(id, req.user!.tenantId!);
   res.json({ success: true, message: 'Payment method deleted' });
 });
 
@@ -79,6 +79,6 @@ export const remove = asyncHandler(async (req: Request, res: Response) => {
  * Seed default payment methods
  */
 export const seedDefaults = asyncHandler(async (req: Request, res: Response) => {
-  await paymentMethodService.seedDefaults();
+  await paymentMethodService.seedDefaults(req.user!.tenantId!);
   res.json({ success: true, message: 'Default payment methods seeded' });
 });

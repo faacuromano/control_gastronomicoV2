@@ -42,8 +42,8 @@ export class BulkPriceUpdateService {
     /**
      * Get all products with current prices for the bulk update grid
      */
-    async getProductsForPriceGrid(filters?: { categoryId?: number | undefined }): Promise<ProductPriceChange[]> {
-        const where: any = { isActive: true };
+    async getProductsForPriceGrid(tenantId: number, filters?: { categoryId?: number | undefined }): Promise<ProductPriceChange[]> {
+        const where: any = { isActive: true, tenantId };
         if (filters?.categoryId) {
             where.categoryId = filters.categoryId;
         }
@@ -104,6 +104,7 @@ export class BulkPriceUpdateService {
      * Apply bulk price update to specific products by ID
      */
     async applyBulkUpdate(
+        tenantId: number,
         updates: { id: number; newPrice: number }[],
         context: AuditContext
     ): Promise<BulkUpdateResult> {
@@ -117,8 +118,8 @@ export class BulkPriceUpdateService {
             let totalNew = 0;
 
             for (const update of updates) {
-                const product = await tx.product.findUnique({
-                    where: { id: update.id },
+                const product = await tx.product.findFirst({
+                    where: { id: update.id, tenantId },
                     include: { category: true }
                 });
 
@@ -127,6 +128,7 @@ export class BulkPriceUpdateService {
                 const currentPrice = Number(product.price);
                 const newPrice = Math.max(0, update.newPrice);
 
+                // SAFE: tx.product.findFirst L121 verifies tenant ownership
                 await tx.product.update({
                     where: { id: update.id },
                     data: { price: newPrice }
@@ -183,26 +185,28 @@ export class BulkPriceUpdateService {
      * Update prices by category with percentage/fixed increase
      */
     async updateByCategory(
+        tenantId: number,
         categoryId: number,
         input: BulkPriceUpdateInput,
         context: AuditContext
     ): Promise<BulkUpdateResult> {
-        const products = await this.getProductsForPriceGrid({ categoryId });
+        const products = await this.getProductsForPriceGrid(tenantId, { categoryId });
         const previewed = this.previewBulkUpdate(products, input);
-        
+
         const updates = previewed.map(p => ({
             id: p.id,
             newPrice: p.newPrice
         }));
 
-        return this.applyBulkUpdate(updates, context);
+        return this.applyBulkUpdate(tenantId, updates, context);
     }
 
     /**
      * Get categories for dropdown
      */
-    async getCategories() {
+    async getCategories(tenantId: number) {
         return prisma.category.findMany({
+            where: { tenantId },
             orderBy: { name: 'asc' },
             select: { id: true, name: true }
         });

@@ -534,6 +534,8 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
       paymentMethod: payload.payment.paymentMethod as 'ONLINE' | 'CASH' | 'CARD',
       isPrepaid: payload.payment.online || payload.payment.pending === 0,
       
+      storeId: payload.restaurant.id,
+      
       rawPayload: payload,
     };
   }

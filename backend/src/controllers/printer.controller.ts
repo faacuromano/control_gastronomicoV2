@@ -13,7 +13,7 @@ const printerService = new PrinterService();
  */
 export const printTicket = asyncHandler(async (req: Request, res: Response) => {
     const orderId = parseInt(req.params.id as string);
-    const buffer = await printerService.generateOrderTicket(orderId);
+    const buffer = await printerService.generateOrderTicket(orderId, req.user!.tenantId!);
     
     sendSuccess(res, { 
         message: 'Ticket generated',
@@ -29,7 +29,7 @@ export const printToDevice = asyncHandler(async (req: Request, res: Response) =>
     const orderId = parseInt(req.params.orderId as string);
     const printerId = parseInt(req.params.printerId as string);
     
-    await printerService.printOrderToDevice(orderId, printerId);
+    await printerService.printOrderToDevice(orderId, printerId, req.user!.tenantId!);
     
     sendSuccess(res, { 
         message: 'Ticket sent to printer successfully'
@@ -47,7 +47,7 @@ export const printPreAccount = asyncHandler(async (req: Request, res: Response) 
     
     // Use same print method - it already only shows payments if they exist
     // The pre-account is just printing an order before payment is made
-    await printerService.printOrderToDevice(orderId, printerId);
+    await printerService.printOrderToDevice(orderId, printerId, req.user!.tenantId!);
     
     sendSuccess(res, { 
         message: 'Pre-cuenta enviada a impresora exitosamente'
@@ -61,7 +61,7 @@ export const printPreAccount = asyncHandler(async (req: Request, res: Response) 
 export const printTestPage = asyncHandler(async (req: Request, res: Response) => {
     const printerId = parseInt(req.params.printerId as string);
     
-    await printerService.printTestPage(printerId);
+    await printerService.printTestPage(printerId, req.user!.tenantId!);
     
     sendSuccess(res, { 
         message: 'Test page printed successfully'
@@ -72,8 +72,9 @@ export const printTestPage = asyncHandler(async (req: Request, res: Response) =>
  * Get all configured printers
  * GET /print/printers
  */
-export const getPrinters = asyncHandler(async (_req: Request, res: Response) => {
+export const getPrinters = asyncHandler(async (req: Request, res: Response) => {
     const printers = await prisma.printer.findMany({
+        where: { tenantId: req.user!.tenantId! },
         include: { categories: { select: { id: true, name: true } } },
         orderBy: { name: 'asc' }
     });
@@ -111,7 +112,8 @@ export const createPrinter = asyncHandler(async (req: Request, res: Response) =>
     
     const printer = await prisma.printer.create({
         data: { 
-            name, 
+            tenantId: req.user!.tenantId!,
+            name,  
             connectionType: connectionType || 'NETWORK',
             ipAddress: connectionType === 'USB' ? null : ipAddress,
             windowsName: connectionType === 'USB' ? windowsName : null
@@ -146,11 +148,17 @@ export const updatePrinter = asyncHandler(async (req: Request, res: Response) =>
         if (windowsName !== undefined) updateData.windowsName = windowsName;
     }
     
-    const printer = await prisma.printer.update({
-        where: { id },
+    // Defense-in-depth: updateMany with tenantId (P1-009 fix)
+    const result = await prisma.printer.updateMany({
+        where: { id, tenantId: req.user!.tenantId! },
         data: updateData
     });
-    
+    if (result.count === 0) throw new ValidationError('Printer not found');
+
+    const printer = await prisma.printer.findFirst({
+        where: { id, tenantId: req.user!.tenantId! }
+    });
+
     sendSuccess(res, printer);
 });
 
@@ -161,7 +169,11 @@ export const updatePrinter = asyncHandler(async (req: Request, res: Response) =>
 export const deletePrinter = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
     
-    await prisma.printer.delete({ where: { id } });
-    
+    // Defense-in-depth: deleteMany with tenantId (P1-009 fix)
+    const result = await prisma.printer.deleteMany({
+        where: { id, tenantId: req.user!.tenantId! }
+    });
+    if (result.count === 0) throw new ValidationError('Printer not found');
+
     sendSuccess(res, { message: 'Printer deleted' });
 });

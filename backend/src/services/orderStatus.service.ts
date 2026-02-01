@@ -10,6 +10,7 @@ import { prisma } from '../lib/prisma';
 import { OrderStatus } from '@prisma/client';
 import { kdsService } from './kds.service';
 import { auditService } from './audit.service';
+import { ValidationError, NotFoundError } from '../utils/errors';
 
 /**
  * Data structure for updating order status.
@@ -51,23 +52,26 @@ export class OrderStatusService {
      * Update order status and broadcast to KDS.
      * Includes state machine validation to prevent invalid transitions.
      */
-    async updateStatus(orderId: number, status: OrderStatus) {
+    async updateStatus(orderId: number, status: OrderStatus, tenantId: number) {
         // Fetch current order status
-        const currentOrder = await prisma.order.findUnique({
-            where: { id: orderId },
+        const currentOrder = await prisma.order.findFirst({
+            where: { id: orderId, tenantId },
             select: { status: true }
         });
         
         if (!currentOrder) {
-            throw new Error(`Order ${orderId} not found`);
+            throw new NotFoundError(`Order ${orderId}`);
         }
 
         const currentStatus = currentOrder.status as OrderStatus;
         const allowedNextStatuses = this.allowedTransitions[currentStatus] || [];
 
-        // Validate transition
+        // Validate transition - block invalid state changes
         if (!allowedNextStatuses.includes(status)) {
-            console.warn(`[OrderStatusService] Invalid transition from ${currentStatus} to ${status} for order ${orderId}. Proceeding anyway.`);
+            throw new ValidationError(
+                `Invalid order status transition from ${currentStatus} to ${status}. ` +
+                `Allowed transitions: ${allowedNextStatuses.join(', ')}`
+            );
         }
 
         // Build update data
@@ -81,27 +85,45 @@ export class OrderStatusService {
         // If status is PREPARED (Ready), mark all non-served items as READY
         if (status === OrderStatus.PREPARED) {
             await prisma.orderItem.updateMany({
-                where: { 
+                where: {
                     orderId,
+                    tenantId,
                     status: { notIn: ['SERVED', 'READY'] }
                 },
                 data: { status: 'READY' }
             });
         }
 
-        const order = await prisma.order.update({
-            where: { id: orderId },
-            data: updateData,
-            include: { 
-                items: { 
-                    include: { 
+        // Use updateMany with tenantId for defense-in-depth (P1-008 fix)
+        const updateResult = await prisma.order.updateMany({
+            where: { id: orderId, tenantId },
+            data: updateData
+        });
+        if (updateResult.count === 0) {
+            throw new NotFoundError(`Order ${orderId}`);
+        }
+
+        // Fetch the updated order with relations for broadcasting
+        const order = await prisma.order.findFirstOrThrow({
+            where: { id: orderId, tenantId },
+            include: {
+                items: {
+                    include: {
                         product: true,
                         modifiers: { include: { modifierOption: true } }
-                    } 
-                }, 
-                table: true 
+                    }
+                },
+                table: true
             }
         });
+
+        // Free the table if order is cancelled and has an associated table
+        if (status === OrderStatus.CANCELLED && order.tableId) {
+            await prisma.table.updateMany({
+                where: { id: order.tableId, tenantId, currentOrderId: orderId },
+                data: { status: 'FREE', currentOrderId: null }
+            });
+        }
 
         // Broadcast update
         kdsService.broadcastOrderUpdate(order);

@@ -4,10 +4,22 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
+import { prisma } from './lib/prisma';
 
 // Environment validation
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = process.env.PORT || 3001;
+
+// P2-06: Validate critical environment variables
+const REQUIRED_ENV_VARS = ['DATABASE_URL', 'JWT_SECRET'] as const;
+for (const envVar of REQUIRED_ENV_VARS) {
+    if (!process.env[envVar]) {
+        throw new Error(`CRITICAL: Missing required environment variable: ${envVar}`);
+    }
+}
+if (isProduction && !process.env.CORS_ORIGINS) {
+    console.error('[CONFIG] CORS_ORIGINS not set in production — defaulting to localhost');
+}
 
 // CORS Configuration - Use CORS_ORIGINS env var for production
 const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173', 'http://localhost:5174'];
@@ -24,8 +36,8 @@ if (isProduction && !process.env.CORS_ORIGINS) {
 const app = express();
 
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // FIX P0-004: Cookie parser for HttpOnly cookie authentication
 app.use(cookieParser());
@@ -34,8 +46,16 @@ app.use(cookieParser());
 import { sanitizeBody } from './middleware/sanitize-body.middleware';
 app.use(sanitizeBody); // CRITICAL: Apply AFTER body parsers, BEFORE routes
 
+// P1-27: Correlation ID for distributed tracing
+import { correlationId } from './middleware/correlationId';
+
 app.use(cors({ origin: allowedOrigins, credentials: true }));
-app.use(helmet());
+app.use(helmet({
+  ...(!isProduction && { contentSecurityPolicy: false }), // Disable CSP in dev for hot-reload
+  hsts: isProduction ? { maxAge: 31536000, includeSubDomains: true } : false,
+  crossOriginEmbedderPolicy: false, // Allow loading images from external sources
+}));
+app.use(correlationId);
 app.use(morgan('dev'));
 app.use(compression());
 
@@ -99,9 +119,21 @@ app.use('/api/v1/admin/qr', qrAdminRouter);   // Admin: /api/v1/admin/qr/...
 import { webhookRoutes } from './integrations/delivery';
 app.use('/api/v1/webhooks', webhookRoutes);
 
-// Health Check
-app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+// Health Check — deep check verifying database connectivity
+app.get('/health', async (_req, res) => {
+    const checks: Record<string, boolean> = { database: false };
+    try {
+        await prisma.$queryRaw`SELECT 1`;
+        checks.database = true;
+    } catch { /* DB unreachable */ }
+
+    const healthy = Object.values(checks).every(Boolean);
+    res.status(healthy ? 200 : 503).json({
+        status: healthy ? 'ok' : 'degraded',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        checks
+    });
 });
 
 // Error Handling (must be after all routes)

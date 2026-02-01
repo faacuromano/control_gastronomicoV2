@@ -35,11 +35,11 @@ export class SyncService {
      * Pull all data needed for offline operation
      * Called when client goes online or on startup
      */
-    async pull(): Promise<SyncPullResponse> {
+    async pull(tenantId: number): Promise<SyncPullResponse> {
         const [products, categories, printerRouting] = await Promise.all([
-            this.getProductsForSync(),
-            this.getCategoriesForSync(),
-            this.getPrinterRoutingForSync()
+            this.getProductsForSync(tenantId),
+            this.getCategoriesForSync(tenantId),
+            this.getPrinterRoutingForSync(tenantId)
         ]);
 
         return {
@@ -56,7 +56,8 @@ export class SyncService {
      * Processes orders and payments created offline
      */
     async push(
-        request: SyncPushRequest, 
+        request: SyncPushRequest,
+        tenantId: number,
         context: AuditContext
     ): Promise<SyncPushResponse> {
         const orderMappings: OrderMapping[] = [];
@@ -66,7 +67,7 @@ export class SyncService {
         // 1. Process orders first (they need real IDs before payments)
         for (const pendingOrder of request.pendingOrders) {
             try {
-                const result = await this.processOfflineOrder(pendingOrder, context);
+                const result = await this.processOfflineOrder(pendingOrder, tenantId, context);
                 orderMappings.push(result.mapping);
                 if (result.warnings.length > 0) {
                     warnings.push(...result.warnings);
@@ -98,7 +99,7 @@ export class SyncService {
         // 3. Process payments using the mapping
         for (const pendingPayment of request.pendingPayments) {
             try {
-                await this.processOfflinePayment(pendingPayment, tempToRealId, context);
+                await this.processOfflinePayment(pendingPayment, tenantId, tempToRealId, context);
             } catch (err: any) {
                 logger.error('Sync payment failed', { 
                     tempOrderId: pendingPayment.tempOrderId, 
@@ -141,13 +142,14 @@ export class SyncService {
      */
     private async processOfflineOrder(
         pendingOrder: PendingOrder,
+        tenantId: number,
         context: AuditContext
     ): Promise<{ mapping: OrderMapping; warnings: SyncWarning[] }> {
         const warnings: SyncWarning[] = [];
 
         // Get active cash shift
         const activeShift = await prisma.cashShift.findFirst({
-            where: { endTime: null },
+            where: { tenantId, endTime: null },
             orderBy: { startTime: 'desc' }
         });
 
@@ -170,6 +172,7 @@ export class SyncService {
             throw new ValidationError('userId required for sync');
         }
         const order = await orderService.createOrder({
+            tenantId,
             userId: context.userId,
             items: pendingOrder.items,
             channel: pendingOrder.channel,
@@ -204,6 +207,7 @@ export class SyncService {
      */
     private async processOfflinePayment(
         pendingPayment: PendingPayment,
+        tenantId: number,
         tempToRealId: Map<string, number>,
         context: AuditContext
     ): Promise<void> {
@@ -219,7 +223,7 @@ export class SyncService {
             async (tx: TransactionClient) => {
                 // Step 1: Get active shift (read-only, can be outside tx but included for atomicity)
                 const activeShift = await tx.cashShift.findFirst({
-                    where: { endTime: null },
+                    where: { tenantId, endTime: null },
                     orderBy: { startTime: 'desc' }
                 });
 
@@ -229,8 +233,8 @@ export class SyncService {
 
                 // Step 2: Get order with existing payments INSIDE transaction
                 // Serializable isolation ensures no phantom payments appear
-                const order = await tx.order.findUnique({
-                    where: { id: realOrderId },
+                const order = await tx.order.findFirst({
+                    where: { id: realOrderId, tenantId },
                     include: { payments: true }
                 });
 
@@ -273,6 +277,7 @@ export class SyncService {
                 // Step 5: Create payment INSIDE transaction
                 await tx.payment.create({
                     data: {
+                        tenantId,
                         orderId: realOrderId,
                         method: pendingPayment.method,
                         amount: pendingPayment.amount,
@@ -284,8 +289,8 @@ export class SyncService {
                 const newTotalPaid = currentTotalPaid + pendingPayment.amount;
                 const newStatus = newTotalPaid >= orderTotal ? 'PAID' : 'PARTIAL';
 
-                await tx.order.update({
-                    where: { id: realOrderId },
+                await tx.order.updateMany({
+                    where: { id: realOrderId, tenantId },
                     data: { paymentStatus: newStatus }
                 });
 
@@ -307,9 +312,9 @@ export class SyncService {
     // HELPER METHODS
     // =========================================================================
 
-    private async getProductsForSync(): Promise<SyncProduct[]> {
+    private async getProductsForSync(tenantId: number): Promise<SyncProduct[]> {
         const products = await prisma.product.findMany({
-            where: { isActive: true },
+            where: { isActive: true, tenantId },
             include: {
                 category: true,
                 modifiers: {
@@ -345,8 +350,9 @@ export class SyncService {
         }));
     }
 
-    private async getCategoriesForSync(): Promise<SyncCategory[]> {
+    private async getCategoriesForSync(tenantId: number): Promise<SyncCategory[]> {
         const categories = await prisma.category.findMany({
+            where: { tenantId },
             orderBy: { name: 'asc' }
         });
 
@@ -356,9 +362,9 @@ export class SyncService {
         }));
     }
 
-    private async getPrinterRoutingForSync(): Promise<SyncPrinterRouting[]> {
+    private async getPrinterRoutingForSync(tenantId: number): Promise<SyncPrinterRouting[]> {
         const categories = await prisma.category.findMany({
-            where: { printerId: { not: null } },
+            where: { tenantId, printerId: { not: null } },
             include: { printer: true }
         });
 

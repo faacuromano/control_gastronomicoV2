@@ -45,8 +45,9 @@ export const applyDiscount = asyncHandler(async (req: Request, res: Response) =>
     
     const result = await discountService.applyDiscount(
         input,
+        req.user!.tenantId!,
         {
-            userId: (req as any).user?.id,
+            userId: req.user!.id,
             ipAddress: ip
         }
     );
@@ -67,8 +68,9 @@ export const removeDiscount = asyncHandler(async (req: Request, res: Response) =
     const ip = String(req.ip || 'unknown');
     const result = await discountService.removeDiscount(
         orderId,
+        req.user!.tenantId!,
         {
-            userId: (req as any).user?.id,
+            userId: req.user!.id,
             ipAddress: ip
         }
     );

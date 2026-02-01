@@ -6,6 +6,7 @@
 import { prisma } from '../lib/prisma';
 import { NotFoundError } from '../utils/errors';
 import type { DeliveryPlatform, DeliveryDriver, VehicleType } from '@prisma/client';
+import { OrderStatus } from '@prisma/client';
 
 // ============================================================================
 // PLATFORM MANAGEMENT
@@ -17,7 +18,6 @@ export interface PlatformCreateData {
     apiKey?: string;
     webhookSecret?: string;
     storeId?: string;
-    commissionRate?: number;
 }
 
 export interface PlatformUpdateData {
@@ -27,7 +27,6 @@ export interface PlatformUpdateData {
     webhookSecret?: string;
     storeId?: string;
     menuSyncEnabled?: boolean;
-    commissionRate?: number;
     config?: any;
 }
 
@@ -36,15 +35,21 @@ class DeliveryService {
     // PLATFORMS
     // ========================================================================
 
-    async getAllPlatforms(): Promise<DeliveryPlatform[]> {
+    async getAllPlatforms(tenantId: number): Promise<DeliveryPlatform[]> {
         return prisma.deliveryPlatform.findMany({
+            include: {
+                tenantConfigs: { where: { tenantId } }
+            },
             orderBy: { name: 'asc' }
         });
     }
 
-    async getPlatformById(id: number): Promise<DeliveryPlatform> {
+    async getPlatformById(id: number, tenantId: number): Promise<DeliveryPlatform> {
         const platform = await prisma.deliveryPlatform.findUnique({
-            where: { id }
+            where: { id },
+            include: {
+                tenantConfigs: { where: { tenantId } }
+            }
         });
         if (!platform) {
             throw new NotFoundError('Platform not found');
@@ -52,9 +57,12 @@ class DeliveryService {
         return platform;
     }
 
-    async getPlatformByCode(code: string): Promise<DeliveryPlatform | null> {
+    async getPlatformByCode(code: string, tenantId: number): Promise<DeliveryPlatform | null> {
         return prisma.deliveryPlatform.findUnique({
-            where: { code }
+            where: { code },
+            include: {
+                tenantConfigs: { where: { tenantId } }
+            }
         });
     }
 
@@ -65,13 +73,16 @@ class DeliveryService {
                 name: data.name,
                 apiKey: data.apiKey ?? null,
                 webhookSecret: data.webhookSecret ?? null,
-                storeId: data.storeId ?? null,
-                commissionRate: data.commissionRate ?? null
+                storeId: data.storeId ?? null
             }
         });
     }
 
     async updatePlatform(id: number, data: PlatformUpdateData): Promise<DeliveryPlatform> {
+        const platform = await prisma.deliveryPlatform.findUnique({ where: { id } });
+        if (!platform) {
+            throw new NotFoundError('Platform not found');
+        }
         return prisma.deliveryPlatform.update({
             where: { id },
             data
@@ -79,7 +90,10 @@ class DeliveryService {
     }
 
     async togglePlatform(id: number): Promise<DeliveryPlatform> {
-        const platform = await this.getPlatformById(id);
+        const platform = await prisma.deliveryPlatform.findUnique({ where: { id } });
+        if (!platform) {
+            throw new NotFoundError('Platform not found');
+        }
         return prisma.deliveryPlatform.update({
             where: { id },
             data: { isEnabled: !platform.isEnabled }
@@ -87,14 +101,21 @@ class DeliveryService {
     }
 
     async deletePlatform(id: number): Promise<void> {
+        const platform = await prisma.deliveryPlatform.findUnique({ where: { id } });
+        if (!platform) {
+            throw new NotFoundError('Platform not found');
+        }
         await prisma.deliveryPlatform.delete({
             where: { id }
         });
     }
 
-    async getEnabledPlatforms(): Promise<DeliveryPlatform[]> {
+    async getEnabledPlatforms(tenantId: number): Promise<DeliveryPlatform[]> {
         return prisma.deliveryPlatform.findMany({
             where: { isEnabled: true },
+            include: {
+                tenantConfigs: { where: { tenantId } }
+            },
             orderBy: { name: 'asc' }
         });
     }
@@ -103,15 +124,16 @@ class DeliveryService {
     // DRIVERS
     // ========================================================================
 
-    async getAllDrivers(): Promise<DeliveryDriver[]> {
+    async getAllDrivers(tenantId: number): Promise<DeliveryDriver[]> {
         return prisma.deliveryDriver.findMany({
+            where: { tenantId },
             orderBy: { name: 'asc' }
         });
     }
 
-    async getDriverById(id: number): Promise<DeliveryDriver> {
-        const driver = await prisma.deliveryDriver.findUnique({
-            where: { id }
+    async getDriverById(id: number, tenantId: number): Promise<DeliveryDriver> {
+        const driver = await prisma.deliveryDriver.findFirst({
+            where: { id, tenantId }
         });
         if (!driver) {
             throw new NotFoundError('Driver not found');
@@ -119,17 +141,18 @@ class DeliveryService {
         return driver;
     }
 
-    async getAvailableDrivers(): Promise<DeliveryDriver[]> {
+    async getAvailableDrivers(tenantId: number): Promise<DeliveryDriver[]> {
         return prisma.deliveryDriver.findMany({
             where: {
                 isActive: true,
-                isAvailable: true
+                isAvailable: true,
+                tenantId
             },
             orderBy: { name: 'asc' }
         });
     }
 
-    async createDriver(data: {
+    async createDriver(tenantId: number, data: {
         name: string;
         phone: string;
         email?: string;
@@ -138,6 +161,7 @@ class DeliveryService {
     }): Promise<DeliveryDriver> {
         return prisma.deliveryDriver.create({
             data: {
+                tenantId,
                 name: data.name,
                 phone: data.phone,
                 email: data.email ?? null,
@@ -147,7 +171,7 @@ class DeliveryService {
         });
     }
 
-    async updateDriver(id: number, data: {
+    async updateDriver(id: number, tenantId: number, data: {
         name?: string;
         phone?: string;
         email?: string;
@@ -155,37 +179,54 @@ class DeliveryService {
         licensePlate?: string;
         isActive?: boolean;
     }): Promise<DeliveryDriver> {
-        return prisma.deliveryDriver.update({
-            where: { id },
+        // Verify tenant ownership and get current state
+        await this.getDriverById(id, tenantId);
+
+        const result = await prisma.deliveryDriver.updateMany({
+            where: { id, tenantId },
             data
         });
+        if (result.count === 0) {
+            throw new NotFoundError('Driver not found');
+        }
+        return this.getDriverById(id, tenantId);
     }
 
-    async toggleDriverAvailability(id: number): Promise<DeliveryDriver> {
-        const driver = await this.getDriverById(id);
-        return prisma.deliveryDriver.update({
-            where: { id },
+    async toggleDriverAvailability(id: number, tenantId: number): Promise<DeliveryDriver> {
+        const driver = await this.getDriverById(id, tenantId);
+        await prisma.deliveryDriver.updateMany({
+            where: { id, tenantId },
             data: { isAvailable: !driver.isAvailable }
         });
+        return this.getDriverById(id, tenantId);
     }
 
-    async toggleDriverActive(id: number): Promise<DeliveryDriver> {
-        const driver = await this.getDriverById(id);
-        return prisma.deliveryDriver.update({
-            where: { id },
+    async toggleDriverActive(id: number, tenantId: number): Promise<DeliveryDriver> {
+        const driver = await this.getDriverById(id, tenantId);
+        await prisma.deliveryDriver.updateMany({
+            where: { id, tenantId },
             data: { isActive: !driver.isActive }
         });
+        return this.getDriverById(id, tenantId);
     }
 
-    async assignDriverToOrder(driverId: number, orderId: number): Promise<void> {
+    async assignDriverToOrder(driverId: number, orderId: number, tenantId: number): Promise<void> {
+        // Verify ownership
+        const driver = await prisma.deliveryDriver.findFirst({ where: { id: driverId, tenantId } });
+        if (!driver) throw new NotFoundError('Driver');
+        
+        const order = await prisma.order.findFirst({ where: { id: orderId, tenantId } });
+        if (!order) throw new NotFoundError('Order');
+
+        // SAFE: findFirst at L187-L191 verifies tenant ownership for both driver and order
         await prisma.$transaction([
-            prisma.order.update({
-                where: { id: orderId },
+            prisma.order.updateMany({
+                where: { id: orderId, tenantId },
                 data: { deliveryDriverId: driverId }
             }),
-            prisma.deliveryDriver.update({
-                where: { id: driverId },
-                data: { 
+            prisma.deliveryDriver.updateMany({
+                where: { id: driverId, tenantId },
+                data: {
                     isAvailable: false,
                     currentOrderId: orderId
                 }
@@ -193,19 +234,22 @@ class DeliveryService {
         ]);
     }
 
-    async releaseDriver(driverId: number): Promise<DeliveryDriver> {
-        return prisma.deliveryDriver.update({
-            where: { id: driverId },
+    async releaseDriver(driverId: number, tenantId: number): Promise<DeliveryDriver> {
+        await this.getDriverById(driverId, tenantId);
+        await prisma.deliveryDriver.updateMany({
+            where: { id: driverId, tenantId },
             data: {
                 isAvailable: true,
                 currentOrderId: null
             }
         });
+        return this.getDriverById(driverId, tenantId);
     }
 
-    async deleteDriver(id: number): Promise<void> {
-        await prisma.deliveryDriver.delete({
-            where: { id }
+    async deleteDriver(id: number, tenantId: number): Promise<void> {
+        await this.getDriverById(id, tenantId);
+        await prisma.deliveryDriver.deleteMany({
+            where: { id, tenantId }
         });
     }
 
@@ -213,16 +257,17 @@ class DeliveryService {
     // ORDER DELIVERY HELPERS
     // ========================================================================
 
-    async getDeliveryOrders(status?: string): Promise<any[]> {
+    async getDeliveryOrders(tenantId: number, status?: string): Promise<any[]> {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
         return prisma.order.findMany({
             where: {
+                tenantId,
                 // FIX: Only show delivery orders (exclude POS and DINE_IN)
                 fulfillmentType: { in: ['PLATFORM_DELIVERY', 'SELF_DELIVERY', 'TAKEAWAY'] },
                 // Filter by status if provided, otherwise show today's active + delivered
-                ...(status ? { status: status as any } : {
+                ...(status && Object.values(OrderStatus).includes(status as OrderStatus) ? { status: status as OrderStatus } : {
                     OR: [
                         { status: { notIn: ['DELIVERED', 'CANCELLED'] } },
                         { 

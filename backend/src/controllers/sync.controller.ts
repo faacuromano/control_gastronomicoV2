@@ -52,7 +52,7 @@ const SyncPushRequestSchema = z.object({
  * Pull all data needed for offline operation
  */
 export const pull = asyncHandler(async (req: Request, res: Response) => {
-    const data = await syncService.pull();
+    const data = await syncService.pull(req.user!.tenantId!);
     
     res.json({
         success: true,
@@ -81,6 +81,7 @@ export const push = asyncHandler(async (req: Request, res: Response) => {
     
     const result = await syncService.push(
         validation.data as SyncPushRequest,
+        req.user!.tenantId!,
         {
             userId,
             ipAddress: ip

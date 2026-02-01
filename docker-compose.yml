@@ -18,14 +18,17 @@ services:
   # ---------------------------------------------------------------------------
   db:
     image: mysql:8.0
+    platform: linux/amd64
     container_name: pentiumpos-db-dev
     restart: unless-stopped
     
+    env_file:
+      - .env
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-pentiumpos_dev}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-pentiumpos}
       MYSQL_USER: ${MYSQL_USER:-pentium_user}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-pentium_pass_dev}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       TZ: America/Argentina/Buenos_Aires
     
     ports:
@@ -38,8 +41,14 @@ services:
     networks:
       - pentiumpos-network
     
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: '1.0'
+
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-pentiumpos_dev}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -62,8 +71,14 @@ services:
     networks:
       - pentiumpos-network
     
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '0.5'
+
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    
+
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -88,7 +103,7 @@ services:
     
     environment:
       # Database
-      DATABASE_URL: mysql://${MYSQL_USER:-pentium_user}:${MYSQL_PASSWORD:-pentium_pass_dev}@db:3306/${MYSQL_DATABASE:-pentiumpos}?connection_limit=200&pool_timeout=20
+      DATABASE_URL: mysql://${MYSQL_USER:-pentium_user}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-pentiumpos}?connection_limit=20&pool_timeout=20
       
       # Redis/Queue
       REDIS_HOST: redis
@@ -100,7 +115,7 @@ services:
       PORT: 3001
       
       # Security
-      JWT_SECRET: ${JWT_SECRET:-development_secret_change_in_production_min_32_chars_long}
+      JWT_SECRET: ${JWT_SECRET}
       
       # CORS
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://frontend:5173
@@ -122,12 +137,18 @@ services:
     networks:
       - pentiumpos-network
     
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '1.0'
+
     command: >
       sh -c "
-        echo '🔄 Running Prisma migrations...' &&
+        echo 'Running Prisma migrations...' &&
         npx prisma migrate deploy &&
-        echo '✅ Migrations complete!' &&
-        echo '🚀 Starting development server...' &&
+        echo 'Migrations complete!' &&
+        echo 'Starting development server...' &&
         npm run dev
       "
 
@@ -150,9 +171,15 @@ services:
       VITE_API_URL: ${VITE_API_URL:-http://localhost:3001/api/v1}
       VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:3001}
     
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: '0.5'
+
     ports:
       - "5173:5173"
-    
+
     volumes:
       # Mount source for hot-reload (HMR)
       - ./frontend/src:/app/src

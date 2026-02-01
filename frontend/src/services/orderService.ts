@@ -58,6 +58,7 @@ export interface CreateOrderData {
         name: string;
         driverId?: number;
     };
+    discount?: number;
 }
 
 export const orderService = {
@@ -166,6 +167,15 @@ export const orderService = {
 
     assignDriver: async (orderId: number, driverId: number): Promise<OrderResponse> => {
         const response = await api.patch(`/delivery/orders/${orderId}/assign`, { driverId });
+        return response.data.data;
+    },
+
+    /**
+     * Add payments to an existing order (used for table checkout).
+     * Calls POST /orders/:id/payments
+     */
+    addPayments: async (orderId: number, payments: { method: string; amount: number }[], closeOrder = true): Promise<any> => {
+        const response = await api.post(`/orders/${orderId}/payments`, { payments, closeOrder });
         return response.data.data;
     },
 

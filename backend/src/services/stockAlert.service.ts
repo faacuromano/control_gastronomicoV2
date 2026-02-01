@@ -22,13 +22,13 @@ class StockAlertService {
     /**
      * Check if ingredient is below minimum stock and emit alert if so
      */
-    async checkAndAlert(ingredientId: number, newStock: number): Promise<void> {
+    async checkAndAlert(ingredientId: number, tenantId: number, newStock: number): Promise<void> {
         try {
-            const ingredient = await prisma.ingredient.findUnique({
-                where: { id: ingredientId }
+            const ingredient = await prisma.ingredient.findFirst({
+                where: { id: ingredientId, tenantId }
             });
 
-            if (!ingredient) return;
+            if (!ingredient || !ingredient.tenantId) return;
 
             const minStock = Number(ingredient.minStock);
             const currentStock = Number(newStock);
@@ -48,8 +48,9 @@ class StockAlertService {
                     timestamp: new Date()
                 };
 
-                this.emitAlert(alert);
+                this.emitAlert(ingredient.tenantId, alert);
                 logger.info('Stock alert emitted', { 
+                    tenantId: ingredient.tenantId,
                     ingredient: ingredient.name, 
                     current: currentStock, 
                     min: minStock 
@@ -63,10 +64,11 @@ class StockAlertService {
     /**
      * Emit stock alert via WebSocket to admin:stock room
      */
-    private emitAlert(alert: StockAlert): void {
+    private emitAlert(tenantId: number, alert: StockAlert): void {
         try {
             const io = getIO();
-            io.to('admin:stock').emit('stock:low', alert);
+            if (!io) return;
+            io.to(`tenant:${tenantId}:admin:stock`).emit('stock:low', alert);
         } catch (error) {
             logger.error('Failed to emit stock alert', { error });
         }
@@ -75,7 +77,7 @@ class StockAlertService {
     /**
      * Get all ingredients currently below minimum stock
      */
-    async getLowStockItems(): Promise<StockAlert[]> {
+    async getLowStockItems(tenantId: number): Promise<StockAlert[]> {
         const ingredients = await prisma.$queryRaw<{
             id: number;
             name: string;
@@ -83,10 +85,10 @@ class StockAlertService {
             minStock: number;
             unit: string;
         }[]>`
-            SELECT id, name, CAST(stock AS DECIMAL(10,2)) as stock, 
+            SELECT id, name, CAST(stock AS DECIMAL(10,2)) as stock,
                    CAST(minStock AS DECIMAL(10,2)) as minStock, unit
             FROM Ingredient
-            WHERE stock <= minStock AND minStock > 0
+            WHERE stock <= minStock AND minStock > 0 AND tenantId = ${tenantId}
             ORDER BY (stock / NULLIF(minStock, 0)) ASC
         `;
 
@@ -105,11 +107,12 @@ class StockAlertService {
     /**
      * Broadcast current low stock status to all connected admin clients
      */
-    async broadcastLowStockStatus(): Promise<void> {
+    async broadcastLowStockStatus(tenantId: number): Promise<void> {
         try {
-            const alerts = await this.getLowStockItems();
+            const alerts = await this.getLowStockItems(tenantId);
             const io = getIO();
-            io.to('admin:stock').emit('stock:status', alerts);
+            if (!io) return;
+            io.to(`tenant:${tenantId}:admin:stock`).emit('stock:status', alerts);
         } catch (error) {
             logger.error('Failed to broadcast low stock status', { error });
         }

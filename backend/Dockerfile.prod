@@ -1,0 +1,83 @@
+# =============================================================================
+# Backend - Production Dockerfile (Multi-Stage Build)
+# =============================================================================
+# Stage 1: Builder - Compile TypeScript and generate Prisma client
+# Stage 2: Runner - Minimal production image with only necessary files
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Stage 1: Builder
+# -----------------------------------------------------------------------------
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Install OpenSSL for Prisma
+RUN apk add --no-cache openssl
+
+# Copy package files
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Install ALL dependencies (including devDependencies for TypeScript compilation)
+RUN npm ci
+
+# Generate Prisma client
+RUN npx prisma generate
+
+# Copy source code and build configuration
+COPY tsconfig.json ./
+COPY src ./src/
+COPY scripts ./scripts/
+COPY migration-scripts ./migration-scripts/
+
+# Compile TypeScript to JavaScript
+RUN npm run build
+
+# -----------------------------------------------------------------------------
+# Stage 2: Production Runner
+# -----------------------------------------------------------------------------
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+# Install OpenSSL for Prisma
+RUN apk add --no-cache openssl
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# Copy package files
+COPY package*.json ./
+COPY prisma ./prisma/
+
+# Install ONLY production dependencies
+RUN npm ci --only=production && \
+    npm cache clean --force
+
+# Generate Prisma client in production
+RUN npx prisma generate
+
+# Copy compiled JavaScript from builder stage
+COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+
+# Copy migration scripts (needed for deployment)
+COPY --chown=nodejs:nodejs migration-scripts ./migration-scripts/
+COPY --chown=nodejs:nodejs scripts ./scripts/
+
+# Set environment to production
+ENV NODE_ENV=production
+
+# Switch to non-root user
+USER nodejs
+
+# Expose application port
+EXPOSE 3001
+
+# Health check (optional but recommended for production)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+
+# Start the application
+CMD ["node", "dist/server.js"]

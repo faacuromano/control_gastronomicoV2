@@ -17,9 +17,9 @@ export class LoyaltyService {
     /**
      * Get client's loyalty balance
      */
-    async getBalance(clientId: number): Promise<LoyaltyBalance> {
-        const client = await prisma.client.findUnique({
-            where: { id: clientId }
+    async getBalance(clientId: number, tenantId: number): Promise<LoyaltyBalance> {
+        const client = await prisma.client.findFirst({
+            where: { id: clientId, tenantId }
         });
 
         if (!client) {
@@ -42,19 +42,26 @@ export class LoyaltyService {
      * @param orderTotal - Total order amount for calculating points
      * @param externalTx - Optional Prisma transaction client for atomic operations
      */
-    async awardPoints(clientId: number, orderTotal: number, externalTx?: Prisma.TransactionClient): Promise<number> {
+    async awardPoints(clientId: number, orderTotal: number, externalTx?: Prisma.TransactionClient, tenantId?: number): Promise<number> {
         const pointsEarned = Math.floor(orderTotal * POINTS_PER_DOLLAR);
 
         if (pointsEarned <= 0) return 0;
 
+        if (!tenantId) {
+            throw new ValidationError('tenantId is required for awardPoints');
+        }
+
         const db = externalTx || prisma;
-        
-        await db.client.update({
-            where: { id: clientId },
+
+        // Verify client belongs to tenant and update atomically
+        const result = await db.client.updateMany({
+            where: { id: clientId, tenantId },
             data: {
                 points: { increment: pointsEarned }
             }
         });
+
+        if (result.count === 0) throw new NotFoundError('Client');
 
         return pointsEarned;
     }
@@ -63,33 +70,33 @@ export class LoyaltyService {
      * Redeem points for discount
      * Returns the discount amount applied
      */
-    async redeemPoints(clientId: number, pointsToRedeem: number): Promise<number> {
-        const client = await prisma.client.findUnique({
-            where: { id: clientId }
-        });
-
-        if (!client) {
-            throw new NotFoundError('Client');
-        }
-
+    async redeemPoints(clientId: number, pointsToRedeem: number, tenantId: number): Promise<number> {
         if (pointsToRedeem <= 0) {
             throw new ValidationError('Points to redeem must be positive');
         }
 
-        if (pointsToRedeem > client.points) {
-            throw new ValidationError(`Insufficient points. Available: ${client.points}`);
-        }
-
-        // Calculate discount value
         const discountAmount = pointsToRedeem / POINTS_TO_REDEEM_VALUE;
 
-        // Deduct points
-        await prisma.client.update({
-            where: { id: clientId },
+        // Atomic: only decrements if sufficient points exist
+        const result = await prisma.client.updateMany({
+            where: {
+                id: clientId,
+                tenantId,
+                points: { gte: pointsToRedeem }
+            },
             data: {
                 points: { decrement: pointsToRedeem }
             }
         });
+
+        if (result.count === 0) {
+            // Either client doesn't exist or insufficient points
+            const client = await prisma.client.findFirst({
+                where: { id: clientId, tenantId }
+            });
+            if (!client) throw new NotFoundError('Client');
+            throw new ValidationError(`Insufficient points. Available: ${client.points}`);
+        }
 
         return discountAmount;
     }
@@ -97,47 +104,63 @@ export class LoyaltyService {
     /**
      * Add funds to wallet
      */
-    async addWalletFunds(clientId: number, amount: number): Promise<number> {
+    async addWalletFunds(clientId: number, amount: number, tenantId: number): Promise<number> {
         if (amount <= 0) {
             throw new ValidationError('Amount must be positive');
         }
 
-        const client = await prisma.client.update({
-            where: { id: clientId },
+        const result = await prisma.client.updateMany({
+            where: { id: clientId, tenantId },
             data: {
                 walletBalance: { increment: amount }
             }
         });
 
-        return Number(client.walletBalance);
+        if (result.count === 0) throw new NotFoundError('Client');
+
+        // Fetch updated balance to return
+        const client = await prisma.client.findFirst({
+            where: { id: clientId, tenantId },
+            select: { walletBalance: true }
+        });
+
+        return Number(client!.walletBalance);
     }
 
     /**
      * Use wallet funds for payment
      * Returns amount actually used (may be less if insufficient balance)
      */
-    async useWalletFunds(clientId: number, amount: number): Promise<number> {
-        const client = await prisma.client.findUnique({
-            where: { id: clientId }
+    async useWalletFunds(clientId: number, amount: number, tenantId: number): Promise<number> {
+        if (amount <= 0) return 0;
+
+        // First get the current balance to calculate amountToUse
+        const client = await prisma.client.findFirst({
+            where: { id: clientId, tenantId }
         });
 
-        if (!client) {
-            throw new NotFoundError('Client');
-        }
+        if (!client) throw new NotFoundError('Client');
 
         const availableBalance = Number(client.walletBalance);
         const amountToUse = Math.min(amount, availableBalance);
 
-        if (amountToUse <= 0) {
-            return 0;
-        }
+        if (amountToUse <= 0) return 0;
 
-        await prisma.client.update({
-            where: { id: clientId },
+        // Atomic: only decrements if sufficient balance
+        const result = await prisma.client.updateMany({
+            where: {
+                id: clientId,
+                tenantId,
+                walletBalance: { gte: amountToUse }
+            },
             data: {
                 walletBalance: { decrement: amountToUse }
             }
         });
+
+        if (result.count === 0) {
+            throw new ValidationError('Insufficient wallet balance (concurrent modification)');
+        }
 
         return amountToUse;
     }

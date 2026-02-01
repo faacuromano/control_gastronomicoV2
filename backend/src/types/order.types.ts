@@ -38,6 +38,7 @@ export interface DeliveryData {
  * Supports both legacy single payment and split payments.
  */
 export interface CreateOrderInput {
+    tenantId?: number; // Optional for migration/compatibility
     userId: number;
     items: OrderItemInput[];
     channel?: OrderChannel | undefined;
@@ -47,6 +48,7 @@ export interface CreateOrderInput {
     deliveryData?: DeliveryData | undefined;
     paymentMethod?: PaymentMethod | 'SPLIT' | undefined;
     payments?: { method: string; amount: number }[] | undefined;
+    discount?: number | undefined; // Manual discount amount applied at checkout
 }
 
 // ============================================
@@ -86,6 +88,7 @@ export interface ItemCalculationResult {
  * Prisma order creation data structure.
  */
 export interface OrderCreateData {
+    tenantId: number;
     orderNumber: number;
     channel: OrderChannel;
     status: OrderStatus;
@@ -102,18 +105,20 @@ export interface OrderCreateData {
     closedAt?: Date;
     items: {
         create: {
+            tenantId: number;
             product: { connect: { id: number } };
             quantity: number;
             unitPrice: number;
             notes: string | null;
             status: string;
             modifiers?: {
-                create: { modifierOptionId: number; priceCharged: number }[]
+                create: { tenantId: number; modifierOptionId: number; priceCharged: number }[]
             };
         }[];
     };
     payments?: {
         create: {
+            tenantId: number;
             amount: number;
             method: PaymentMethod;
             shiftId: number;
@@ -127,4 +132,58 @@ export interface OrderCreateData {
 export interface OrderUpdateData {
     status: OrderStatus;
     closedAt?: Date;
+}
+
+// ============================================
+// PAYMENT TYPES (Add Payments to Order)
+// ============================================
+
+/**
+ * Input for adding a single payment to an existing order.
+ *
+ * @interface PaymentInput
+ * @property {string} method - Payment method code (e.g., 'CASH', 'CARD', 'TRANSFER')
+ * @property {number} amount - Payment amount (must be positive, non-zero)
+ */
+export interface AddPaymentInput {
+    method: string;
+    amount: number;
+}
+
+/**
+ * Request body for POST /orders/:id/payments endpoint.
+ *
+ * @interface AddPaymentsRequest
+ * @property {AddPaymentInput[]} payments - Array of payments to add
+ * @property {boolean} [closeOrder] - If true and order is fully paid, auto-close the order
+ */
+export interface AddPaymentsRequest {
+    payments: AddPaymentInput[];
+    closeOrder?: boolean;
+}
+
+/**
+ * Result of adding payments to an order.
+ *
+ * @interface AddPaymentsResult
+ */
+export interface AddPaymentsResult {
+    /** Updated order ID */
+    orderId: number;
+    /** Order total amount */
+    orderTotal: number;
+    /** Total amount paid before this operation */
+    previouslyPaid: number;
+    /** Amount added in this operation */
+    amountAdded: number;
+    /** Total amount paid after this operation */
+    totalPaid: number;
+    /** Remaining balance (negative if overpaid) */
+    remainingBalance: number;
+    /** Updated payment status */
+    paymentStatus: PaymentStatus;
+    /** Whether order was closed by this operation */
+    orderClosed: boolean;
+    /** IDs of created payment records */
+    paymentIds: number[];
 }

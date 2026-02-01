@@ -78,11 +78,24 @@ class MarginConsentService {
    * 
    * @returns Estado detallado del lock
    */
-  async getSafetyLockStatus(platformId: number): Promise<SafetyLockStatus> {
-    const platform = await prisma.deliveryPlatform.findUnique({
-      where: { id: platformId },
+  /**
+   * Verifica el estado del Safety Lock para una plataforma.
+   * 
+   * El Safety Lock está BLOQUEADO si:
+   * 1. useFallbackPricing = true (quiere usar precios base)
+   * 2. marginConsentAcceptedAt = null (no hay consentimiento)
+   * 
+   * @returns Estado detallado del lock
+   */
+  async getSafetyLockStatus(tenantId: number, platformId: number): Promise<SafetyLockStatus> {
+    const config = await prisma.tenantPlatformConfig.findUnique({
+      where: {
+        tenantId_deliveryPlatformId: {
+          tenantId,
+          deliveryPlatformId: platformId
+        }
+      },
       select: {
-        id: true,
         useFallbackPricing: true,
         marginConsentAcceptedAt: true,
         marginConsentAcceptedBy: true,
@@ -90,22 +103,22 @@ class MarginConsentService {
       }
     });
 
-    if (!platform) {
-      throw new NotFoundError(`Plataforma ${platformId} no encontrada`);
+    if (!config) {
+      throw new NotFoundError(`Configuración de plataforma ${platformId} no encontrada para tenant ${tenantId}`);
     }
 
-    const hasConsentRecord = platform.marginConsentAcceptedAt !== null;
+    const hasConsentRecord = config.marginConsentAcceptedAt !== null;
     
     // El lock está activo si quiere usar fallback PERO no tiene consentimiento
-    const isLocked = platform.useFallbackPricing && !hasConsentRecord;
+    const isLocked = config.useFallbackPricing && !hasConsentRecord;
     
     return {
       isLocked,
-      requiresConsent: platform.useFallbackPricing,
+      requiresConsent: config.useFallbackPricing,
       hasConsentRecord,
-      consentDate: platform.marginConsentAcceptedAt ?? undefined,
-      consentBy: platform.marginConsentAcceptedBy ?? undefined,
-      defaultMarkup: platform.defaultMarkup ? Number(platform.defaultMarkup) : undefined,
+      consentDate: config.marginConsentAcceptedAt ?? undefined,
+      consentBy: config.marginConsentAcceptedBy ?? undefined,
+      defaultMarkup: config.defaultMarkup ? Number(config.defaultMarkup) : undefined,
       message: isLocked ? MARGIN_CONSENT_REQUIRED_MESSAGE : undefined,
     };
   }
@@ -119,7 +132,7 @@ class MarginConsentService {
    * 
    * @throws BadRequestError si explicitConsent !== true
    */
-  async acceptMarginConsent(input: MarginConsentInput): Promise<DeliveryPlatform> {
+  async acceptMarginConsent(tenantId: number, input: MarginConsentInput): Promise<any> {
     const { platformId, userId, explicitConsent, defaultMarkup } = input;
 
     // VALIDACIÓN ESTRICTA: El consentimiento debe ser explícito
@@ -130,17 +143,14 @@ class MarginConsentService {
       );
     }
 
-    const platform = await prisma.deliveryPlatform.findUnique({
-      where: { id: platformId }
-    });
-
-    if (!platform) {
-      throw new NotFoundError(`Plataforma ${platformId} no encontrada`);
-    }
-
     // Registrar consentimiento con timestamp y usuario
-    return prisma.deliveryPlatform.update({
-      where: { id: platformId },
+    return prisma.tenantPlatformConfig.update({
+        where: {
+            tenantId_deliveryPlatformId: {
+                tenantId,
+                deliveryPlatformId: platformId
+            }
+        },
       data: {
         marginConsentAcceptedAt: new Date(),
         marginConsentAcceptedBy: userId,
@@ -154,17 +164,14 @@ class MarginConsentService {
    * Revoca el consentimiento de margen.
    * Esto desactiva el fallback pricing automáticamente.
    */
-  async revokeMarginConsent(platformId: number): Promise<DeliveryPlatform> {
-    const platform = await prisma.deliveryPlatform.findUnique({
-      where: { id: platformId }
-    });
-
-    if (!platform) {
-      throw new NotFoundError(`Plataforma ${platformId} no encontrada`);
-    }
-
-    return prisma.deliveryPlatform.update({
-      where: { id: platformId },
+  async revokeMarginConsent(tenantId: number, platformId: number): Promise<any> {
+    return prisma.tenantPlatformConfig.update({
+        where: {
+            tenantId_deliveryPlatformId: {
+                tenantId,
+                deliveryPlatformId: platformId
+            }
+        },
       data: {
         marginConsentAcceptedAt: null,
         marginConsentAcceptedBy: null,
@@ -183,39 +190,44 @@ class MarginConsentService {
    * 
    * @throws BadRequestError si el Safety Lock está bloqueado
    */
-  async togglePlatformWithSafetyCheck(input: TogglePlatformInput): Promise<DeliveryPlatform> {
+  async togglePlatformWithSafetyCheck(tenantId: number, input: TogglePlatformInput): Promise<any> {
     const { platformId, enable, useFallbackPricing, userId } = input;
 
-    const platform = await prisma.deliveryPlatform.findUnique({
-      where: { id: platformId }
+    const config = await prisma.tenantPlatformConfig.findUnique({
+      where: {
+        tenantId_deliveryPlatformId: {
+            tenantId,
+            deliveryPlatformId: platformId
+        }
+      }
     });
 
-    if (!platform) {
-      throw new NotFoundError(`Plataforma ${platformId} no encontrada`);
+    if (!config) {
+      throw new NotFoundError(`Configuración de plataforma ${platformId} no encontrada`);
     }
 
     // Si está deshabilitando, no hay restricciones
     if (!enable) {
-      return prisma.deliveryPlatform.update({
-        where: { id: platformId },
-        data: { isEnabled: false }
+      return prisma.tenantPlatformConfig.update({
+        where: { id: config.id },
+        data: { isActive: false }
       });
     }
 
     // Si está habilitando CON fallback pricing, verificar Safety Lock
-    const willUseFallback = useFallbackPricing ?? platform.useFallbackPricing;
+    const willUseFallback = useFallbackPricing ?? config.useFallbackPricing;
     
-    if (willUseFallback && !platform.marginConsentAcceptedAt) {
+    if (willUseFallback && !config.marginConsentAcceptedAt) {
       throw new BadRequestError(
         MARGIN_CONSENT_REQUIRED_MESSAGE +
         ' Llame primero a POST /delivery/platforms/:id/accept-margin-consent'
       );
     }
 
-    return prisma.deliveryPlatform.update({
-      where: { id: platformId },
+    return prisma.tenantPlatformConfig.update({
+      where: { id: config.id },
       data: {
-        isEnabled: true,
+        isActive: true,
         useFallbackPricing: willUseFallback,
       }
     });
@@ -233,12 +245,13 @@ class MarginConsentService {
    */
   async getEffectivePrice(
     productId: number, 
-    platformId: number | null
+    platformId: number | null,
+    tenantId: number | null = null
   ): Promise<{ price: number; source: 'channel' | 'fallback' | 'base'; markup?: number }> {
     // Pedido LOCAL → precio base del producto
     if (platformId === null) {
-      const product = await prisma.product.findUnique({ 
-        where: { id: productId },
+      const product = await prisma.product.findFirst({
+        where: { id: productId, ...(tenantId ? { tenantId } : {}) },
         select: { price: true }
       });
       if (!product) throw new NotFoundError(`Producto ${productId} no encontrado`);
@@ -257,32 +270,49 @@ class MarginConsentService {
     }
 
     // No hay precio específico → Evaluar fallback
-    const [product, platform] = await Promise.all([
-      prisma.product.findUnique({ 
-        where: { id: productId },
+    // Necesitamos saber si la plataforma (para este tenant) tiene fallback activado
+    
+    // Si no hay tenantId (caso legacy o error), asumimos sin fallback
+    if (!tenantId) {
+        // Fallback a comportamiento seguro: precio base
+        const product = await prisma.product.findFirst({
+            where: { id: productId },
+            select: { price: true }
+          });
+        return { price: Number(product?.price || 0), source: 'base' };
+    }
+
+    const [product, config] = await Promise.all([
+      prisma.product.findFirst({
+        where: { id: productId, tenantId },
         select: { price: true }
       }),
-      prisma.deliveryPlatform.findUnique({
-        where: { id: platformId },
+      prisma.tenantPlatformConfig.findUnique({
+        where: {
+            tenantId_deliveryPlatformId: {
+                tenantId,
+                deliveryPlatformId: platformId
+            }
+        },
         select: { useFallbackPricing: true, defaultMarkup: true }
       })
     ]);
 
     if (!product) throw new NotFoundError(`Producto ${productId} no encontrado`);
-    if (!platform) throw new NotFoundError(`Plataforma ${platformId} no encontrada`);
-
+    // Si no hay config, actuamos como si no hubiera fallback
+    
     const basePrice = Number(product.price);
 
     // Si tiene fallback pricing activado, aplicar markup
-    if (platform.useFallbackPricing && platform.defaultMarkup) {
-      const markup = Number(platform.defaultMarkup) / 100;  // 25 → 0.25
+    if (config?.useFallbackPricing && config.defaultMarkup) {
+      const markup = Number(config.defaultMarkup) / 100;  // 25 → 0.25
       const adjustedPrice = basePrice * (1 + markup);
       // Redondear a 2 decimales para precisión financiera
       const finalPrice = Math.round(adjustedPrice * 100) / 100;
       return { 
         price: finalPrice, 
         source: 'fallback',
-        markup: Number(platform.defaultMarkup)
+        markup: Number(config.defaultMarkup)
       };
     }
 

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as OrderController from '../controllers/order.controller';
 import { authenticateToken as authenticate, requirePermission } from '../middleware/auth';
+import { idempotency } from '../middleware/idempotency';
 
 const router = Router();
 
@@ -10,7 +11,8 @@ router.use(authenticate);
 // Routes are relative to /api/v1/orders (where this router is mounted)
 
 // Create order - requires orders:create
-router.post('/', requirePermission('orders', 'create'), OrderController.createOrder);
+// P1-04: idempotency middleware prevents duplicate orders from network retries
+router.post('/', requirePermission('orders', 'create'), idempotency, OrderController.createOrder);
 
 // Read orders - requires orders:read
 router.get('/', requirePermission('orders', 'read'), OrderController.getOrders);
@@ -22,6 +24,10 @@ router.patch('/:id/status', requirePermission('orders', 'update'), OrderControll
 router.patch('/items/:itemId/status', requirePermission('orders', 'update'), OrderController.updateItemStatus);
 router.post('/:orderId/items', requirePermission('orders', 'update'), OrderController.addItemsToOrder);
 router.post('/:orderId/items/served', requirePermission('orders', 'update'), OrderController.markAllItemsServed);
+
+// Payment operations - requires orders:update
+// POST /api/v1/orders/:id/payments - Add payments to existing order
+router.post('/:id/payments', requirePermission('orders', 'update'), idempotency, OrderController.addPayments);
 
 // Void/Cancel items - requires orders:delete (manager action)
 router.delete('/items/:itemId/void', requirePermission('orders', 'delete'), OrderController.voidItem);

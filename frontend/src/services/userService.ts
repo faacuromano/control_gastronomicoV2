@@ -24,12 +24,14 @@ export const userService = {
     },
 
     create: async (data: Omit<User, 'id'> & { pin: string, roleId: number }): Promise<User> => {
-        const response = await api.post('/users', data);
+        const { pin, ...rest } = data;
+        const response = await api.post('/users', { ...rest, pinCode: pin });
         return response.data.data;
     },
 
     update: async (id: number, data: Partial<User> & { pin?: string, roleId?: number }): Promise<User> => {
-        const response = await api.put(`/users/${id}`, data);
+        const { pin, ...rest } = data;
+        const response = await api.put(`/users/${id}`, { ...rest, ...(pin !== undefined ? { pinCode: pin } : {}) });
         return response.data.data;
     },
 

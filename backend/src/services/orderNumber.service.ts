@@ -1,7 +1,7 @@
+
 import { Prisma } from '@prisma/client';
 import { v4 as uuidv4, validate as uuidValidate } from 'uuid';
 import { logger } from '../utils/logger';
-import { getBusinessDate } from '../utils/businessDate';
 
 // Utility for strict timeouts
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -12,65 +12,72 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 type TransactionClient = Prisma.TransactionClient;
 
 /**
- * Order Identifier - Expanded to include formatted string
+ * Order Identifier
  */
 export interface OrderIdentifier {
   id: string;           // UUID Primary Key
-  orderNumber: number;  // Sequential Numeric ID (for DB)
-  formattedOrderNumber: string; // Ordered String "YYYYMMDD-XXXX" (for Display)
-  businessDate: Date;   // Business Date
+  orderNumber: number;  // Sequential Numeric ID (1, 2, 3...)
+  formattedOrderNumber: string; // "YYYYMMDD-XXXX" (Optional Display)
+  businessDate: Date;   // Business Date Used
 }
 
 export class OrderNumberService {
-  // Configuración de reintentos
   private readonly MAX_RETRIES = 5;
   private readonly BASE_DELAY_MS = 50;
   
   /**
-   * Genera el siguiente Número de Orden de forma atómica y segura.
-   * IMPLEMENTACIÓN MEJORADA: UPSERT + RETRY LOOP + EXPONENTIAL BACKOFF
+   * Generates the next Order Number safely scoped to a Tenant and Business Day.
+   * 
+   * LOGIC:
+   * 1. Relies on `tenantId` and `businessDate` passed from OrderService.
+   * 2. Key Format: "TENANT_{id}_DATE_{YYYYMMDD}"
+   * 3. Uses UPSERT atomic operation.
+   * 
+   * @param tx Prisma Transaction Client
+   * @param tenantId Tenant ID
+   * @param businessDate Business Date (from Shift or System)
    */
-  async getNextOrderNumber(tx: TransactionClient): Promise<OrderIdentifier> {
+  async getNextOrderNumber(
+    tx: TransactionClient, 
+    tenantId: number, 
+    businessDate: Date
+  ): Promise<OrderIdentifier> {
     const startTime = Date.now();
     const operationId = uuidv4();
     const generatedUuid = uuidv4();
 
-    // 1. Obtener fecha comercial (Business Date) - Fuente de verdad
-    const businessDate = getBusinessDate();
-    
-    // 2. Construir llave de secuencia (YYYYMMDD)
-    // Se usa la fecha actual real para el "día" de la secuencia para asegurar unicidad diaria
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hour = String(now.getHours()).padStart(2, '0');
-    
-    // Formato Key: "YYYYMMDDHH" (Hourly Sharding for high concurrency)
-    const sequenceKey = `${year}${month}${day}${hour}`;
+    // 1. Format Date for Key: YYYYMMDD
+    const yyyy = businessDate.getFullYear();
+    const mm = String(businessDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(businessDate.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}${mm}${dd}`;
+
+    // 2. Construct Sequence Key
+    // FORMAT: TENANT_1_DATE_20260119
+    const sequenceKey = `TENANT_${tenantId}_DATE_${dateStr}`;
 
     let currentOrderNumber = 0;
     let attempts = 0;
     let successful = false;
 
-    // 3. Retry Loop para manejar Row Locks / Deadlocks
+    // 3. Retry Loop
     while (attempts < this.MAX_RETRIES && !successful) {
       attempts++;
       
       try {
-        // ATOMIC OPERATION: UPSERT
-        // MySQL ON DUPLICATE KEY UPDATE manejado por Prisma
         const sequence = await tx.orderSequence.upsert({
           where: {
-            sequenceKey: sequenceKey
-          },
-          update: {
-            currentValue: {
-              increment: 1
+            tenantId_sequenceKey: {
+              tenantId,
+              sequenceKey
             }
           },
+          update: {
+            currentValue: { increment: 1 }
+          },
           create: {
-            sequenceKey: sequenceKey,
+            tenantId,
+            sequenceKey,
             currentValue: 1
           }
         });
@@ -79,13 +86,11 @@ export class OrderNumberService {
         successful = true;
 
       } catch (error: any) {
-        // Analizar si es un error de concurrencia recuperable
-        const isDeadlock = error.code === 'P2034' || // Prisma Write Conflict
-                           (error.message && error.message.includes('deadlock')) || // MySQL Deadlock
-                           (error.meta && error.meta.code === '40001'); // SQLState Deadlock
+        const isRetryable = error.code === 'P2034' || 
+                           (error.message && error.message.includes('deadlock')) || 
+                           (error.meta && error.meta.code === '40001');
         
-        if (isDeadlock || attempts < this.MAX_RETRIES) {
-          // Exponential Backoff: 50ms, 100ms, 200ms...
+        if (isRetryable || attempts < this.MAX_RETRIES) {
           const delay = this.BASE_DELAY_MS * Math.pow(2, attempts - 1);
           logger.warn(`ORDER_SEQUENCE_RETRY`, {
              attempt: attempts,
@@ -95,29 +100,28 @@ export class OrderNumberService {
           });
           await sleep(delay);
         } else {
-          // Si fallaron todos los reintentos o es un error fatal
           logger.error('ORDER_SEQUENCE_FATAL_FAILURE', {
             operationId,
             error: error.message,
             attempts
           });
-          throw new Error(`CRITICAL: Failed to generate atomic order number after ${attempts} attempts.`);
+          throw new Error(`CRITICAL: Failed to generate order number for Tenant ${tenantId} after ${attempts} attempts.`);
         }
       }
     }
 
-    // 4. Formatear salida: "YYYYMMDD-XXXX"
+    // 4. Format Display String
     const paddedNumber = String(currentOrderNumber).padStart(4, '0');
-    const formattedOrderNumber = `${sequenceKey}-${paddedNumber}`;
+    const formattedOrderNumber = `${dateStr}-${paddedNumber}`;
 
-    // 5. Audit Log Minimalista
-    logger.info('ORDER_ID_GENERATED_ATOMIC', {
+    // 5. Audit
+    logger.info('ORDER_ID_GENERATED', {
       operationId,
       uuid: generatedUuid,
+      tenantId,
       sequenceKey,
       orderNumber: currentOrderNumber,
-      formatted: formattedOrderNumber,
-      latency: Date.now() - startTime
+      businessDate: businessDate.toISOString().split('T')[0]
     });
 
     return {
@@ -128,7 +132,6 @@ export class OrderNumberService {
     };
   }
 
-  // Helper para validar UUIDs (Legacy support)
   validateUuid(uuid: string): boolean {
     return uuidValidate(uuid);
   }

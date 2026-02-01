@@ -7,8 +7,9 @@ const CategorySchema = z.object({
     printerId: z.number().optional(),
 });
 
-export const getCategories = async () => {
+export const getCategories = async (tenantId: number) => {
     const categories = await prisma.category.findMany({
+        where: { tenantId },
         orderBy: { name: 'asc' },
         include: {
             products: {
@@ -28,9 +29,9 @@ export const getCategories = async () => {
     }));
 };
 
-export const getCategoryById = async (id: number) => {
-    const category = await prisma.category.findUnique({
-        where: { id },
+export const getCategoryById = async (id: number, tenantId: number) => {
+    const category = await prisma.category.findFirst({
+        where: { id, tenantId },
         include: { products: true }
     });
     if (!category) throw new NotFoundError('Category');
@@ -45,33 +46,35 @@ export const createCategory = async (data: any) => {
 
     return await prisma.category.create({
         data: {
+            tenantId: data.tenantId,
             name: validation.data.name,
             printerId: validation.data.printerId ?? null
         }
     });
 };
 
-export const updateCategory = async (id: number, data: any) => {
+export const updateCategory = async (id: number, tenantId: number, data: any) => {
     const validation = CategorySchema.partial().safeParse(data);
     if (!validation.success) {
         throw new ValidationError('Invalid data', validation.error.issues);
     }
 
-    const exists = await prisma.category.findUnique({ where: { id } });
+    const exists = await prisma.category.findFirst({ where: { id, tenantId } });
     if (!exists) throw new NotFoundError('Category');
 
     const updateData: any = { ...validation.data };
     if (validation.data.printerId === undefined) delete updateData.printerId;
 
-    return await prisma.category.update({
-        where: { id },
+    // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+    return await prisma.category.updateMany({
+        where: { id, tenantId },
         data: updateData
     });
 };
 
-export const deleteCategory = async (id: number) => {
-    const category = await prisma.category.findUnique({ 
-        where: { id }, 
+export const deleteCategory = async (id: number, tenantId: number) => {
+    const category = await prisma.category.findFirst({ 
+        where: { id, tenantId }, 
         include: { products: { select: { isActive: true } } } 
     });
 
@@ -87,11 +90,12 @@ export const deleteCategory = async (id: number) => {
     // If we have inactive products, delete them first to allow category deletion
     if (inactiveProducts.length > 0) {
         await prisma.product.deleteMany({
-            where: { categoryId: id }
+            where: { categoryId: id, tenantId }
         });
     }
 
-    return await prisma.category.delete({
-        where: { id }
+    // defense-in-depth: deleteMany ensures tenantId is in the WHERE clause
+    return await prisma.category.deleteMany({
+        where: { id, tenantId }
     });
 };

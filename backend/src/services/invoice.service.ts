@@ -9,40 +9,17 @@ interface GenerateInvoiceData {
 }
 
 /**
- * Generate unique invoice number
- * Format: YYYY-NNNNNNNN (Year + sequential number)
- */
-async function generateInvoiceNumber(): Promise<string> {
-    const year = new Date().getFullYear();
-    
-    // Get the last invoice number for this year
-    const lastInvoice = await prisma.invoice.findFirst({
-        where: {
-            invoiceNumber: {
-                startsWith: `${year}-`
-            }
-        },
-        orderBy: { invoiceNumber: 'desc' }
-    });
-
-    let nextNumber = 1;
-    if (lastInvoice) {
-        const lastNumber = parseInt(lastInvoice.invoiceNumber.split('-')[1] || '0');
-        nextNumber = lastNumber + 1;
-    }
-
-    return `${year}-${nextNumber.toString().padStart(8, '0')}`;
-}
-
-/**
  * Generate invoice for an order
+ *
+ * Uses transaction with retry logic to prevent invoice number race conditions.
+ * The invoice number is generated inside the transaction to ensure atomicity.
  */
-export async function generateInvoice(data: GenerateInvoiceData) {
+export async function generateInvoice(tenantId: number, data: GenerateInvoiceData) {
     const { orderId, type = 'RECEIPT', clientName, clientTaxId } = data;
 
-    // Check if order exists and is paid
-    const order = await prisma.order.findUnique({
-        where: { id: orderId },
+    // Validate order BEFORE transaction (read-only, safe outside)
+    const order = await prisma.order.findFirst({
+        where: { id: orderId, tenantId },
         include: { invoice: true, client: true }
     });
 
@@ -60,46 +37,94 @@ export async function generateInvoice(data: GenerateInvoiceData) {
         throw new ValidationError('Cannot generate invoice for unpaid order');
     }
 
-    // Generate invoice number
-    const invoiceNumber = await generateInvoiceNumber();
-
     // Use client data from order if not provided
     const finalClientName = clientName || order.client?.name || null;
     const finalClientTaxId = clientTaxId || order.client?.taxId || null;
 
-    // Create invoice
-    const invoice = await prisma.invoice.create({
-        data: {
-            orderId,
-            invoiceNumber,
-            type,
-            clientName: finalClientName,
-            clientTaxId: finalClientTaxId,
-            subtotal: order.subtotal,
-            tax: 0, // TODO: Calculate based on InvoiceType
-            total: order.total
-        },
-        include: {
-            order: {
-                include: {
-                    items: {
-                        include: { product: true }
-                    },
-                    payments: true
-                }
-            }
-        }
+    // Calculate tax based on tenant config
+    const tenantConfig = await prisma.tenantConfig.findFirst({
+        where: { tenantId },
+        select: { defaultTaxRate: true }
     });
+    const taxRate = Number(tenantConfig?.defaultTaxRate || 0);
+    const subtotal = Number(order.subtotal);
+    // Tax is included in total: subtotal = total / (1 + rate), tax = total - subtotal
+    // If rate is 0, tax is 0
+    const tax = taxRate > 0
+        ? Math.round((subtotal - subtotal / (1 + taxRate / 100)) * 100) / 100
+        : 0;
 
-    return invoice;
+    // Retry loop for race condition on invoice number
+    // The @@unique([tenantId, invoiceNumber]) constraint will cause P2002 errors on collision
+    const MAX_RETRIES = 3;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        try {
+            return await prisma.$transaction(async (tx) => {
+                // Generate invoice number INSIDE transaction for atomicity
+                // Format: YYYY-NNNNNNNN (Year + sequential number)
+                const year = new Date().getFullYear();
+
+                const lastInvoice = await tx.invoice.findFirst({
+                    where: {
+                        tenantId,
+                        invoiceNumber: {
+                            startsWith: `${year}-`
+                        }
+                    },
+                    orderBy: { invoiceNumber: 'desc' }
+                });
+
+                let nextNumber = 1;
+                if (lastInvoice) {
+                    const lastNumber = parseInt(lastInvoice.invoiceNumber.split('-')[1] || '0');
+                    nextNumber = lastNumber + 1;
+                }
+
+                const invoiceNumber = `${year}-${nextNumber.toString().padStart(8, '0')}`;
+
+                // Create invoice with generated number
+                return await tx.invoice.create({
+                    data: {
+                        tenantId,
+                        orderId,
+                        invoiceNumber,
+                        type,
+                        clientName: finalClientName,
+                        clientTaxId: finalClientTaxId,
+                        subtotal: order.subtotal,
+                        tax,
+                        total: order.total
+                    },
+                    include: {
+                        order: {
+                            include: {
+                                items: {
+                                    include: { product: true }
+                                },
+                                payments: true
+                            }
+                        }
+                    }
+                });
+            });
+        } catch (error: any) {
+            // Retry on unique constraint violation (P2002)
+            if (error.code === 'P2002' && attempt < MAX_RETRIES - 1) {
+                continue;
+            }
+            throw error;
+        }
+    }
+
+    throw new Error('Failed to generate invoice after maximum retries');
 }
 
 /**
  * Get invoice by order ID
  */
-export async function getByOrderId(orderId: number) {
-    const invoice = await prisma.invoice.findUnique({
-        where: { orderId },
+export async function getByOrderId(orderId: number, tenantId: number) {
+    const invoice = await prisma.invoice.findFirst({
+        where: { orderId, tenantId },
         include: {
             order: {
                 include: {
@@ -123,9 +148,10 @@ export async function getByOrderId(orderId: number) {
 /**
  * Get invoice by invoice number
  */
-export async function getByInvoiceNumber(invoiceNumber: string) {
-    const invoice = await prisma.invoice.findUnique({
-        where: { invoiceNumber },
+export async function getByInvoiceNumber(invoiceNumber: string, tenantId: number) {
+    // FIX: Invoice number is unique per Tenant. Use findFirst.
+    const invoice = await prisma.invoice.findFirst({
+        where: { invoiceNumber, tenantId },
         include: {
             order: {
                 include: {
@@ -155,10 +181,10 @@ interface GetAllFilters {
 /**
  * Get all invoices with optional filters
  */
-export async function getAll(filters: GetAllFilters = {}) {
+export async function getAll(tenantId: number, filters: GetAllFilters = {}) {
     const { type, startDate, endDate } = filters;
 
-    const where: any = {};
+    const where: any = { tenantId };
 
     if (type) {
         where.type = type;
@@ -181,7 +207,8 @@ export async function getAll(filters: GetAllFilters = {}) {
                 }
             }
         },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
+        take: 200
     });
 
     return invoices;

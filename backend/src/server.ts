@@ -32,4 +32,49 @@ httpServer.listen(Number(PORT), '0.0.0.0', () => {
     logger.info('WebSocket server initialized');
 });
 
+// =============================================================================
+// GRACEFUL SHUTDOWN
+// =============================================================================
+let isShuttingDown = false;
 
+const shutdown = async (signal: string) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    logger.info('Received shutdown signal, starting graceful shutdown...', { signal });
+
+    // 1. Stop accepting new connections
+    httpServer.close(() => {
+        logger.info('HTTP server closed');
+    });
+
+    // 2. Close WebSocket connections
+    try {
+        const { getIO } = await import('./lib/socket');
+        const io = getIO();
+        if (io) {
+            io.close();
+            logger.info('WebSocket server closed');
+        }
+    } catch { /* Socket.IO may not be initialized */ }
+
+    // 3. Close BullMQ workers if running
+    try {
+        const { bullMQService } = await import('./lib/queue/BullMQService');
+        await bullMQService.close();
+        logger.info('BullMQ workers closed');
+    } catch { /* BullMQ may not be initialized */ }
+
+    // 4. Disconnect Prisma
+    try {
+        const { prisma } = await import('./lib/prisma');
+        await prisma.$disconnect();
+        logger.info('Database connections closed');
+    } catch { /* Prisma may not be initialized */ }
+
+    logger.info('Graceful shutdown complete');
+    process.exit(0);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

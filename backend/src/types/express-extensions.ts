@@ -34,7 +34,7 @@ export interface JwtPayload {
     /** RBAC permissions map */
     permissions?: Permissions;
     /** Tenant ID for multi-tenant support */
-    tenantId?: number;
+    tenantId: number;
     /** JWT issued at timestamp */
     iat?: number;
     /** JWT expiration timestamp */

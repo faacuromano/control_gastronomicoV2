@@ -87,13 +87,39 @@ const webhookProcessor: JobHandler<WebhookJobData> = async (job) => {
         await processNewOrder(processedWebhook.order!, adapter, metadata.requestId);
         break;
 
-      case WebhookEventType.ORDER_CANCELLED:
-        await processCancelledOrder(externalOrderId, platform);
+      case WebhookEventType.ORDER_CANCELLED: {
+        // Resolve tenantId from the existing order (it was set when the order was created)
+        const existingOrder = await prisma.order.findFirst({
+          where: { externalId: externalOrderId },
+          select: { tenantId: true },
+        });
+        if (!existingOrder) {
+          logger.warn('Cannot cancel order - not found by externalId', {
+            externalOrderId,
+            platform,
+          });
+          return;
+        }
+        await processCancelledOrder(externalOrderId, platform, existingOrder.tenantId);
         break;
+      }
 
-      case WebhookEventType.STATUS_UPDATE:
-        await processStatusUpdate(processedWebhook.order!, platform);
+      case WebhookEventType.STATUS_UPDATE: {
+        // Resolve tenantId from the existing order (it was set when the order was created)
+        const existingOrder = await prisma.order.findFirst({
+          where: { externalId: processedWebhook.order!.externalId },
+          select: { tenantId: true },
+        });
+        if (!existingOrder) {
+          logger.warn('Cannot update order status - not found by externalId', {
+            externalId: processedWebhook.order!.externalId,
+            platform,
+          });
+          return;
+        }
+        await processStatusUpdate(processedWebhook.order!, platform, existingOrder.tenantId);
         break;
+      }
 
       default:
         logger.warn('Unknown webhook event type', { eventType, platform });
@@ -145,8 +171,35 @@ async function processNewOrder(
     throw new Error(`Platform ${platform} not found in database`);
   }
 
-  // 2. Mapear productos externos a internos (fuera de transacción - solo lectura)
-  const mappedItems = await mapExternalItemsToInternal(items, deliveryPlatform.id);
+  // 2. Resolver Tenant (Multi-Tenancy)
+  // Intentamos obtener el tenantId a partir del storeId (restaurant.id en PedidosYa)
+  let tenantId: number | null = null;
+
+  if (normalizedOrder.storeId) {
+    const tenantConfig = await prisma.tenantPlatformConfig.findFirst({
+      where: {
+        deliveryPlatformId: deliveryPlatform.id,
+        storeId: normalizedOrder.storeId,
+      },
+      select: { tenantId: true },
+    });
+
+    if (tenantConfig) {
+      tenantId = tenantConfig.tenantId;
+    } else {
+      logger.warn('Tenant not found for storeId, defaulting to NULL (legacy)', {
+        storeId: normalizedOrder.storeId,
+        platform: normalizedOrder.platform,
+      });
+    }
+  }
+
+  if (!tenantId) {
+    throw new Error(`Cannot create delivery order: tenantId could not be resolved for storeId=${normalizedOrder.storeId}, platform=${normalizedOrder.platform}`);
+  }
+
+  // 2.1. Mapear productos externos a internos (fuera de transacción - solo lectura)
+  const mappedItems = await mapExternalItemsToInternal(items, deliveryPlatform.id, tenantId);
 
   // 3. Calcular totales usando precios del canal
   let subtotal = 0;
@@ -166,10 +219,10 @@ async function processNewOrder(
       continue;
     }
 
-    // Obtener precio efectivo del canal
     const { price } = await marginConsentService.getEffectivePrice(
       mappedItem.internalProductId,
-      deliveryPlatform.id
+      deliveryPlatform.id,
+      tenantId
     );
 
     const itemTotal = price * mappedItem.quantity;
@@ -189,7 +242,7 @@ async function processNewOrder(
   // FIX RC-006: Stock updates now inside transaction for consistency
   let createdOrder;
   let stockSyncFailed = false;
-  
+
   try {
     createdOrder = await prisma.$transaction(async (tx) => {
       // FIX P1-001: Use date-based sharding for order numbers
@@ -207,16 +260,28 @@ async function processNewOrder(
       const sequenceKey = `${year}${month}${day}`;
       
       // Upsert: create today's sequence or increment
+      // Upsert: create today's sequence or increment
+      // FIX P1-001: Must use compound unique key [tenantId, sequenceKey]
       const sequence = await tx.orderSequence.upsert({
-        where: { sequenceKey },
+        where: {
+          tenantId_sequenceKey: {
+            tenantId,
+            sequenceKey,
+          },
+        },
         update: { currentValue: { increment: 1 } },
-        create: { sequenceKey, currentValue: 1 },
+        create: {
+          tenantId: tenantId,
+          sequenceKey, 
+          currentValue: 1 
+        },
       });
       const orderNumber = sequence.currentValue;
 
       // Create order - if externalId already exists, P2002 is thrown
       const order = await tx.order.create({
         data: {
+          tenantId, // Start tracking tenant
           orderNumber,
           channel: 'DELIVERY_APP',
           externalId,
@@ -237,6 +302,7 @@ async function processNewOrder(
           businessDate: new Date(),
           items: {
             create: orderItems.map((item) => ({
+              tenantId,
               productId: item.productId,
               quantity: item.quantity,
               unitPrice: item.unitPrice,
@@ -263,13 +329,14 @@ async function processNewOrder(
         for (const item of orderItems) {
           // Get product ingredients
           const productIngredients = await tx.productIngredient.findMany({
-            where: { productId: item.productId }
+            where: { productId: item.productId, tenantId: tenantId! }
           });
           
           for (const pi of productIngredients) {
             try {
               await stockService.register(
                 pi.ingredientId,
+                tenantId!,
                 StockMoveType.SALE,
                 Number(pi.quantity) * item.quantity,
                 `Delivery Order #${order.orderNumber} (${platform})`,
@@ -288,7 +355,7 @@ async function processNewOrder(
             }
           }
         }
-      });
+      }, tenantId!);
 
       return order;
     });
@@ -301,7 +368,7 @@ async function processNewOrder(
     ) {
       // Duplicate order - this is expected for webhook retries
       const existingOrder = await prisma.order.findFirst({
-        where: { externalId },
+        where: { externalId, tenantId },
       });
       logger.warn('Duplicate order detected via constraint, skipping', {
         externalId,
@@ -399,7 +466,8 @@ async function processNewOrder(
  */
 async function processCancelledOrder(
   externalOrderId: string,
-  platform: DeliveryPlatformCode
+  platform: DeliveryPlatformCode,
+  tenantId: number
 ): Promise<void> {
   try {
     const result = await withPessimisticLock(
@@ -410,9 +478,10 @@ async function processCancelledOrder(
           orderNumber: number;
           status: string;
         }>>`
-          SELECT id, orderNumber, status 
-          FROM \`Order\` 
+          SELECT id, orderNumber, status
+          FROM \`Order\`
           WHERE externalId = ${externalOrderId}
+            AND tenantId = ${tenantId}
           FOR UPDATE
         `;
 
@@ -421,6 +490,7 @@ async function processCancelledOrder(
           logger.warn('Cannot cancel order - not found', {
             externalId: externalOrderId,
             platform,
+            tenantId,
           });
           return null;
         }
@@ -474,6 +544,7 @@ async function processCancelledOrder(
       id: result.id,
       orderNumber: result.orderNumber,
       status: 'CANCELLED',
+      tenantId,
     });
 
   } catch (error) {
@@ -513,7 +584,8 @@ async function processCancelledOrder(
  */
 async function processStatusUpdate(
   normalizedOrder: NormalizedOrder,
-  platform: DeliveryPlatformCode
+  platform: DeliveryPlatformCode,
+  tenantId: number
 ): Promise<void> {
   const { externalId, status } = normalizedOrder;
   const internalStatus = mapNormalizedStatusToInternal(status);
@@ -532,9 +604,10 @@ async function processStatusUpdate(
           orderNumber: number;
           status: string;
         }>>`
-          SELECT id, orderNumber, status 
-          FROM \`Order\` 
+          SELECT id, orderNumber, status
+          FROM \`Order\`
           WHERE externalId = ${externalId}
+            AND tenantId = ${tenantId}
           FOR UPDATE
         `;
 
@@ -543,6 +616,7 @@ async function processStatusUpdate(
           logger.warn('Cannot update order status - not found', {
             externalId,
             platform,
+            tenantId,
           });
           return null;
         }
@@ -638,7 +712,8 @@ async function processStatusUpdate(
  */
 async function mapExternalItemsToInternal(
   items: NormalizedOrderItem[],
-  platformId: number
+  platformId: number,
+  tenantId: number
 ): Promise<Array<{
   externalSku: string;
   internalProductId: number | null;
@@ -658,6 +733,7 @@ async function mapExternalItemsToInternal(
     where: {
       externalSku: { in: skus },
       deliveryPlatformId: platformId,
+      product: { tenantId },
     },
     select: {
       externalSku: true,

@@ -8,14 +8,29 @@ const prisma = new PrismaClient();
 async function main() {
   console.log('🌱 Starting Seeding...');
 
+  // 0. Ensure Default Tenant Exists
+  const tenantId = 1;
+  await prisma.tenant.upsert({
+    where: { id: tenantId },
+    update: {},
+    create: {
+      id: tenantId,
+      name: 'Default Tenant',
+      code: 'default'
+    }
+  });
+  console.log('✅ Default Tenant');
+
   // 1. Tenant Config
   await prisma.tenantConfig.upsert({
     where: { id: 1 },
     update: {
+      tenantId,
       enableStock: true,
       enableDelivery: true, // ENABLED for testing
     },
     create: {
+      tenantId,
       businessName: 'Pentium Bar',
       enableStock: true,
       enableDelivery: true, // ENABLED for testing
@@ -80,9 +95,14 @@ async function main() {
 
   for (const r of roles) {
     await prisma.role.upsert({
-      where: { name: r.name },
+      where: { 
+        tenantId_name: {
+            tenantId,
+            name: r.name 
+        }
+      },
       update: { permissions: r.permissions }, // Force update permissions
-      create: r,
+      create: { ...r, tenantId },
     });
   }
   console.log('✅ Roles');
@@ -98,19 +118,31 @@ async function main() {
   ];
 
   for (const u of users) {
-    const role = await prisma.role.findUnique({ where: { name: u.role } });
+    // FIX: Find first role by name within tenant (or safely findFirst)
+    const role = await prisma.role.findFirst({ 
+        where: { 
+            name: u.role,
+            tenantId
+        } 
+    });
     if (!role) continue;
 
     // SECURITY: Hash PIN before storing
     const pinHash = await bcrypt.hash(u.pin, 10);
 
     await prisma.user.upsert({
-      where: { email: u.email },
+      where: {
+        tenantId_email: {
+            tenantId,
+            email: u.email
+        }
+      },
       update: { pinHash, roleId: role.id },
       create: {
+        tenantId,
         name: u.name,
         email: u.email,
-        pinHash, // SECURITY: Now stored as bcrypt hash
+        pinHash,
         passwordHash,
         roleId: role.id,
         isActive: true,
@@ -129,25 +161,27 @@ async function main() {
 
   const categoriesMap = new Map();
   for (const c of categoriesData) {
-    const cat = await prisma.category.upsert({
-      where: { id: -1 }, // Hack to force create or find by unique if we had one (Name is not unique in schema?)
-      // Actually schema doesn't make name unique for Category. Let's findFirst
-      update: {},
-      create: { name: c.name },
+    // FIX: Category name is not unique globally, and upsert needs unique.
+    // Use findFirst + create/update logic manually or ensure id=-1 strategy works with tenantId? 
+    // Easier: findFirst -> update OR create.
+    
+    let cat = await prisma.category.findFirst({ 
+        where: { name: c.name, tenantId } 
     });
-    // Since upsert needs unique, and name isn't unique, we should check existence
-    const existing = await prisma.category.findFirst({ where: { name: c.name } });
-    if (existing) {
-        categoriesMap.set(c.name, existing.id);
+
+    if (cat) {
+        // Update if needed
+        categoriesMap.set(c.name, cat.id);
     } else {
-        const newCat = await prisma.category.create({ data: { name: c.name }});
-        categoriesMap.set(c.name, newCat.id);
+        cat = await prisma.category.create({ 
+            data: { name: c.name, tenantId }
+        });
+        categoriesMap.set(c.name, cat.id);
     }
   }
   console.log('✅ Categories');
 
   // 5. Ingredients (Inventory)
-  // Clean start for simple seeding logic if needed, but upsert is safer.
   const ingredientsData = [
     // Burger ingredients
     { name: 'Pan de Burger', unit: 'u', cost: 0.50, stock: 100 },
@@ -170,11 +204,12 @@ async function main() {
 
   for (const ing of ingredientsData) {
     // Find first by name to avoid duplicates if name not unique constraint
-    let dbIng = await prisma.ingredient.findFirst({ where: { name: ing.name } });
+    let dbIng = await prisma.ingredient.findFirst({ where: { name: ing.name, tenantId } });
     
     if (!dbIng) {
         dbIng = await prisma.ingredient.create({
             data: {
+                tenantId,
                 name: ing.name,
                 unit: ing.unit,
                 cost: ing.cost,
@@ -185,6 +220,7 @@ async function main() {
         // Initial Stock Movement (PURCHASE)
         await prisma.stockMovement.create({
             data: {
+                tenantId,
                 ingredientId: dbIng.id,
                 type: 'PURCHASE',
                 quantity: ing.stock,
@@ -264,10 +300,11 @@ async function main() {
       const catId = categoriesMap.get(p.cat);
       if (!catId) continue;
 
-      let product = await prisma.product.findFirst({ where: { name: p.name } });
+      let product = await prisma.product.findFirst({ where: { name: p.name, tenantId } });
       if (!product) {
           product = await prisma.product.create({
               data: {
+                  tenantId,
                   name: p.name,
                   price: p.price,
                   categoryId: catId,
@@ -284,6 +321,7 @@ async function main() {
                   if (ingId) {
                       await prisma.productIngredient.create({
                           data: {
+                              tenantId,
                               productId: product.id,
                               ingredientId: ingId,
                               quantity: item.qty
@@ -337,8 +375,8 @@ async function main() {
 
   for (const group of modifierGroupsData) {
       // Check if group exists
-      const existingGroup = await prisma.modifierGroup.findFirst({ 
-          where: { name: group.name },
+      const existingGroup = await prisma.modifierGroup.findFirst({
+          where: { name: group.name, tenantId },
           include: { options: true }
       });
        
@@ -346,11 +384,13 @@ async function main() {
           // Create new group with options
           const newGroup = await prisma.modifierGroup.create({
             data: {
+                tenantId,
                 name: group.name,
                 minSelection: group.min,
                 maxSelection: group.max,
                 options: {
                     create: group.options.map(o => ({
+                        tenantId,
                         name: o.name,
                         priceOverlay: o.price
                     }))
@@ -365,9 +405,9 @@ async function main() {
   }
 
   // Link Modifiers to Products
-  const burgerProduct = await prisma.product.findFirst({ where: { name: 'Burger Clásica' } });
-  const burgerBacon = await prisma.product.findFirst({ where: { name: 'Burger Bacon' } });
-  const cocaCola = await prisma.product.findFirst({ where: { name: 'Coca Cola' } });
+  const burgerProduct = await prisma.product.findFirst({ where: { name: 'Burger Clásica', tenantId } });
+  const burgerBacon = await prisma.product.findFirst({ where: { name: 'Burger Bacon', tenantId } });
+  const cocaCola = await prisma.product.findFirst({ where: { name: 'Coca Cola', tenantId } });
 
   const coccionGroup = modGroupsMap.get('Punto de Cocción');
   const extrasGroup = modGroupsMap.get('Extras Burger');
@@ -376,8 +416,8 @@ async function main() {
   if (burgerProduct && coccionGroup) {
       await prisma.productModifierGroup.createMany({
           data: [
-              { productId: burgerProduct.id, modifierGroupId: coccionGroup.id },
-              { productId: burgerProduct.id, modifierGroupId: extrasGroup.id }
+              { tenantId, productId: burgerProduct.id, modifierGroupId: coccionGroup.id },
+              { tenantId, productId: burgerProduct.id, modifierGroupId: extrasGroup.id }
           ],
           skipDuplicates: true
       });
@@ -386,7 +426,7 @@ async function main() {
   if (burgerBacon && coccionGroup) {
       await prisma.productModifierGroup.createMany({
           data: [
-               { productId: burgerBacon.id, modifierGroupId: coccionGroup.id }
+               { tenantId, productId: burgerBacon.id, modifierGroupId: coccionGroup.id }
           ],
           skipDuplicates: true
       });
@@ -395,7 +435,7 @@ async function main() {
   if (cocaCola && iceGroup) {
       await prisma.productModifierGroup.createMany({
           data: [
-               { productId: cocaCola.id, modifierGroupId: iceGroup.id }
+               { tenantId, productId: cocaCola.id, modifierGroupId: iceGroup.id }
           ],
           skipDuplicates: true
       });
@@ -406,8 +446,8 @@ async function main() {
   // 7. Areas & Tables
   const mainArea = await prisma.area.upsert({
     where: { id: 1 },
-    update: { name: 'Salón Principal' },
-    create: { name: 'Salón Principal' }
+    update: { name: 'Salón Principal', tenantId },
+    create: { name: 'Salón Principal', tenantId }
   });
 
   const tablesData = [
@@ -419,23 +459,26 @@ async function main() {
   ];
 
   for (const t of tablesData) {
-    const existing = await prisma.table.findFirst({ where: { name: t.name, areaId: t.areaId } });
+    const existing = await prisma.table.findFirst({ 
+        where: { name: t.name, areaId: t.areaId, tenantId } 
+    });
     if (!existing) {
-      await prisma.table.create({ data: t });
+      await prisma.table.create({ data: { ...t, tenantId } });
     }
   }
   console.log('✅ Areas & Tables');
 
   // 8. Open Cash Shift for testing
-  const waiterUser = await prisma.user.findFirst({ where: { email: 'mozo@pentium.com' } });
+  const waiterUser = await prisma.user.findFirst({ where: { email: 'mozo@pentium.com', tenantId } });
   if (waiterUser) {
     const existingShift = await prisma.cashShift.findFirst({
-      where: { userId: waiterUser.id, endTime: null }
+      where: { userId: waiterUser.id, endTime: null, tenantId }
     });
 
     if (!existingShift) {
       await prisma.cashShift.create({
         data: {
+          tenantId,
           userId: waiterUser.id,
           startAmount: 1000,
           businessDate: new Date(),
@@ -447,8 +490,11 @@ async function main() {
   }
 
   // 9. Test Orders for KDS
-  const tables = await prisma.table.findMany();
-  const products = await prisma.product.findMany({ include: { ingredients: true } });
+  const tables = await prisma.table.findMany({ where: { tenantId } });
+  const products = await prisma.product.findMany({ 
+      where: { tenantId },
+      include: { ingredients: true } 
+  });
   
   if (waiterUser && tables.length >= 3 && products.length > 0) {
     const table1 = tables[0]!;
@@ -462,6 +508,7 @@ async function main() {
     // Order 1: Pending (New order just arrived)
     await prisma.order.create({
       data: {
+        tenantId,
         orderNumber: 9001,
         channel: 'POS',
         status: 'CONFIRMED',
@@ -473,11 +520,12 @@ async function main() {
         serverId: waiterUser.id,
         items: {
           create: burgerProduct ? [
-            { 
+            {
+              tenantId,
               product: { connect: { id: burgerProduct.id } },
-              quantity: 2, 
-              unitPrice: Number(burgerProduct.price), 
-              status: 'PENDING' 
+              quantity: 2,
+              unitPrice: Number(burgerProduct.price),
+              status: 'PENDING'
             }
           ] : []
         }
@@ -487,6 +535,7 @@ async function main() {
     // Order 2: In Preparation (Cooking)
     await prisma.order.create({
       data: {
+        tenantId,
         orderNumber: 9002,
         channel: 'POS',
         status: 'IN_PREPARATION',
@@ -498,17 +547,19 @@ async function main() {
         serverId: waiterUser.id,
         items: {
           create: [
-            ...(pizzaProduct ? [{ 
+            ...(pizzaProduct ? [{
+              tenantId,
               product: { connect: { id: pizzaProduct.id } },
-              quantity: 1, 
-              unitPrice: Number(pizzaProduct.price), 
-              status: 'COOKING' as const 
+              quantity: 1,
+              unitPrice: Number(pizzaProduct.price),
+              status: 'COOKING' as const
             }] : []),
-            ...(drinkProduct ? [{ 
+            ...(drinkProduct ? [{
+              tenantId,
               product: { connect: { id: drinkProduct.id } },
-              quantity: 2, 
-              unitPrice: Number(drinkProduct.price), 
-              status: 'READY' as const 
+              quantity: 2,
+              unitPrice: Number(drinkProduct.price),
+              status: 'READY' as const
             }] : [])
           ]
         }
@@ -518,6 +569,7 @@ async function main() {
     // Order 3: Ready (Completed)
     await prisma.order.create({
       data: {
+        tenantId,
         orderNumber: 9003,
         channel: 'POS',
         status: 'PREPARED',
@@ -529,17 +581,19 @@ async function main() {
         serverId: waiterUser.id,
         items: {
           create: [
-            ...(friesProduct ? [{ 
+            ...(friesProduct ? [{
+              tenantId,
               product: { connect: { id: friesProduct.id } },
-              quantity: 1, 
-              unitPrice: Number(friesProduct.price), 
-              status: 'READY' as const 
+              quantity: 1,
+              unitPrice: Number(friesProduct.price),
+              status: 'READY' as const
             }] : []),
-            ...(burgerProduct ? [{ 
+            ...(burgerProduct ? [{
+              tenantId,
               product: { connect: { id: burgerProduct.id } },
-              quantity: 1, 
-              unitPrice: Number(burgerProduct.price), 
-              status: 'READY' as const 
+              quantity: 1,
+              unitPrice: Number(burgerProduct.price),
+              status: 'READY' as const
             }] : [])
           ]
         }
@@ -549,20 +603,23 @@ async function main() {
     console.log('✅ Test Orders for KDS');
   }
 
-  // 10. Initialize OrderSequence for hourly sharding
-  // Format: YYYYMMDDHH (e.g., 2026012001 for 2026-01-20 at 1 AM)
+  // 10. Initialize OrderSequence for robust numbering
+  // Format: TENANT_1_DATE_YYYYMMDD
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hour = String(now.getHours()).padStart(2, '0');
-  const sequenceKey = `${year}${month}${day}${hour}`;
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  const sequenceKey = `TENANT_${tenantId}_DATE_${yyyy}${mm}${dd}`;
   
   // Start from 9004 since we created test orders 9001-9003
-  const existingSeq = await prisma.orderSequence.findUnique({ where: { sequenceKey } });
+  const existingSeq = await prisma.orderSequence.findFirst({ 
+      where: { sequenceKey, tenantId } 
+  });
+  
   if (!existingSeq) {
     await prisma.orderSequence.create({
       data: {
+        tenantId,
         sequenceKey,
         currentValue: 9003, // Next order will be 9004
       }
