@@ -1,6 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { ModifierGroup, ModifierOption } from '@prisma/client';
-import { NotFoundError, ConflictError } from '../utils/errors';
+import { NotFoundError, ConflictError, ValidationError } from '../utils/errors';
 
 export interface CreateGroupInput {
   name: string;
@@ -30,19 +30,33 @@ export interface UpdateOptionInput {
 }
 
 export const modifierService = {
-  getAllGroups: async (tenantId: number) => {
-    return prisma.modifierGroup.findMany({
-      where: { tenantId },
-      include: {
-        options: {
-            include: {
-                ingredient: true
-            }
+  getAllGroups: async (tenantId: number, page: number = 1, limit: number = 50) => {
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      prisma.modifierGroup.findMany({
+        where: { tenantId },
+        include: {
+          options: {
+              include: {
+                  ingredient: true
+              }
+          },
+          products: true
         },
-        products: true
-      },
-      orderBy: { name: 'asc' }
-    });
+        orderBy: { name: 'asc' },
+        skip,
+        take: limit
+      }),
+      prisma.modifierGroup.count({ where: { tenantId } })
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit
+    };
   },
 
   getGroupById: async (id: number, tenantId: number) => {
@@ -111,6 +125,10 @@ export const modifierService = {
     const group = await prisma.modifierGroup.findFirst({ where: { id: groupId, tenantId } });
     if (!group) throw new NotFoundError('Modifier Group');
 
+    if (data.priceOverlay !== undefined && data.priceOverlay < 0) {
+      throw new ValidationError('Modifier price cannot be negative');
+    }
+
     return prisma.modifierOption.create({
       data: {
         tenantId,
@@ -132,6 +150,10 @@ export const modifierService = {
 
     if (!option) {
         throw new NotFoundError('Modifier Option');
+    }
+
+    if (data.priceOverlay !== undefined && data.priceOverlay < 0) {
+      throw new ValidationError('Modifier price cannot be negative');
     }
 
     // defense-in-depth: updateMany ensures tenantId is in the WHERE clause

@@ -49,18 +49,35 @@ export class OrderTransferService {
         }
         
         const result = await prisma.$transaction(async (tx) => {
-            // 1. Get source table and its current order (open/confirmed)
-            const fromTable = await tx.table.findFirst({
-                where: { id: fromTableId, tenantId },
-                include: {
-                    orders: {
-                        where: { status: { in: ['OPEN', 'CONFIRMED'] } },
-                        take: 1,
-                        orderBy: { createdAt: 'desc' }
-                    }
+            // FIX DB-003: Lock tables in ascending ID order to prevent deadlocks
+            // If two concurrent transfers (A->B and B->A) both lock in the same order,
+            // they serialize instead of deadlocking.
+            const [firstLockId, secondLockId] = fromTableId < toTableId
+                ? [fromTableId, toTableId]
+                : [toTableId, fromTableId];
+
+            const tableInclude = {
+                orders: {
+                    where: { status: { in: ['OPEN' as const, 'CONFIRMED' as const] } },
+                    take: 1,
+                    orderBy: { createdAt: 'desc' as const }
                 }
+            };
+
+            const firstTable = await tx.table.findFirst({
+                where: { id: firstLockId, tenantId },
+                include: tableInclude
             });
-            
+            const secondTable = await tx.table.findFirst({
+                where: { id: secondLockId, tenantId },
+                include: tableInclude
+            });
+
+            // Map back to source/target
+            const fromTable = fromTableId === firstLockId ? firstTable : secondTable;
+            const toTable = fromTableId === firstLockId ? secondTable : firstTable;
+
+            // 1. Validate source table
             if (!fromTable) {
                 throw new NotFoundError('Source table');
             }
@@ -69,7 +86,7 @@ export class OrderTransferService {
             if (!sourceOrder) {
                 throw new ValidationError('Source table has no open order');
             }
-            
+
             // 2. Validate items belong to source order
             const items = await tx.orderItem.findMany({
                 where: {
@@ -79,22 +96,10 @@ export class OrderTransferService {
                 },
                 include: { modifiers: true }
             });
-            
+
             if (items.length !== itemIds.length) {
                 throw new ValidationError('Some items do not belong to the source order');
             }
-            
-            // 3. Get or create target order
-            const toTable = await tx.table.findFirst({
-                where: { id: toTableId, tenantId },
-                include: {
-                    orders: {
-                        where: { status: { in: ['OPEN', 'CONFIRMED'] } },
-                        take: 1,
-                        orderBy: { createdAt: 'desc' }
-                    }
-                }
-            });
             
             if (!toTable) {
                 throw new NotFoundError('Target table');

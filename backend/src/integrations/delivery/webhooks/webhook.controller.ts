@@ -161,8 +161,19 @@ class WebhookController {
         durationMs: duration,
       });
 
-      // FIX ES-003: Return 500 so platform will retry the webhook
-      // Previously returned 200 which caused silent order loss
+      // Differentiate client errors (400 - don't retry) from server errors (500 - retry)
+      const isClientError = error instanceof z.ZodError
+        || (error instanceof Error && error.message.includes('Invalid'))
+        || (error instanceof Error && error.message.includes('not found'));
+
+      if (isClientError) {
+        return res.status(400).json({
+          error: 'INVALID_PAYLOAD',
+          requestId,
+          message: 'Invalid webhook payload. Do not retry.',
+        });
+      }
+
       return res.status(500).json({
         error: 'PROCESSING_FAILED',
         requestId,

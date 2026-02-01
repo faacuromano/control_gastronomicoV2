@@ -66,34 +66,37 @@ export class SupplierService {
    * Update supplier
    */
   async update(id: number, tenantId: number, data: Prisma.SupplierUpdateInput) {
-    const supplier = await prisma.supplier.findFirst({ 
-      where: { id, tenantId } 
-    });
-    
-    if (!supplier) {
-      throw new NotFoundError('Supplier');
-    }
-    
-    // If updating name, check uniqueness
-    if (data.name && typeof data.name === 'string' && data.name !== supplier.name) {
-      const existing = await prisma.supplier.findFirst({
-        where: { 
-          name: data.name,
-          isActive: true,
-          tenantId,
-          id: { not: id }
-        }
+    // DB-011: Wrap check+update in transaction to prevent TOCTOU race
+    return await prisma.$transaction(async (tx) => {
+      const supplier = await tx.supplier.findFirst({
+        where: { id, tenantId }
       });
-      
-      if (existing) {
-        throw new ConflictError('Ya existe un proveedor con ese nombre');
+
+      if (!supplier) {
+        throw new NotFoundError('Supplier');
       }
-    }
-    
-    // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
-    return await prisma.supplier.updateMany({
-      where: { id, tenantId },
-      data: data as any
+
+      // If updating name, check uniqueness inside transaction
+      if (data.name && typeof data.name === 'string' && data.name !== supplier.name) {
+        const existing = await tx.supplier.findFirst({
+          where: {
+            name: data.name,
+            isActive: true,
+            tenantId,
+            id: { not: id }
+          }
+        });
+
+        if (existing) {
+          throw new ConflictError('Ya existe un proveedor con ese nombre');
+        }
+      }
+
+      // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+      return await tx.supplier.updateMany({
+        where: { id, tenantId },
+        data: data as any
+      });
     });
   }
 

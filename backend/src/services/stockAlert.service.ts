@@ -19,6 +19,10 @@ export interface StockAlert {
 }
 
 class StockAlertService {
+    // PERF-004: Throttle alerts per ingredient to avoid flooding WebSocket
+    private alertThrottle = new Map<string, number>(); // key -> lastEmitTimestamp
+    private static THROTTLE_MS = 5000; // Max 1 alert per ingredient per 5 seconds
+
     /**
      * Check if ingredient is below minimum stock and emit alert if so
      */
@@ -37,6 +41,23 @@ class StockAlertService {
             if (minStock <= 0) return;
 
             if (currentStock <= minStock) {
+                // PERF-004: Throttle per-ingredient alerts
+                const throttleKey = `${tenantId}:${ingredientId}`;
+                const lastEmit = this.alertThrottle.get(throttleKey) || 0;
+                const now = Date.now();
+                if (now - lastEmit < StockAlertService.THROTTLE_MS) {
+                    return; // Skip - alert was recently emitted for this ingredient
+                }
+                this.alertThrottle.set(throttleKey, now);
+
+                // Evict stale throttle entries periodically (prevent memory leak)
+                if (this.alertThrottle.size > 1000) {
+                    const cutoff = now - StockAlertService.THROTTLE_MS * 2;
+                    for (const [key, ts] of this.alertThrottle) {
+                        if (ts < cutoff) this.alertThrottle.delete(key);
+                    }
+                }
+
                 const alert: StockAlert = {
                     id: Date.now(),
                     ingredientId: ingredient.id,
@@ -49,11 +70,11 @@ class StockAlertService {
                 };
 
                 this.emitAlert(ingredient.tenantId, alert);
-                logger.info('Stock alert emitted', { 
+                logger.info('Stock alert emitted', {
                     tenantId: ingredient.tenantId,
-                    ingredient: ingredient.name, 
-                    current: currentStock, 
-                    min: minStock 
+                    ingredient: ingredient.name,
+                    current: currentStock,
+                    min: minStock
                 });
             }
         } catch (error) {

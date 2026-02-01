@@ -85,7 +85,7 @@ services:
           memory: 512m
           cpus: '0.5'
 
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction --requirepass ${REDIS_PASSWORD:-devpassword123}
 
     logging:
       driver: json-file
@@ -94,7 +94,7 @@ services:
         max-file: "3"
 
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-devpassword123}", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5

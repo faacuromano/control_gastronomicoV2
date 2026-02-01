@@ -7,6 +7,7 @@
 
 import { Router } from 'express';
 import { authenticate, requirePermission } from '../middleware/auth';
+import { validateId } from '../middleware/validateId';
 import * as qrController from '../controllers/qr.controller';
 
 const router = Router();
@@ -36,7 +37,7 @@ adminRouter.patch('/config', requirePermission('settings', 'update'), qrControll
 // QR code management
 adminRouter.get('/codes', qrController.getAllCodes);
 adminRouter.post('/codes', requirePermission('settings', 'update'), qrController.generateCode);
-adminRouter.patch('/codes/:id/toggle', requirePermission('settings', 'update'), qrController.toggleCode);
-adminRouter.delete('/codes/:id', requirePermission('settings', 'update'), qrController.deleteCode);
+adminRouter.patch('/codes/:id/toggle', validateId(), requirePermission('settings', 'update'), qrController.toggleCode);
+adminRouter.delete('/codes/:id', validateId(), requirePermission('settings', 'update'), qrController.deleteCode);
 
 export { router as qrPublicRouter, adminRouter as qrAdminRouter };

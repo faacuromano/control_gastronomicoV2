@@ -13,6 +13,7 @@
  */
 
 import axios, { type AxiosInstance } from 'axios';
+import { z } from 'zod';
 import { AbstractDeliveryAdapter, type AdapterConfig } from './AbstractDeliveryAdapter';
 import type { DeliveryPlatform } from '@prisma/client';
 import {
@@ -34,6 +35,105 @@ import {
 // ============================================================================
 
 /**
+ * Zod schemas para validar el payload del webhook de PedidosYa.
+ */
+const PedidosYaCoordinatesSchema = z.object({
+  latitude: z.number(),
+  longitude: z.number(),
+});
+
+const PedidosYaAddressSchema = z.object({
+  description: z.string(),
+  area: z.string().optional(),
+  city: z.string().optional(),
+  coordinates: PedidosYaCoordinatesSchema.optional(),
+  notes: z.string().optional(),
+  doorNumber: z.string().optional(),
+  zipCode: z.string().optional(),
+});
+
+const PedidosYaUserSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  lastName: z.string(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+});
+
+const PedidosYaOptionSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  amount: z.number(),
+  quantity: z.number(),
+});
+
+const PedidosYaOptionGroupSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  options: z.array(PedidosYaOptionSchema),
+});
+
+const PedidosYaProductSchema = z.object({
+  id: z.string(),
+  integrationCode: z.string().optional(),
+  name: z.string(),
+  unitPrice: z.number(),
+});
+
+const PedidosYaDetailSchema = z.object({
+  product: PedidosYaProductSchema,
+  quantity: z.number(),
+  notes: z.string().optional(),
+  optionGroups: z.array(PedidosYaOptionGroupSchema).optional(),
+});
+
+const PedidosYaPaymentSchema = z.object({
+  total: z.number(),
+  subtotal: z.number(),
+  discount: z.number(),
+  tip: z.number(),
+  shipping: z.number(),
+  pending: z.number(),
+  paymentMethod: z.string(),
+  online: z.boolean(),
+});
+
+const PedidosYaRestaurantSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+});
+
+const PedidosYaApplicationSchema = z.object({
+  name: z.enum(['PEDIDOSYA', 'GLOVO', 'RAPPI']),
+  version: z.string(),
+});
+
+const PedidosYaOrderPayloadSchema = z.object({
+  id: z.string(),
+  code: z.string(),
+  state: z.string(),
+  registeredDate: z.string(),
+  deliveryDate: z.string().optional(),
+  pickup: z.boolean(),
+  preOrder: z.boolean(),
+  user: PedidosYaUserSchema,
+  address: PedidosYaAddressSchema.optional(),
+  details: z.array(PedidosYaDetailSchema),
+  payment: PedidosYaPaymentSchema,
+  restaurant: PedidosYaRestaurantSchema,
+  application: PedidosYaApplicationSchema,
+  deliveryMethod: z.enum(['PEYA', 'MERCHANT']).optional(),
+  expresDelivery: z.boolean().optional(),
+  notes: z.string().optional(),
+});
+
+const PedidosYaWebhookPayloadSchema = z.object({
+  event: z.enum(['ORDER_DISPATCH', 'ORDER_STATUS_UPDATE', 'ORDER_CANCEL']).optional(),
+  order: PedidosYaOrderPayloadSchema.optional(),
+  timestamp: z.string().optional(),
+});
+
+/**
  * Payload raw de nuevo pedido de PedidosYa.
  * Estructura basada en documentación de PedidosYa Partner API.
  */
@@ -45,7 +145,7 @@ interface PedidosYaOrderPayload {
   deliveryDate?: string;
   pickup: boolean;
   preOrder: boolean;
-  
+
   user: {
     id: string;
     name: string;
@@ -53,7 +153,7 @@ interface PedidosYaOrderPayload {
     phone?: string;
     email?: string;
   };
-  
+
   address?: {
     description: string;
     area?: string;
@@ -66,7 +166,7 @@ interface PedidosYaOrderPayload {
     doorNumber?: string;
     zipCode?: string;
   };
-  
+
   details: Array<{
     product: {
       id: string;
@@ -87,7 +187,7 @@ interface PedidosYaOrderPayload {
       }>;
     }>;
   }>;
-  
+
   payment: {
     total: number;
     subtotal: number;
@@ -98,20 +198,20 @@ interface PedidosYaOrderPayload {
     paymentMethod: string;
     online: boolean;  // If true, paid online (prepaid)
   };
-  
+
   restaurant: {
     id: string;
     name: string;
   };
-  
+
   application: {
     name: 'PEDIDOSYA' | 'GLOVO' | 'RAPPI';
     version: string;
   };
-  
+
   deliveryMethod?: 'PEYA' | 'MERCHANT';  // Who delivers
   expresDelivery?: boolean;
-  
+
   notes?: string;
 }
 
@@ -236,12 +336,32 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
    * Parsea el payload del webhook de PedidosYa al formato normalizado.
    */
   parseWebhookPayload(rawPayload: unknown): ProcessedWebhook {
-    const webhookData = rawPayload as PedidosYaWebhookPayload;
-    const payload = webhookData.order || (rawPayload as PedidosYaOrderPayload);
-    
+    // Validar el payload con Zod - intentar primero como webhook wrapper, luego como orden directa
+    let webhookData: Partial<PedidosYaWebhookPayload>;
+    let payload: PedidosYaOrderPayload;
+
+    const webhookParsed = PedidosYaWebhookPayloadSchema.safeParse(rawPayload);
+    if (webhookParsed.success && webhookParsed.data.order) {
+      // Es un webhook envuelto con evento
+      webhookData = webhookParsed.data as PedidosYaWebhookPayload;
+      payload = webhookParsed.data.order as PedidosYaOrderPayload;
+    } else {
+      // Intentar parsear como orden directa
+      const orderParsed = PedidosYaOrderPayloadSchema.safeParse(rawPayload);
+      if (!orderParsed.success) {
+        this.log('error', 'Invalid PedidosYa webhook payload', {
+          webhookIssues: webhookParsed.error?.issues || [],
+          orderIssues: orderParsed.error.issues,
+        });
+        throw new Error(`Invalid PedidosYa webhook payload: ${orderParsed.error.message}`);
+      }
+      webhookData = {};
+      payload = orderParsed.data as PedidosYaOrderPayload;
+    }
+
     // Determinar tipo de evento
     const eventType = this.determineEventType(webhookData);
-    
+
     // Convertir a formato normalizado
     const order = this.normalizeOrder(payload);
 

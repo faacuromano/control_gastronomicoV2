@@ -8,6 +8,7 @@ import { authenticateToken, requirePermission } from '../middleware/auth';
 import { getTenantConfig, updateTenantConfig } from '../services/featureFlags.service';
 import { sendSuccess, sendError } from '../utils/response';
 import { Request, Response } from 'express';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -33,7 +34,7 @@ router.get('/config', authenticateToken, async (req: Request, res: Response) => 
             }
         });
     } catch (error) {
-        console.error('Error fetching config:', error);
+        logger.error('Error fetching config:', { error });
         sendError(res, 'CONFIG_ERROR', 'Could not load configuration');
     }
 });
@@ -61,7 +62,7 @@ router.patch('/config', authenticateToken, requirePermission('settings', 'update
             }
         });
     } catch (error) {
-        console.error('Error updating config:', error);
+        logger.error('Error updating config:', { error });
         sendError(res, 'CONFIG_ERROR', 'Could not update configuration');
     }
 });

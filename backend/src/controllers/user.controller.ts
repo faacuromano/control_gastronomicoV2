@@ -18,7 +18,8 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { ValidationError, NotFoundError, ConflictError, UnauthorizedError, ApiError } from '../utils/errors';
-import { BCRYPT_SALT_ROUNDS } from '../services/auth.service';
+import { BCRYPT_SALT_ROUNDS, generatePinLookup } from '../services/auth.service';
+import { auditService } from '../services/audit.service';
 
 /**
  * Schema for creating a new user
@@ -45,29 +46,37 @@ const UpdateUserSchema = z.object({
 
 /**
  * List all active users with optional role filter.
- * 
+ *
  * @route GET /api/v1/users
  * @access Authenticated users (for assignment dropdowns)
- * 
+ *
  * @example
- * GET /api/v1/users?role=MESERO
+ * GET /api/v1/users?role=MESERO&page=1&limit=50
  */
 export const listUsers = asyncHandler(async (req: Request, res: Response) => {
-    const { role, includeInactive } = req.query;
-    
+    const { role, includeInactive, page: pageStr, limit: limitStr } = req.query;
+
+    // Parse pagination params
+    const page = Math.max(1, parseInt(pageStr as string) || 1);
+    const limit = Math.max(1, parseInt(limitStr as string) || 50);
+    const skip = (page - 1) * limit;
+
     // Build where clause with proper Prisma typing
     const where: Prisma.UserWhereInput = {
         tenantId: req.user!.tenantId!
     };
-    
+
     // Only show active users unless explicitly requested
     if (includeInactive !== 'true') {
         where.isActive = true;
     }
-    
+
     if (role && typeof role === 'string') {
         where.role = { name: role };
     }
+
+    // Get total count for pagination
+    const total = await prisma.user.count({ where });
 
     const users = await prisma.user.findMany({
         where,
@@ -81,10 +90,21 @@ export const listUsers = asyncHandler(async (req: Request, res: Response) => {
                 select: { id: true, name: true }
             }
         },
-        orderBy: { name: 'asc' }
+        orderBy: { name: 'asc' },
+        skip,
+        take: limit
     });
 
-    res.json({ success: true, data: users });
+    res.json({
+        success: true,
+        data: users,
+        meta: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit)
+        }
+    });
 });
 
 /**
@@ -214,19 +234,19 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
         throw new NotFoundError('Rol');
     }
 
-    // Check PIN uniqueness — scan all users with a PIN in this tenant
+    // Check PIN uniqueness — O(1) via pinLookup index
     let pinHash: string | null = null;
+    let pinLookup: string | null = null;
     if (pinCode) {
-        const existingUsers = await prisma.user.findMany({
+        pinLookup = generatePinLookup(pinCode);
+        const existing = await prisma.user.findFirst({
             where: {
                 tenantId: req.user!.tenantId!,
-                pinHash: { not: null }
+                pinLookup
             }
         });
-        for (const existing of existingUsers) {
-            if (await bcrypt.compare(pinCode, existing.pinHash!)) {
-                throw new ConflictError('PIN ya en uso por otro usuario');
-            }
+        if (existing) {
+            throw new ConflictError('PIN ya en uso por otro usuario');
         }
         pinHash = await bcrypt.hash(pinCode, BCRYPT_SALT_ROUNDS);
     }
@@ -240,6 +260,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
             name,
             email: email ?? null,
             pinHash,
+            pinLookup,
             passwordHash,
             roleId
         } as Prisma.UserUncheckedCreateInput,
@@ -251,6 +272,20 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
             role: { select: { id: true, name: true } }
         }
     });
+
+    // Audit log - after successful creation
+    auditService.log(
+        'USER_CREATED',
+        'User',
+        user.id,
+        {
+            userId: req.user!.id!,
+            tenantId: req.user!.tenantId!,
+            ipAddress: String(req.ip),
+            userAgent: req.headers['user-agent'] ?? 'unknown'
+        },
+        { name: user.name, email: user.email, roleId }
+    );
 
     res.status(201).json({ success: true, data: user });
 });
@@ -310,21 +345,21 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
     if (isActive !== undefined) updateData.isActive = isActive;
     if (password) updateData.passwordHash = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
 
-    // Check PIN uniqueness — scan all users with a PIN in this tenant
+    // Check PIN uniqueness — O(1) via pinLookup index
     if (pinCode !== undefined) {
-        const existingUsers = await prisma.user.findMany({
+        const pinLookup = generatePinLookup(pinCode);
+        const existing = await prisma.user.findFirst({
             where: {
                 tenantId: req.user!.tenantId!,
-                pinHash: { not: null },
+                pinLookup,
                 id: { not: userId }
             }
         });
-        for (const existing of existingUsers) {
-            if (await bcrypt.compare(pinCode, existing.pinHash!)) {
-                throw new ConflictError('PIN ya en uso por otro usuario');
-            }
+        if (existing) {
+            throw new ConflictError('PIN ya en uso por otro usuario');
         }
         updateData.pinHash = await bcrypt.hash(pinCode, BCRYPT_SALT_ROUNDS);
+        (updateData as any).pinLookup = pinLookup;
     }
 
     // SAFE: Defense-in-depth — include tenantId in WHERE
@@ -348,6 +383,20 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
             role: { select: { id: true, name: true } }
         }
     });
+
+    // Audit log - after successful update
+    auditService.log(
+        'USER_UPDATED' as any, // Type will be available after Prisma regeneration
+        'User',
+        userId,
+        {
+            userId: req.user!.id!,
+            tenantId: req.user!.tenantId!,
+            ipAddress: String(req.ip),
+            userAgent: req.headers['user-agent'] ?? 'unknown'
+        },
+        { updates: data }
+    );
 
     res.json({ success: true, data: user });
 });
@@ -381,6 +430,20 @@ export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
         where: { id: userId, tenantId: req.user!.tenantId! },
         data: { isActive: false }
     });
+
+    // Audit log - after successful deletion
+    auditService.log(
+        'USER_DELETED',
+        'User',
+        userId,
+        {
+            userId: req.user!.id!,
+            tenantId: req.user!.tenantId!,
+            ipAddress: String(req.ip),
+            userAgent: req.headers['user-agent'] ?? 'unknown'
+        },
+        { userName: user.name, userEmail: user.email }
+    );
 
     res.json({ success: true, message: 'Usuario desactivado correctamente' });
 });

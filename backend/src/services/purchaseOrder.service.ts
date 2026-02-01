@@ -87,6 +87,17 @@ export class PurchaseOrderService {
       throw new ValidationError('Uno o más ingredientes no existen');
     }
 
+    // Validate item bounds
+    const MAX_ITEM_QUANTITY = 100000;
+    for (const item of data.items) {
+      if (item.quantity <= 0 || item.quantity > MAX_ITEM_QUANTITY) {
+        throw new ValidationError(`Item quantity must be between 1 and ${MAX_ITEM_QUANTITY}`);
+      }
+      if (item.unitCost < 0) {
+        throw new ValidationError('Unit cost cannot be negative');
+      }
+    }
+
     // Calculate totals
     let subtotal = 0;
     for (const item of data.items) {

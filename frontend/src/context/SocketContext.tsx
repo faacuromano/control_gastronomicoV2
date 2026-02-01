@@ -20,8 +20,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const logout = useAuthStore((state) => state.logout);
 
   useEffect(() => {
-    // In dev, backend is localhost:3001. In prod, relative or ENV.
-    const socketUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    // INF-005: Use env var for socket URL, only fall back to localhost in dev
+    const socketUrl = import.meta.env.VITE_API_URL
+      || (import.meta.env.PROD ? window.location.origin : 'http://localhost:3001');
     // Remove /api/v1 if it exists in the URL because socket.io connects to root
     const baseUrl = socketUrl.replace('/api/v1', '');
 

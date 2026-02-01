@@ -17,7 +17,7 @@ const updateIngredientSchema = ingredientSchema.partial();
 
 export const getIngredients = asyncHandler(async (req: Request, res: Response) => {
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const limit = Math.max(1, parseInt(req.query.limit as string) || 200);
+  const limit = Math.max(1, parseInt(req.query.limit as string) || 100);
   const result = await ingredientService.getAll(req.user!.tenantId!, page, limit);
   res.json({ success: true, ...result });
 });

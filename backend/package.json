@@ -12,7 +12,9 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:unit": "jest tests/unit",
-    "test:integration": "jest tests/integration"
+    "test:integration": "jest tests/integration",
+    "audit:check": "npm audit --production --audit-level=high",
+    "preinstall:check": "npm audit --production --audit-level=critical || true"
   },
   "keywords": [],
   "author": "",

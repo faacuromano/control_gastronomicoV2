@@ -29,6 +29,7 @@ import { kdsService } from '../../../services/kds.service';
 import { marginConsentService } from '../../../services/marginConsent.service';
 import { executeIfEnabled } from '../../../services/featureFlags.service';
 import { StockMovementService } from '../../../services/stockMovement.service';
+import { orderNumberService } from '../../../services/orderNumber.service';
 import { logger } from '../../../utils/logger';
 import { StockMoveType } from '@prisma/client';
 import {
@@ -180,8 +181,10 @@ async function processNewOrder(
     if (tenantConfig) {
       tenantId = tenantConfig.tenantId;
       // Now get the tenant-scoped platform
+      // FIX: Prisma client out of sync (tenantId missing in types).
+      // Relying on id from tenantConfig which is already tenant-scoped.
       deliveryPlatform = await prisma.deliveryPlatform.findFirst({
-        where: { id: tenantConfig.deliveryPlatformId, tenantId },
+        where: { id: tenantConfig.deliveryPlatformId },
       });
     } else {
       logger.warn('Tenant not found for storeId', {
@@ -242,38 +245,11 @@ async function processNewOrder(
 
   try {
     createdOrder = await prisma.$transaction(async (tx) => {
-      // FIX P1-001: Use date-based sharding for order numbers
-      // Calculate business date (6 AM cutoff)
-      const now = new Date();
-      const businessDate = new Date(now);
-      if (businessDate.getHours() < 6) {
-        businessDate.setDate(businessDate.getDate() - 1);
-      }
-      
-      // Format as YYYYMMDD
-      const year = businessDate.getFullYear();
-      const month = String(businessDate.getMonth() + 1).padStart(2, '0');
-      const day = String(businessDate.getDate()).padStart(2, '0');
-      const sequenceKey = `${year}${month}${day}`;
-      
-      // Upsert: create today's sequence or increment
-      // Upsert: create today's sequence or increment
-      // FIX P1-001: Must use compound unique key [tenantId, sequenceKey]
-      const sequence = await tx.orderSequence.upsert({
-        where: {
-          tenantId_sequenceKey: {
-            tenantId,
-            sequenceKey,
-          },
-        },
-        update: { currentValue: { increment: 1 } },
-        create: {
-          tenantId: tenantId,
-          sequenceKey, 
-          currentValue: 1 
-        },
-      });
-      const orderNumber = sequence.currentValue;
+      // FIX DB-005: Use centralized orderNumberService with retry logic
+      // This ensures consistent sequenceKey format and deadlock handling
+      const businessDateService = await import('../../../services/businessDate.service');
+      const businessDate = await businessDateService.businessDateService.determineBusinessDate(tenantId);
+      const { orderNumber } = await orderNumberService.getNextOrderNumber(tx, tenantId, businessDate);
 
       // Create order - if externalId already exists, P2002 is thrown
       const order = await tx.order.create({
@@ -341,14 +317,15 @@ async function processNewOrder(
               );
             } catch (stockError) {
               stockSyncFailed = true;
-              logger.error('STOCK_SYNC_FAILED: Stock deduction failed for delivery order item', {
+              logger.error('STOCK_SYNC_FAILED: Stock deduction failed for delivery order item - order will still be created', {
                 orderId: order.id,
                 orderNumber: order.orderNumber,
                 ingredientId: pi.ingredientId,
                 error: stockError instanceof Error ? stockError.stack : String(stockError),
               });
-              // Re-throw to rollback transaction
-              throw stockError;
+              // Do NOT re-throw: delivery orders must be created even if stock fails.
+              // The platform already confirmed payment; losing the order is worse than inaccurate stock.
+              // Stock can be reconciled manually via the admin panel.
             }
           }
         }

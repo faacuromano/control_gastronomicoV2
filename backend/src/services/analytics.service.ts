@@ -80,9 +80,10 @@ export class AnalyticsService {
       _count: true
     });
 
-    const totalRevenue = Number(currentPeriod._sum.total || 0);
+    // BIZ-008: Round to 2 decimal places for financial precision
+    const totalRevenue = Math.round(Number(currentPeriod._sum.total || 0) * 100) / 100;
     const orderCount = currentPeriod._count;
-    const averageTicket = orderCount > 0 ? totalRevenue / orderCount : 0;
+    const averageTicket = orderCount > 0 ? Math.round((totalRevenue / orderCount) * 100) / 100 : 0;
 
     // Calculate previous period
     const periodMs = range.endDate.getTime() - range.startDate.getTime();
@@ -101,9 +102,9 @@ export class AnalyticsService {
       _sum: { total: true }
     });
 
-    const previousPeriodRevenue = Number(previousPeriod._sum.total || 0);
-    const revenueChange = previousPeriodRevenue > 0 
-      ? ((totalRevenue - previousPeriodRevenue) / previousPeriodRevenue) * 100 
+    const previousPeriodRevenue = Math.round(Number(previousPeriod._sum.total || 0) * 100) / 100;
+    const revenueChange = previousPeriodRevenue > 0
+      ? Math.round(((totalRevenue - previousPeriodRevenue) / previousPeriodRevenue) * 10000) / 100
       : 0;
 
     return {
@@ -219,13 +220,13 @@ export class AnalyticsService {
       _count: true
     });
 
-    const totalAmount = payments.reduce((sum, p) => sum + Number(p._sum.amount || 0), 0);
+    const totalAmount = Math.round(payments.reduce((sum, p) => sum + Number(p._sum.amount || 0), 0) * 100) / 100;
 
     return payments.map(p => ({
       method: p.method,
-      total: Number(p._sum.amount || 0),
+      total: Math.round(Number(p._sum.amount || 0) * 100) / 100,
       count: p._count,
-      percentage: totalAmount > 0 ? (Number(p._sum.amount || 0) / totalAmount) * 100 : 0
+      percentage: totalAmount > 0 ? Math.round((Number(p._sum.amount || 0) / totalAmount) * 10000) / 100 : 0
     }));
   }
 
@@ -256,13 +257,13 @@ export class AnalyticsService {
       _count: true
     });
 
-    const totalAmount = orders.reduce((sum, o) => sum + Number(o._sum.total || 0), 0);
+    const totalAmount = Math.round(orders.reduce((sum, o) => sum + Number(o._sum.total || 0), 0) * 100) / 100;
 
     return orders.map(o => ({
       channel: o.channel,
-      total: Number(o._sum.total || 0),
+      total: Math.round(Number(o._sum.total || 0) * 100) / 100,
       count: o._count,
-      percentage: totalAmount > 0 ? (Number(o._sum.total || 0) / totalAmount) * 100 : 0
+      percentage: totalAmount > 0 ? Math.round((Number(o._sum.total || 0) / totalAmount) * 10000) / 100 : 0
     }));
   }
 

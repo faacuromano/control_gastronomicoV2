@@ -4,6 +4,7 @@
 
 import { Router } from 'express';
 import { authenticate, requirePermission } from '../middleware/auth';
+import { validateId } from '../middleware/validateId';
 import * as discountController from '../controllers/discount.controller';
 
 const router = Router();
@@ -18,6 +19,7 @@ router.post('/apply',
 
 // Remove discount from order
 router.delete('/:orderId',
+    validateId('orderId'),
     requirePermission('orders', 'update'),
     discountController.removeDiscount
 );

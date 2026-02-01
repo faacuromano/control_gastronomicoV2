@@ -11,6 +11,7 @@ import { getRoles, createRole, deleteRole } from '../controllers/role.controller
 import { listUsers, getUserById, createUser, updateUser, deleteUser, getUsersWithCapability } from '../controllers/user.controller';
 import { authenticate, authorize } from '../middleware/auth';
 import { apiRateLimiter } from '../middleware/rateLimit';
+import { validateId } from '../middleware/validateId';
 
 const router = Router();
 
@@ -21,15 +22,15 @@ router.get('/with-capability', authenticate, getUsersWithCapability);
 router.get('/', authenticate, listUsers);
 
 // Get single user - ADMIN only
-router.get('/:id', authenticate, authorize(['ADMIN']), getUserById);
+router.get('/:id', authenticate, validateId(), authorize(['ADMIN']), getUserById);
 
 // Create user - ADMIN only (rate limited to prevent PIN enumeration P1-010)
 router.post('/', authenticate, authorize(['ADMIN']), apiRateLimiter, createUser);
 
 // Update user - ADMIN only (rate limited to prevent PIN enumeration P1-010)
-router.put('/:id', authenticate, authorize(['ADMIN']), apiRateLimiter, updateUser);
+router.put('/:id', authenticate, validateId(), authorize(['ADMIN']), apiRateLimiter, updateUser);
 
 // Delete (deactivate) user - ADMIN only
-router.delete('/:id', authenticate, authorize(['ADMIN']), deleteUser);
+router.delete('/:id', authenticate, validateId(), authorize(['ADMIN']), deleteUser);
 
 export default router;

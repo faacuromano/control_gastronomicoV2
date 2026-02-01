@@ -3,6 +3,7 @@ import { sendError } from '../utils/response';
 import { ApiError } from '../utils/errors';
 import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
+import { logger } from '../utils/logger';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -18,10 +19,10 @@ export const errorHandler = (
 ) => {
     // Log the error (in production, use a proper logging service)
     if (!isProduction) {
-        console.error('[Error Handler]', err);
+        logger.error('[Error Handler]', { error: err });
     } else {
         // In production, log without stack trace to external service
-        console.error('[Error]', {
+        logger.error('[Error]', {
             name: err.name,
             message: err.message,
             path: req.path,

@@ -19,12 +19,26 @@ import { logger } from '../utils/logger';
 const DANGEROUS_KEYS = ['__proto__', 'constructor', 'prototype'];
 
 /**
+ * SEC-025: Strip HTML tags from strings to prevent stored XSS.
+ * Preserves common characters like &, <, > as text but removes actual HTML tags.
+ */
+const HTML_TAG_REGEX = /<\/?[a-z][^>]*>/gi;
+function stripHtmlTags(value: string): string {
+  return value.replace(HTML_TAG_REGEX, '');
+}
+
+/**
  * Recursively sanitize an object by removing dangerous keys.
  * 
  * @param obj - Object to sanitize
  * @returns Sanitized object
  */
 function sanitizeObject(obj: unknown): unknown {
+  // SEC-025: Strip HTML tags from string values
+  if (typeof obj === 'string') {
+    return stripHtmlTags(obj);
+  }
+
   if (obj === null || typeof obj !== 'object') {
     return obj;
   }

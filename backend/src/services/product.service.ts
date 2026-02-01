@@ -8,20 +8,22 @@ const IngredientInput = z.object({
   quantity: z.number().positive()
 });
 
+// SEC-023: Max length validation on text fields
 const ProductSchema = z.object({
     categoryId: z.number(),
-    name: z.string().min(1, "Name is required"),
-    description: z.string().optional(),
+    name: z.string().min(1, "Name is required").max(200, "Name too long (max 200 characters)"),
+    description: z.string().max(2000, "Description too long (max 2000 characters)").optional(),
     price: z.number().min(0, "Price must be non-negative"),
     productType: z.enum(['SIMPLE', 'COMBO', 'RECIPE']).optional(),
     isStockable: z.boolean().optional(),
-    image: z.string().url().optional(),
+    image: z.string().url().max(500, "Image URL too long").optional(),
     isActive: z.boolean().optional(),
     ingredients: z.array(IngredientInput).optional(),
     modifierIds: z.array(z.number()).optional()
 });
 
-export const getProducts = async (tenantId: number, where: Prisma.ProductWhereInput = {}, page = 1, limit = 500) => {
+// PERF-003: Reduced default limit from 500 to 100
+export const getProducts = async (tenantId: number, where: Prisma.ProductWhereInput = {}, page = 1, limit = 100) => {
     const take = Math.min(limit, 500);
     const skip = (page - 1) * take;
     const filter = { ...where, tenantId };

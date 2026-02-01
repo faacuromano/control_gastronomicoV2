@@ -40,7 +40,7 @@ beforeAll(async () => {
   });
   const ids = existingTenants.map(t => t.id);
   if (ids.length > 0) {
-    await prisma.$executeRawUnsafe(`DELETE FROM \`Order\` WHERE tenantId IN (${ids.join(',')})`);
+    await prisma.order.deleteMany({ where: { tenantId: { in: ids } } });
     await prisma.client.deleteMany({ where: { tenantId: { in: ids } } });
     await prisma.product.deleteMany({ where: { tenantId: { in: ids } } });
     await prisma.category.deleteMany({ where: { tenantId: { in: ids } } });
@@ -193,7 +193,7 @@ afterAll(async () => {
 
   if (ids.length > 0) {
     // Use raw SQL for hard deletes to bypass soft-delete extension on Order
-    await prisma.$executeRawUnsafe(`DELETE FROM \`Order\` WHERE tenantId IN (${ids.join(',')})`);
+    await prisma.order.deleteMany({ where: { tenantId: { in: ids } } });
     await prisma.client.deleteMany({ where: { tenantId: { in: ids } } });
     await prisma.product.deleteMany({ where: { tenantId: { in: ids } } });
     await prisma.category.deleteMany({ where: { tenantId: { in: ids } } });

@@ -496,6 +496,7 @@ model Order {
   @@index([tenantId, businessDate, status])
   @@index([tenantId, paymentStatus])
   @@index([tenantId, channel])
+  @@index([tenantId, deletedAt])
 }
 
 enum OrderChannel {
@@ -768,9 +769,32 @@ enum AuditAction {
   STOCK_ADJUSTED
   STOCK_WASTED
   BULK_PRICE_UPDATE // Mass price update operation
-  // Admin
+  // Admin - Users
   USER_CREATED
+  USER_UPDATED
   USER_DELETED
+  // Admin - Roles
+  ROLE_CREATED
+  ROLE_UPDATED
+  ROLE_DELETED
+  ROLE_PERMISSIONS_UPDATED
+  // Admin - Products
+  PRODUCT_CREATED
+  PRODUCT_UPDATED
+  PRODUCT_DELETED
+  // Admin - Printers
+  PRINTER_CREATED
+  PRINTER_UPDATED
+  PRINTER_DELETED
+  // Admin - Suppliers
+  SUPPLIER_CREATED
+  SUPPLIER_UPDATED
+  SUPPLIER_DELETED
+  // Admin - Payment Methods
+  PAYMENT_METHOD_CREATED
+  PAYMENT_METHOD_UPDATED
+  PAYMENT_METHOD_DELETED
+  // Other
   ROLE_CHANGED
   CONFIG_CHANGED
   // Sync

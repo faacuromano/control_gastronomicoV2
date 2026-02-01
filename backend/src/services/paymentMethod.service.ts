@@ -11,13 +11,27 @@ export interface PaymentMethodConfigInput {
 
 export class PaymentMethodService {
   /**
-   * Get all payment methods (for admin)
+   * Get all payment methods (for admin) with pagination
    */
-  async getAll(tenantId: number) {
-    return await prisma.paymentMethodConfig.findMany({
-      where: { tenantId },
-      orderBy: { sortOrder: 'asc' }
-    });
+  async getAll(tenantId: number, page: number = 1, limit: number = 50) {
+    const skip = (page - 1) * limit;
+
+    const [data, total] = await Promise.all([
+      prisma.paymentMethodConfig.findMany({
+        where: { tenantId },
+        orderBy: { sortOrder: 'asc' },
+        skip,
+        take: limit
+      }),
+      prisma.paymentMethodConfig.count({ where: { tenantId } })
+    ]);
+
+    return {
+      data,
+      total,
+      page,
+      limit
+    };
   }
 
   /**

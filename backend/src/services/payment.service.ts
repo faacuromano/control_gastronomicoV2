@@ -87,6 +87,7 @@ export class PaymentService {
 
         // 2. Handle split payments
         if (splitPayments && splitPayments.length > 0) {
+            this.validatePaymentAmounts(splitPayments, orderTotal);
             for (const payment of splitPayments) {
                 if (payment.amount <= 0) {
                     throw new Error(`Invalid payment amount: ${payment.amount}`);

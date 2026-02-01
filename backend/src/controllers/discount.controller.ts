@@ -16,7 +16,10 @@ const ApplyDiscountSchema = z.object({
     reason: z.enum(['EMPLOYEE', 'VIP_CUSTOMER', 'PROMOTION', 'COMPLAINT', 'MANAGER_COURTESY', 'LOYALTY', 'OTHER']),
     notes: z.string().optional(),
     authorizerId: z.number().int().positive().optional()
-});
+}).refine(
+    (data) => data.type !== 'PERCENTAGE' || data.value <= 100,
+    { message: 'Percentage discount cannot exceed 100%', path: ['value'] }
+);
 
 /**
  * POST /api/v1/discounts/apply

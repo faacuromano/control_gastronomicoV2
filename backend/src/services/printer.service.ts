@@ -87,7 +87,7 @@ export class PrinterService {
             // Use PowerShell to get list of printers
             const { stdout } = await execAsync(
                 'powershell -NoProfile -Command "Get-Printer | Select-Object -ExpandProperty Name"',
-                { encoding: 'utf8' }
+                { encoding: 'utf8', timeout: 5000 }
             );
             
             return stdout
@@ -95,7 +95,7 @@ export class PrinterService {
                 .map(name => name.trim())
                 .filter(name => name.length > 0);
         } catch (error) {
-            console.error('Failed to list system printers:', error);
+            logger.error('Failed to list system printers:', { error });
             return [];
         }
     }
@@ -131,7 +131,7 @@ export class PrinterService {
             
             logger.info('Print result', { result: stdout.trim() });
         } catch (error: any) {
-            console.error('[PrinterService] Raw print error:', error);
+            logger.error('[PrinterService] Raw print error:', { error });
             throw new ValidationError(`Failed to print to USB printer '${printerName}': ${error.message || 'Unknown error'}`);
         } finally {
             // Clean up temp file
@@ -188,7 +188,7 @@ export class PrinterService {
                 await printer.execute();
                 return true;
             } catch (error: any) {
-                console.error('Print error:', error);
+                logger.error('Print error:', { error });
                 throw new ValidationError(`Print failed: ${error.message || 'Unknown error'}`);
             }
         }
@@ -239,7 +239,7 @@ export class PrinterService {
                 await printer.execute();
                 return true;
             } catch (error: any) {
-                console.error('Test print error:', error);
+                logger.error('Test print error:', { error });
                 throw new ValidationError(`Test print failed: ${error.message || 'Unknown error'}`);
             }
         }

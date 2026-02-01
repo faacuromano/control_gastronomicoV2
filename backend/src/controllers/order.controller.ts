@@ -18,11 +18,12 @@ const orderService = new OrderService();
 /**
  * Zod schema for order creation validation.
  */
+// SEC-023: Max length validation on all text fields
 const createOrderSchema = z.object({
   items: z.array(z.object({
     productId: z.number().int().positive(),
     quantity: z.number().int().positive(),
-    notes: z.string().optional(),
+    notes: z.string().max(500).optional(),
     modifiers: z.array(z.object({
       id: z.number().int().positive(),
       price: z.coerce.number()  // Accept string from Prisma Decimal
@@ -32,18 +33,16 @@ const createOrderSchema = z.object({
   channel: z.nativeEnum(OrderChannel).optional(),
   tableId: z.number().int().optional(),
   clientId: z.number().int().optional(),
-  // Accept PaymentMethod enum values OR 'SPLIT' for split payments
   paymentMethod: z.union([z.nativeEnum(PaymentMethod), z.literal('SPLIT')]).optional(),
-  // Accept any string for method to support dynamic payment method codes (CASH, CARD, DEBIT, TRANSFER, etc.)
   payments: z.array(z.object({
-      method: z.string().min(1),  // Dynamic payment method codes
+      method: z.string().min(1).max(50),
       amount: z.number().positive()
   })).optional(),
   deliveryData: z.object({
-    address: z.string(),
-    notes: z.string().optional(),
-    phone: z.string().optional(),
-    name: z.string().optional(),
+    address: z.string().max(500),
+    notes: z.string().max(500).optional(),
+    phone: z.string().max(30).optional(),
+    name: z.string().max(200).optional(),
     driverId: z.number().int().optional(),
   }).optional(),
   discount: z.number().min(0).optional(),

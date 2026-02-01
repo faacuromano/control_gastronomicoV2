@@ -7,6 +7,7 @@
 
 import rateLimit from "express-rate-limit";
 import { Request, Response, NextFunction } from "express";
+import { logger } from "../utils/logger";
 
 const isDevelopment = process.env.NODE_ENV === "development";
 
@@ -27,8 +28,8 @@ export const authRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // SECURITY: Never skip rate limiting for auth endpoints UNLESS explicitly disabled for benchmarks
-  skip: () => process.env.DISABLE_RATE_LIMIT === 'true',
+  // SECURITY: Never skip rate limiting in production
+  skip: () => process.env.NODE_ENV !== 'production' && process.env.DISABLE_RATE_LIMIT === 'true',
   validate: { xForwardedForHeader: false }, // Disable validation that causes IPv6 error
 });
 
@@ -52,6 +53,25 @@ export const apiRateLimiter = rateLimit({
 });
 
 /**
+ * Webhook rate limiter - per-IP protection against flood attacks
+ * 60 requests per minute per IP (delivery platforms send bursts)
+ */
+export const webhookRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60,
+  message: {
+    success: false,
+    error: {
+      code: "RATE_LIMITED",
+      message: "Too many webhook requests. Please retry later.",
+    },
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
+});
+
+/**
  * Middleware to log when rate limit is approaching
  */
 export const rateLimitLogger = (
@@ -61,8 +81,8 @@ export const rateLimitLogger = (
 ) => {
   const remaining = res.getHeader("RateLimit-Remaining");
   if (remaining && Number(remaining) < 3) {
-    console.warn(
-      `[Rate Limit Warning] IP ${req.ip} has ${remaining} requests remaining`,
+    logger.warn(
+      `[Rate Limit Warning] IP ${req.ip} has ${remaining} requests remaining`
     );
   }
   next();

@@ -22,6 +22,12 @@ export class StockMovementService {
         throw new ValidationError('Quantity must be positive for PURCHASE, SALE, or WASTE');
     }
 
+    // Bounds check: prevent absurd values that corrupt stock levels
+    const MAX_STOCK_QUANTITY = 999999;
+    if (Math.abs(quantity) > MAX_STOCK_QUANTITY) {
+        throw new ValidationError(`Quantity exceeds maximum allowed (${MAX_STOCK_QUANTITY})`);
+    }
+
     const performMove = async (tx: any) => {
       // 0. Verify Ingredient Ownership
       const ingredient = await tx.ingredient.findFirst({ where: { id: ingredientId, tenantId } });
@@ -90,6 +96,13 @@ export class StockMovementService {
     externalTx: any
   ): Promise<void> {
     if (updates.length === 0) return;
+
+    const MAX_STOCK_QUANTITY = 999999;
+    for (const update of updates) {
+      if (Math.abs(update.quantity) > MAX_STOCK_QUANTITY) {
+        throw new ValidationError(`Quantity exceeds maximum allowed (${MAX_STOCK_QUANTITY}) for ingredient ${update.ingredientId}`);
+      }
+    }
 
     const tx = externalTx;
 

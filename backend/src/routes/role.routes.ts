@@ -7,15 +7,16 @@
  */
 
 import { Router } from 'express';
-import { 
-    getRoles, 
+import {
+    getRoles,
     getRoleById,
-    createRole, 
-    deleteRole, 
+    createRole,
+    deleteRole,
     updateRolePermissions,
     getPermissionOptions
 } from '../controllers/role.controller';
 import { authenticate, authorize } from '../middleware/auth';
+import { validateId } from '../middleware/validateId';
 
 const router = Router();
 
@@ -26,15 +27,15 @@ router.get('/', authenticate, getRoles);
 router.get('/permission-options', authenticate, getPermissionOptions);
 
 // Get role by ID - ADMIN only
-router.get('/:id', authenticate, authorize(['ADMIN']), getRoleById);
+router.get('/:id', authenticate, validateId(), authorize(['ADMIN']), getRoleById);
 
 // Create role - ADMIN only
 router.post('/', authenticate, authorize(['ADMIN']), createRole);
 
 // Update role permissions - ADMIN only
-router.put('/:id/permissions', authenticate, authorize(['ADMIN']), updateRolePermissions);
+router.put('/:id/permissions', authenticate, validateId(), authorize(['ADMIN']), updateRolePermissions);
 
 // Delete role - ADMIN only
-router.delete('/:id', authenticate, authorize(['ADMIN']), deleteRole);
+router.delete('/:id', authenticate, validateId(), authorize(['ADMIN']), deleteRole);
 
 export default router;

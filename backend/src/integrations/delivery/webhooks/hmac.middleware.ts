@@ -202,22 +202,27 @@ export function skipHmacInDevelopment(
   res: Response,
   next: NextFunction
 ) {
-  if (process.env.NODE_ENV === 'development' && process.env.SKIP_HMAC_VALIDATION === 'true') {
+  // SEC-007: Explicitly block HMAC bypass in production, regardless of env vars
+  if (process.env.NODE_ENV === 'production') {
+    return validateHmacDynamic(req, res, next);
+  }
+
+  if (process.env.SKIP_HMAC_VALIDATION === 'true') {
     logger.warn('HMAC validation SKIPPED (development mode)', {
       ip: req.ip,
       path: req.path,
     });
-    
+
     // Parsear body si es buffer
     if (Buffer.isBuffer(req.body)) {
       req.parsedBody = JSON.parse(req.body.toString('utf-8'));
     } else {
       req.parsedBody = req.body;
     }
-    
+
     return next();
   }
 
-  // En producción, SIEMPRE validar
+  // Default: always validate
   return validateHmacDynamic(req, res, next);
 }

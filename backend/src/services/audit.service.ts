@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { AuditAction } from '@prisma/client';
+import { logger } from '../utils/logger';
 
 export interface AuditContext {
     userId?: number | undefined;
@@ -26,7 +27,7 @@ export class AuditService {
         try {
             // tenantId is required in the AuditLog schema — skip logging if missing
             if (context.tenantId === undefined || context.tenantId === null) {
-                console.warn(`[AUDIT] Skipping audit log for ${action} on ${entity}:${entityId} — no tenantId`);
+                logger.warn(`[AUDIT] Skipping audit log for ${action} on ${entity}:${entityId} — no tenantId`);
                 return;
             }
 
@@ -45,7 +46,7 @@ export class AuditService {
             await prisma.auditLog.create({ data });
         } catch (error) {
             // Never fail the main operation due to audit failure
-            console.error('Audit log failed:', error);
+            logger.error('Audit log failed:', { error });
         }
     }
 

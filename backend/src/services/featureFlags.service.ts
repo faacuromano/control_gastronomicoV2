@@ -5,8 +5,10 @@
 
 import { TenantConfig } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { logger } from '../utils/logger';
 
 // Cache for tenant configs keyed by tenantId
+const MAX_CACHE_SIZE = 500;
 const configCache = new Map<number, { config: TenantConfig; expiry: number }>();
 const CACHE_TTL_MS = 60 * 1000; // 1 minute cache
 
@@ -40,6 +42,12 @@ export async function getTenantConfig(tenantId: number): Promise<TenantConfig> {
                 currencySymbol: '$'
             }
         });
+    }
+
+    // Evict oldest entry if cache is full
+    if (configCache.size >= MAX_CACHE_SIZE) {
+        const oldestKey = configCache.keys().next().value;
+        if (oldestKey !== undefined) configCache.delete(oldestKey);
     }
 
     // Update cache
@@ -83,7 +91,7 @@ export async function executeIfEnabled<T>(
     try {
         return await fn();
     } catch (error) {
-        console.error(`[Feature Flag] Optional module ${flag} failed:`, error);
+        logger.error(`[Feature Flag] Optional module ${flag} failed:`, { error });
         return fallback;
     }
 }

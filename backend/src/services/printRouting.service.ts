@@ -326,6 +326,12 @@ export class PrintRoutingService {
         const category = await prisma.category.findFirst({ where: { id: categoryId, tenantId } });
         if (!category) throw new Error('Category not found');
 
+        // SEC-021: Verify printer belongs to same tenant
+        if (printerId !== null) {
+            const printer = await prisma.printer.findFirst({ where: { id: printerId, tenantId } });
+            if (!printer) throw new Error('Printer not found or belongs to another tenant');
+        }
+
         // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
         return prisma.category.updateMany({
             where: { id: categoryId, tenantId },
@@ -341,6 +347,16 @@ export class PrintRoutingService {
         // Verify ownership of area
         const area = await prisma.area.findFirst({ where: { id: areaId, tenantId } });
         if (!area) throw new Error('Area not found');
+
+        // SEC-021: Verify printer belongs to same tenant
+        const printer = await prisma.printer.findFirst({ where: { id: printerId, tenantId } });
+        if (!printer) throw new Error('Printer not found or belongs to another tenant');
+
+        // SEC-021: Verify category belongs to same tenant (if specified)
+        if (categoryId !== null) {
+            const category = await prisma.category.findFirst({ where: { id: categoryId, tenantId } });
+            if (!category) throw new Error('Category not found or belongs to another tenant');
+        }
 
         // Prisma doesn't generate compound unique for nullable fields correctly
         // Use upsert with where clause that handles null

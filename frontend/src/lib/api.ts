@@ -24,6 +24,9 @@ const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1',
     timeout: 10000, // 10 second timeout
     withCredentials: true, // FIX P0-004: Include cookies in requests
+    headers: {
+        'X-Requested-With': 'XMLHttpRequest', // CSRF protection
+    },
 });
 
 /**

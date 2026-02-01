@@ -14,7 +14,7 @@ import { logger } from '../utils/logger';
  * Used for O(1) database lookup instead of O(n) bcrypt scan.
  * The bcrypt hash is still used for final verification (defense in depth).
  */
-const generatePinLookup = (pin: string): string => {
+export const generatePinLookup = (pin: string): string => {
     return crypto.createHash('sha256').update(pin).digest('hex');
 };
 
@@ -42,10 +42,13 @@ if (JWT_SECRET.length < 32) {
     );
 }
 
-// SECURITY: Warn if using obvious weak secrets
-const WEAK_SECRETS = ['super_secret_key', 'secret', 'password', 'jwt_secret', 'changeme'];
+// SECURITY: Reject weak secrets in production, warn in development
+const WEAK_SECRETS = ['super_secret_key', 'secret', 'password', 'jwt_secret', 'changeme', 'cambiar'];
 if (WEAK_SECRETS.some(weak => JWT_SECRET.toLowerCase().includes(weak))) {
-    logger.warn('[SECURITY] JWT_SECRET appears to be a weak/default value. Change it in production!');
+    if (process.env.NODE_ENV === 'production') {
+        throw new Error('CRITICAL: JWT_SECRET contains a weak/default value. Generate a secure secret before starting in production.');
+    }
+    logger.warn('[SECURITY] JWT_SECRET appears to be a weak/default value. Change it before deploying to production!');
 }
 
 // =============================================================================
@@ -62,9 +65,14 @@ const LoginSchema = z.object({
     tenantId: z.number().int().positive()
 });
 
+const PasswordSchema = z.string().min(8, 'Password must be at least 8 characters')
+    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+    .regex(/[0-9]/, 'Password must contain at least one number');
+
 const RegisterSchema = z.object({
     email: z.string().email(),
-    password: z.string().min(6),
+    password: PasswordSchema,
     name: z.string().min(1),
     pinCode: z.string().length(6),
     roleId: z.number().int().positive(),
@@ -96,7 +104,7 @@ interface PasswordLoginData {
 const RegisterTenantSchema = z.object({
     businessName: z.string().min(2),
     email: z.string().email(),
-    password: z.string().min(6),
+    password: PasswordSchema,
     name: z.string().min(1),
     phone: z.string().optional()
 });

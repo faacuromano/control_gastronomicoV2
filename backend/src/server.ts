@@ -78,3 +78,21 @@ const shutdown = async (signal: string) => {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+// =============================================================================
+// UNHANDLED ERROR HANDLERS
+// =============================================================================
+process.on('unhandledRejection', (reason: unknown) => {
+    logger.error('Unhandled promise rejection', {
+        reason: reason instanceof Error ? reason.message : String(reason),
+        stack: reason instanceof Error ? reason.stack : undefined
+    });
+    if (process.env.NODE_ENV === 'production') {
+        shutdown('unhandledRejection');
+    }
+});
+
+process.on('uncaughtException', (error: Error) => {
+    logger.error('Uncaught exception', { error: error.message, stack: error.stack });
+    process.exit(1);
+});

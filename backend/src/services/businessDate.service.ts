@@ -27,9 +27,23 @@ export class BusinessDateService {
             });
 
             if (activeShift) {
-                // LOGIC: Inherit from Shift (Robustness)
-                // Even if clock says 04:00 AM (Next Day), strict adherence to Shift's date
-                return activeShift.businessDate;
+                // BIZ-011: Validate shift business date is not stale (> 2 days old)
+                const now = new Date();
+                const diffMs = now.getTime() - activeShift.businessDate.getTime();
+                const diffDays = diffMs / (1000 * 60 * 60 * 24);
+                if (diffDays > 2) {
+                    logger.warn('STALE_BUSINESS_DATE', {
+                        tenantId,
+                        userId,
+                        shiftId: activeShift.id,
+                        shiftBusinessDate: activeShift.businessDate.toISOString(),
+                        staleDays: Math.floor(diffDays),
+                        action: 'USING_SYSTEM_DATE_FALLBACK'
+                    });
+                    // Fall through to system clock fallback instead of using stale date
+                } else {
+                    return activeShift.businessDate;
+                }
             }
         }
 

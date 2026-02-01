@@ -218,10 +218,20 @@ export const registerNewTenant = asyncHandler(async (req: Request, res: Response
     // Set token in cookie
     setAuthCookie(res, result.token);
     
-    // Audit log not needed here as user is fresh? Or log it.
-    // Since we don't have user ID in req yet, we use returned ID.
-    // Wait, auditService needs context.
-    
+    // Audit: log new tenant registration
+    await auditService.log(
+        'TENANT_REGISTERED' as any,
+        'Tenant',
+        result.tenant.id,
+        {
+            userId: result.user.id,
+            tenantId: result.tenant.id,
+            ipAddress: String(req.ip || 'unknown'),
+            userAgent: req.headers['user-agent'] ?? 'unknown'
+        },
+        { businessName: result.tenant.name, email: result.user.email }
+    );
+
     return sendSuccess(res, {
         tenant: result.tenant,
         user: result.user,

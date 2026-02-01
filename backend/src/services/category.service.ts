@@ -2,8 +2,9 @@ import { prisma } from '../lib/prisma';
 import { z } from 'zod';
 import { NotFoundError, ValidationError, ConflictError } from '../utils/errors';
 
+// SEC-023: Max length validation on text fields
 const CategorySchema = z.object({
-    name: z.string().min(1, "Name is required"),
+    name: z.string().min(1, "Name is required").max(100, "Name too long (max 100 characters)"),
     printerId: z.number().optional(),
 });
 
@@ -73,29 +74,32 @@ export const updateCategory = async (id: number, tenantId: number, data: any) =>
 };
 
 export const deleteCategory = async (id: number, tenantId: number) => {
-    const category = await prisma.category.findFirst({ 
-        where: { id, tenantId }, 
-        include: { products: { select: { isActive: true } } } 
-    });
-
-    if (!category) throw new NotFoundError('Category');
-
-    const activeProducts = category.products.filter(p => p.isActive);
-    const inactiveProducts = category.products.filter(p => !p.isActive);
-
-    if (activeProducts.length > 0) {
-        throw new ConflictError('Cannot delete category with active products');
-    }
-
-    // If we have inactive products, delete them first to allow category deletion
-    if (inactiveProducts.length > 0) {
-        await prisma.product.deleteMany({
-            where: { categoryId: id, tenantId }
+    // DB-012: Wrap check+delete in transaction to prevent concurrent cascade failures
+    return await prisma.$transaction(async (tx) => {
+        const category = await tx.category.findFirst({
+            where: { id, tenantId },
+            include: { products: { select: { isActive: true } } }
         });
-    }
 
-    // defense-in-depth: deleteMany ensures tenantId is in the WHERE clause
-    return await prisma.category.deleteMany({
-        where: { id, tenantId }
+        if (!category) throw new NotFoundError('Category');
+
+        const activeProducts = category.products.filter(p => p.isActive);
+        const inactiveProducts = category.products.filter(p => !p.isActive);
+
+        if (activeProducts.length > 0) {
+            throw new ConflictError('Cannot delete category with active products');
+        }
+
+        // If we have inactive products, delete them first to allow category deletion
+        if (inactiveProducts.length > 0) {
+            await tx.product.deleteMany({
+                where: { categoryId: id, tenantId }
+            });
+        }
+
+        // defense-in-depth: deleteMany ensures tenantId is in the WHERE clause
+        return await tx.category.deleteMany({
+            where: { id, tenantId }
+        });
     });
 };

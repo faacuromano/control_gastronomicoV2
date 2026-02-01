@@ -12,8 +12,12 @@
 import { Router, raw } from 'express';
 import { webhookController } from './webhook.controller';
 import { validateHmac, skipHmacInDevelopment } from './hmac.middleware';
+import { webhookRateLimiter } from '../../../middleware/rateLimit';
 
 const router = Router();
+
+// SEC-028: Apply rate limiting to all webhook endpoints
+router.use(webhookRateLimiter);
 
 // ============================================================================
 // IMPORTANTE: Webhooks requieren raw body para HMAC

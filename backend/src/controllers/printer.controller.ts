@@ -4,8 +4,35 @@ import { sendSuccess } from '../utils/response';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { prisma } from '../lib/prisma';
 import { ValidationError } from '../utils/errors';
+import { auditService } from '../services/audit.service';
 
 const printerService = new PrinterService();
+
+// Validation patterns for printer inputs
+const IP_PATTERN = /^(\d{1,3}\.){3}\d{1,3}(:\d{1,5})?$/;
+const SAFE_NAME_PATTERN = /^[a-zA-Z0-9\s\-_().#]+$/;
+
+function validatePrinterInputs(ipAddress?: string, windowsName?: string, name?: string): void {
+    if (ipAddress && !IP_PATTERN.test(ipAddress)) {
+        throw new ValidationError('Invalid IP address format. Expected: x.x.x.x or x.x.x.x:port');
+    }
+    if (ipAddress) {
+        const ipPart = ipAddress.split(':')[0];
+        const parts = ipPart ? ipPart.split('.') : [];
+        if (parts.some(p => parseInt(p) > 255)) {
+            throw new ValidationError('Invalid IP address: octets must be 0-255');
+        }
+    }
+    if (windowsName && !SAFE_NAME_PATTERN.test(windowsName)) {
+        throw new ValidationError('Printer name contains invalid characters');
+    }
+    if (windowsName && windowsName.length > 200) {
+        throw new ValidationError('Printer name too long (max 200 characters)');
+    }
+    if (name && !SAFE_NAME_PATTERN.test(name)) {
+        throw new ValidationError('Printer display name contains invalid characters');
+    }
+}
 
 /**
  * Generate ticket buffer (for local/browser printing)
@@ -98,7 +125,10 @@ export const getSystemPrinters = asyncHandler(async (_req: Request, res: Respons
  */
 export const createPrinter = asyncHandler(async (req: Request, res: Response) => {
     const { name, connectionType, ipAddress, windowsName } = req.body;
-    
+
+    // Sanitize inputs to prevent command injection
+    validatePrinterInputs(ipAddress, windowsName, name);
+
     // Validate based on connection type
     if (connectionType === 'USB') {
         if (!windowsName) {
@@ -111,15 +141,29 @@ export const createPrinter = asyncHandler(async (req: Request, res: Response) =>
     }
     
     const printer = await prisma.printer.create({
-        data: { 
+        data: {
             tenantId: req.user!.tenantId!,
-            name,  
+            name,
             connectionType: connectionType || 'NETWORK',
             ipAddress: connectionType === 'USB' ? null : ipAddress,
             windowsName: connectionType === 'USB' ? windowsName : null
         }
     });
-    
+
+    // Audit log - after successful creation
+    auditService.log(
+        'PRINTER_CREATED' as any,
+        'Printer',
+        printer.id,
+        {
+            userId: req.user!.id!,
+            tenantId: req.user!.tenantId!,
+            ipAddress: String(req.ip),
+            userAgent: req.headers['user-agent'] ?? 'unknown'
+        },
+        { name: printer.name, connectionType: printer.connectionType, ipAddress: printer.ipAddress }
+    );
+
     sendSuccess(res, printer, undefined, 201);
 });
 
@@ -130,7 +174,10 @@ export const createPrinter = asyncHandler(async (req: Request, res: Response) =>
 export const updatePrinter = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
     const { name, connectionType, ipAddress, windowsName } = req.body;
-    
+
+    // Sanitize inputs to prevent command injection
+    validatePrinterInputs(ipAddress, windowsName, name);
+
     // Build update data
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
@@ -159,6 +206,20 @@ export const updatePrinter = asyncHandler(async (req: Request, res: Response) =>
         where: { id, tenantId: req.user!.tenantId! }
     });
 
+    // Audit log - after successful update
+    auditService.log(
+        'PRINTER_UPDATED' as any,
+        'Printer',
+        id,
+        {
+            userId: req.user!.id!,
+            tenantId: req.user!.tenantId!,
+            ipAddress: String(req.ip),
+            userAgent: req.headers['user-agent'] ?? 'unknown'
+        },
+        { updates: updateData }
+    );
+
     sendSuccess(res, printer);
 });
 
@@ -168,12 +229,33 @@ export const updatePrinter = asyncHandler(async (req: Request, res: Response) =>
  */
 export const deletePrinter = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
-    
+
+    // Get printer details before deletion for audit log
+    const printer = await prisma.printer.findFirst({
+        where: { id, tenantId: req.user!.tenantId! }
+    });
+
     // Defense-in-depth: deleteMany with tenantId (P1-009 fix)
     const result = await prisma.printer.deleteMany({
         where: { id, tenantId: req.user!.tenantId! }
     });
     if (result.count === 0) throw new ValidationError('Printer not found');
+
+    // Audit log - after successful deletion
+    if (printer) {
+        auditService.log(
+            'PRINTER_DELETED' as any,
+            'Printer',
+            id,
+            {
+                userId: req.user!.id!,
+                tenantId: req.user!.tenantId!,
+                ipAddress: String(req.ip),
+                userAgent: req.headers['user-agent'] ?? 'unknown'
+            },
+            { printerName: printer.name, connectionType: printer.connectionType }
+        );
+    }
 
     sendSuccess(res, { message: 'Printer deleted' });
 });

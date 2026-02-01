@@ -47,6 +47,9 @@ export async function generateInvoice(tenantId: number, data: GenerateInvoiceDat
         select: { defaultTaxRate: true }
     });
     const taxRate = Number(tenantConfig?.defaultTaxRate || 0);
+    if (taxRate < 0 || taxRate > 100) {
+        throw new ValidationError(`Invalid tax rate: ${taxRate}%. Must be between 0 and 100.`);
+    }
     const subtotal = Number(order.subtotal);
     // Tax is included in total: subtotal = total / (1 + rate), tax = total - subtotal
     // If rate is 0, tax is 0

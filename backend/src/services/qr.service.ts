@@ -100,30 +100,42 @@ export class QrService {
             if (!table) throw new NotFoundError('Table not found or access denied');
         }
 
-        // Generate unique short code
-        const code = nanoid(8);
+        // ERR-009: Retry on unique constraint collision (birthday paradox with short codes)
+        const MAX_RETRIES = 3;
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+            try {
+                const code = nanoid(8);
 
-        const qrCode = await prisma.qrCode.create({
-            data: {
-                tenantId,
-                code,
-                tableId: tableId || null
-            },
-            include: {
-                table: { select: { name: true } }
+                const qrCode = await prisma.qrCode.create({
+                    data: {
+                        tenantId,
+                        code,
+                        tableId: tableId || null
+                    },
+                    include: {
+                        table: { select: { name: true } }
+                    }
+                });
+
+                return {
+                    id: qrCode.id,
+                    code: qrCode.code,
+                    tableId: qrCode.tableId,
+                    tableName: qrCode.table?.name || null,
+                    isActive: qrCode.isActive,
+                    scansCount: qrCode.scansCount,
+                    lastScannedAt: qrCode.lastScannedAt,
+                    createdAt: qrCode.createdAt
+                };
+            } catch (error: any) {
+                // P2002 = unique constraint violation - retry with new code
+                if (error?.code === 'P2002' && attempt < MAX_RETRIES - 1) {
+                    continue;
+                }
+                throw error;
             }
-        });
-
-        return {
-            id: qrCode.id,
-            code: qrCode.code,
-            tableId: qrCode.tableId,
-            tableName: qrCode.table?.name || null,
-            isActive: qrCode.isActive,
-            scansCount: qrCode.scansCount,
-            lastScannedAt: qrCode.lastScannedAt,
-            createdAt: qrCode.createdAt
-        };
+        }
+        throw new Error('Failed to generate unique QR code after multiple attempts');
     }
 
     /**

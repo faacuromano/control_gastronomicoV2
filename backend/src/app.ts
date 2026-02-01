@@ -5,6 +5,7 @@ import morgan from 'morgan';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import { prisma } from './lib/prisma';
+import { logger } from './utils/logger';
 
 // Environment validation
 const isProduction = process.env.NODE_ENV === 'production';
@@ -17,18 +18,25 @@ for (const envVar of REQUIRED_ENV_VARS) {
         throw new Error(`CRITICAL: Missing required environment variable: ${envVar}`);
     }
 }
-if (isProduction && !process.env.CORS_ORIGINS) {
-    console.error('[CONFIG] CORS_ORIGINS not set in production — defaulting to localhost');
+// CORS_ORIGINS validation is handled below in the CORS configuration block
+
+// Conditional: if queue workers enabled, Redis must be configured
+if (process.env.ENABLE_QUEUE_WORKERS === 'true' && !process.env.REDIS_HOST) {
+    throw new Error('CRITICAL: REDIS_HOST is required when ENABLE_QUEUE_WORKERS=true');
+}
+if (process.env.ENABLE_QUEUE_WORKERS === 'true' && !process.env.REDIS_PASSWORD) {
+    logger.warn('[CONFIG] REDIS_PASSWORD not set — Redis connection may fail if authentication is required');
 }
 
 // CORS Configuration - Use CORS_ORIGINS env var for production
-const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || ['http://localhost:5173', 'http://localhost:5174'];
+// SEC-026: In production, require explicit CORS_ORIGINS to prevent localhost fallback
+const allowedOrigins = process.env.CORS_ORIGINS?.split(',')
+    || (isProduction ? [] : ['http://localhost:5173', 'http://localhost:5174']);
 
-// SECURITY: Warn if using default CORS in production
+// SECURITY: Block startup if CORS not configured in production
 if (isProduction && !process.env.CORS_ORIGINS) {
-    console.error(
-        '[SECURITY WARNING] CORS_ORIGINS not configured in production! ' +
-        'Defaulting to localhost which may block legitimate requests. ' +
+    throw new Error(
+        'CRITICAL: CORS_ORIGINS must be set in production. ' +
         'Set CORS_ORIGINS=https://yourdomain.com in your .env'
     );
 }
@@ -58,6 +66,10 @@ app.use(helmet({
 app.use(correlationId);
 app.use(morgan('dev'));
 app.use(compression());
+
+// CSRF protection: require X-Requested-With header on state-changing requests
+import { csrfProtection } from './middleware/csrf';
+app.use('/api/', csrfProtection);
 
 // Routes - API v1
 import authRoutes from './routes/auth.routes';

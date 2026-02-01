@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
+import { validateId } from '../middleware/validateId';
 import * as invoiceController from '../controllers/invoice.controller';
 
 const router = Router();
@@ -23,7 +24,7 @@ router.post('/', invoiceController.generateInvoice);
  * GET /invoices/order/:orderId
  * Get invoice by order ID
  */
-router.get('/order/:orderId', invoiceController.getByOrderId);
+router.get('/order/:orderId', validateId('orderId'), invoiceController.getByOrderId);
 
 /**
  * GET /invoices/:invoiceNumber

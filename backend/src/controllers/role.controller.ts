@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { ForbiddenError, ValidationError, ConflictError, NotFoundError } from '../utils/errors';
+import { auditService } from '../services/audit.service';
 
 const createRoleSchema = z.object({
     name: z.string().min(2).max(50),
@@ -71,19 +72,43 @@ const updatePermissionsSchema = z.object({
 });
 
 /**
- * Get all roles
+ * Get all roles with pagination
  */
 export const getRoles = asyncHandler(async (req: Request, res: Response) => {
+    const { page: pageStr, limit: limitStr } = req.query;
+
+    // Parse pagination params
+    const page = Math.max(1, parseInt(pageStr as string) || 1);
+    const limit = Math.max(1, parseInt(limitStr as string) || 50);
+    const skip = (page - 1) * limit;
+
+    const where = { tenantId: req.user!.tenantId! };
+
+    // Get total count for pagination
+    const total = await prisma.role.count({ where });
+
     const roles = await prisma.role.findMany({
-        where: { tenantId: req.user!.tenantId! },
+        where,
         select: {
             id: true,
             name: true,
             permissions: true
         },
-        orderBy: { name: 'asc' }
+        orderBy: { name: 'asc' },
+        skip,
+        take: limit
     });
-    res.json({ success: true, data: roles });
+
+    res.json({
+        success: true,
+        data: roles,
+        meta: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit)
+        }
+    });
 });
 
 /**
@@ -139,6 +164,20 @@ export const createRole = asyncHandler(async (req: Request, res: Response) => {
         }
     });
 
+    // Audit log - after successful creation
+    auditService.log(
+        'ROLE_CREATED' as any,
+        'Role',
+        role.id,
+        {
+            userId: req.user!.id!,
+            tenantId: req.user!.tenantId!,
+            ipAddress: String(req.ip),
+            userAgent: req.headers['user-agent'] ?? 'unknown'
+        },
+        { name: role.name }
+    );
+
     res.status(201).json({ success: true, data: role });
 });
 
@@ -183,6 +222,20 @@ export const updateRolePermissions = asyncHandler(async (req: Request, res: Resp
     const updatedRole = await prisma.role.findFirst({
         where: { id, tenantId: req.user!.tenantId! }
     });
+
+    // Audit log - after successful permissions update
+    auditService.log(
+        'ROLE_PERMISSIONS_UPDATED' as any,
+        'Role',
+        id,
+        {
+            userId: req.user!.id!,
+            tenantId: req.user!.tenantId!,
+            ipAddress: String(req.ip),
+            userAgent: req.headers['user-agent'] ?? 'unknown'
+        },
+        { roleName: role.name, permissions }
+    );
 
     res.json({
         success: true,
@@ -229,6 +282,21 @@ export const deleteRole = asyncHandler(async (req: Request, res: Response) => {
 
     // Use deleteMany with tenantId for defense-in-depth (P0-005 fix)
     await prisma.role.deleteMany({ where: { id, tenantId: req.user!.tenantId! } });
+
+    // Audit log - after successful deletion
+    auditService.log(
+        'ROLE_DELETED' as any,
+        'Role',
+        id,
+        {
+            userId: req.user!.id!,
+            tenantId: req.user!.tenantId!,
+            ipAddress: String(req.ip),
+            userAgent: req.headers['user-agent'] ?? 'unknown'
+        },
+        { roleName: role.name }
+    );
+
     res.json({ success: true, message: 'Role deleted successfully' });
 });
 

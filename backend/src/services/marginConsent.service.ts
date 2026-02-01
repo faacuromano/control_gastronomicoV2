@@ -143,6 +143,15 @@ class MarginConsentService {
       );
     }
 
+    // BIZ-013: Validate markup range (0-200% is reasonable for delivery platforms)
+    if (defaultMarkup !== undefined && defaultMarkup !== null) {
+      if (defaultMarkup < 0 || defaultMarkup > 200) {
+        throw new BadRequestError(
+          `Markup inválido: ${defaultMarkup}%. Debe estar entre 0% y 200%.`
+        );
+      }
+    }
+
     // Registrar consentimiento con timestamp y usuario
     return prisma.tenantPlatformConfig.update({
         where: {

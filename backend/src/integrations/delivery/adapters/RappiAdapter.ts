@@ -12,6 +12,7 @@
  */
 
 import axios, { type AxiosInstance } from 'axios';
+import { z } from 'zod';
 import { AbstractDeliveryAdapter, type AdapterConfig } from './AbstractDeliveryAdapter';
 import type { DeliveryPlatform } from '@prisma/client';
 import {
@@ -33,6 +34,69 @@ import {
 // ============================================================================
 
 /**
+ * Zod schema para validar el payload del webhook de Rappi.
+ */
+const RappiToppingSchema = z.object({
+  sku: z.string(),
+  name: z.string(),
+  price: z.number(),
+  quantity: z.number(),
+});
+
+const RappiItemSchema = z.object({
+  sku: z.string(),
+  name: z.string(),
+  quantity: z.number(),
+  unit_price: z.number(),
+  comments: z.string().optional(),
+  toppings: z.array(RappiToppingSchema).optional(),
+});
+
+const RappiCustomerSchema = z.object({
+  id: z.string(),
+  first_name: z.string(),
+  last_name: z.string(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+});
+
+const RappiDeliveryAddressSchema = z.object({
+  address: z.string(),
+  address_two: z.string().optional(),
+  city: z.string(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
+  instructions: z.string().optional(),
+});
+
+const RappiTotalsSchema = z.object({
+  subtotal: z.number(),
+  delivery_fee: z.number(),
+  discount: z.number(),
+  tip: z.number(),
+  total: z.number(),
+});
+
+const RappiPaymentSchema = z.object({
+  method: z.enum(['ONLINE', 'CASH', 'CARD']),
+  is_prepaid: z.boolean(),
+});
+
+const RappiOrderPayloadSchema = z.object({
+  order_id: z.string(),
+  order_number: z.string(),
+  status: z.string(),
+  created_at: z.string(),
+  estimated_delivery_time: z.string().optional(),
+  customer: RappiCustomerSchema,
+  delivery_address: RappiDeliveryAddressSchema.optional(),
+  items: z.array(RappiItemSchema),
+  totals: RappiTotalsSchema,
+  payment: RappiPaymentSchema,
+  notes: z.string().optional(),
+});
+
+/**
  * Payload raw de nuevo pedido de Rappi.
  * Estructura basada en documentación de Rappi Partners API.
  */
@@ -42,7 +106,7 @@ interface RappiOrderPayload {
   status: string;
   created_at: string;
   estimated_delivery_time?: string;
-  
+
   customer: {
     id: string;
     first_name: string;
@@ -50,7 +114,7 @@ interface RappiOrderPayload {
     phone?: string;
     email?: string;
   };
-  
+
   delivery_address?: {
     address: string;
     address_two?: string;
@@ -59,7 +123,7 @@ interface RappiOrderPayload {
     longitude?: number;
     instructions?: string;
   };
-  
+
   items: Array<{
     sku: string;
     name: string;
@@ -73,7 +137,7 @@ interface RappiOrderPayload {
       quantity: number;
     }>;
   }>;
-  
+
   totals: {
     subtotal: number;
     delivery_fee: number;
@@ -81,12 +145,12 @@ interface RappiOrderPayload {
     tip: number;
     total: number;
   };
-  
+
   payment: {
     method: 'ONLINE' | 'CASH' | 'CARD';
     is_prepaid: boolean;
   };
-  
+
   notes?: string;
 }
 
@@ -190,11 +254,20 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
    * Parsea el payload del webhook de Rappi al formato normalizado.
    */
   parseWebhookPayload(rawPayload: unknown): ProcessedWebhook {
-    const payload = rawPayload as RappiOrderPayload;
-    
+    // Validar el payload con Zod
+    const parsed = RappiOrderPayloadSchema.safeParse(rawPayload);
+    if (!parsed.success) {
+      this.log('error', 'Invalid Rappi webhook payload', {
+        issues: parsed.error.issues,
+      });
+      throw new Error(`Invalid Rappi webhook payload: ${parsed.error.message}`);
+    }
+
+    const payload = parsed.data as RappiOrderPayload;
+
     // Determinar tipo de evento
     const eventType = this.determineEventType(payload);
-    
+
     // Convertir a formato normalizado
     const order = this.normalizeOrder(payload);
 
