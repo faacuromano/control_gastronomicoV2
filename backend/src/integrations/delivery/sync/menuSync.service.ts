@@ -1,14 +1,21 @@
 /**
- * @fileoverview Menu Sync Service
- * 
- * Servicio para sincronizar el menú del restaurante con plataformas de delivery.
- * 
+ * @fileoverview Servicio de Sincronizacion de Menu con Plataformas de Delivery
+ *
+ * Servicio encargado de sincronizar el menu del restaurante con las plataformas
+ * de delivery externas (Rappi, PedidosYa, etc.).
+ *
  * RESPONSABILIDADES:
- * 1. Obtener productos con precios de canal configurados
- * 2. Formatear menú según cada plataforma
- * 3. Enviar menú via adapter correspondiente
- * 4. Registrar resultado de sincronización
- * 
+ * 1. Obtener productos del tenant con sus precios de canal configurados
+ * 2. Verificar que la plataforma pertenezca al tenant (seguridad multi-tenant)
+ * 3. Formatear el menu segun los requisitos de cada plataforma via el adaptador
+ * 4. Enviar el menu completo usando el adaptador correspondiente
+ * 5. Registrar el resultado y actualizar el timestamp de sincronizacion
+ *
+ * MODOS DE EJECUCION:
+ * - Sincronizacion directa: syncTenant() ejecuta de forma sincrona
+ * - Sincronizacion asincrona: enqueueSync() encola un job en BullMQ
+ * - Sincronizacion masiva: syncAllActiveTenants() para cron jobs
+ *
  * @module integrations/delivery/sync/menuSync.service
  */
 
@@ -20,7 +27,7 @@ import { NotFoundError } from '../../../utils/errors';
 import type { MenuSyncResult } from '../types/normalized.types';
 
 // ============================================================================
-// TIPOS
+// TIPOS INTERNOS
 // ============================================================================
 
 interface MenuSyncJobData {
@@ -43,23 +50,25 @@ interface ProductForSync {
 }
 
 // ============================================================================
-// SERVICIO
+// SERVICIO DE SINCRONIZACION DE MENU
 // ============================================================================
 
 class MenuSyncService {
   /**
-   * Sincroniza el menú del tenant con una plataforma específica.
-   * 
-   * @param tenantId - ID del tenant
-   * @param platformId - ID de la plataforma
-   * @returns Resultado de la sincronización
+   * Sincroniza el menu completo de un tenant con una plataforma especifica.
+   * Verifica permisos, obtiene productos, los envia a la plataforma y
+   * actualiza el timestamp de ultima sincronizacion.
+   *
+   * @param tenantId - ID del tenant propietario del menu
+   * @param platformId - ID de la plataforma destino
+   * @returns Resultado de la sincronizacion con conteo de exitos y fallos
    */
   async syncTenant(tenantId: number, platformId: number): Promise<MenuSyncResult> {
     const startTime = Date.now();
     logger.info('Starting menu sync', { tenantId, platformId });
 
     try {
-      // SEC-015: Verify platform belongs to requesting tenant (defense-in-depth)
+      // SEC-015: Verificar que la plataforma pertenezca al tenant (defensa en profundidad)
       const platformOwnership = await prisma.deliveryPlatform.findFirst({
         where: { id: platformId, tenantId },
       });
@@ -67,7 +76,7 @@ class MenuSyncService {
         throw new NotFoundError(`Platform ${platformId} not found or does not belong to tenant ${tenantId}`);
       }
 
-      // 1. Obtener configuración del tenant para esta plataforma
+      // Paso 1: Obtener configuracion del tenant para esta plataforma
       const config = await prisma.tenantPlatformConfig.findUnique({
         where: {
           tenantId_deliveryPlatformId: {
@@ -83,10 +92,10 @@ class MenuSyncService {
       if (!config) {
         throw new NotFoundError(`Configuration not found for tenant ${tenantId} platform ${platformId}`);
       }
-      
+
       const platform = config.deliveryPlatform;
 
-      // Verificar si sync está habilitado en nivel config
+      // Verificar si la sincronizacion de menu esta habilitada en la configuracion del tenant
       if (!config.menuSyncEnabled) {
         logger.warn('Menu sync disabled for tenant platform', {
           tenantId,
@@ -102,7 +111,7 @@ class MenuSyncService {
         };
       }
 
-      // 2. Obtener productos del tenant con precios de canal
+      // Paso 2: Obtener productos del tenant con precios de canal configurados
       const products = await this.getProductsForTenantPlatform(tenantId, platformId);
 
       if (products.length === 0) {
@@ -116,16 +125,16 @@ class MenuSyncService {
         };
       }
 
-      // 3. Get adapter with tenant credentials (overrides)
+      // Paso 3: Obtener adaptador con credenciales del tenant (overrides)
       const adapter = await AdapterFactory.getAdapterForTenant(platformId, {
         ...(config.apiKey && { apiKey: config.apiKey }),
         ...(config.webhookSecret && { webhookSecret: config.webhookSecret }),
         ...(config.storeId && { storeId: config.storeId }),
       });
-      
+
       const result = await adapter.pushMenu(products);
 
-      // 4. Actualizar timestamp de sync en config del tenant
+      // Paso 4: Actualizar timestamp de sincronizacion en la configuracion del tenant
       await prisma.tenantPlatformConfig.update({
         where: { id: config.id },
         data: { lastSyncAt: new Date() },
@@ -158,8 +167,8 @@ class MenuSyncService {
         success: false,
         syncedProducts: 0,
         failedProducts: 0,
-        errors: [{ 
-          productId: 0, 
+        errors: [{
+          productId: 0,
           error: error instanceof Error ? error.message : String(error)
         }],
         syncedAt: new Date(),
@@ -168,13 +177,14 @@ class MenuSyncService {
   }
 
   /**
-   * Sincroniza el menú para todos los tenants y plataformas activas.
-   * Útil para cron jobs globales.
+   * Sincroniza el menu para todos los tenants y plataformas activas.
+   * Util para cron jobs globales que mantienen los menus actualizados
+   * de forma periodica sin intervencion manual.
    */
   async syncAllActiveTenants(): Promise<void> {
-    // Buscar todas las configs activas con sync habilitado
+    // Buscar todas las configuraciones activas con sincronizacion de menu habilitada
     const configs = await prisma.tenantPlatformConfig.findMany({
-      where: { 
+      where: {
         isActive: true,
         menuSyncEnabled: true,
       },
@@ -186,25 +196,26 @@ class MenuSyncService {
       try {
         await this.syncTenant(config.tenantId, config.deliveryPlatformId);
       } catch (e) {
-        logger.error('Error in batch sync', { 
-            tenantId: config.tenantId, 
+        logger.error('Error in batch sync', {
+            tenantId: config.tenantId,
             platformId: config.deliveryPlatformId,
-            error: e 
+            error: e
         });
       }
     }
   }
 
   /**
-   * Encola una sincronización de menú para procesamiento asíncrono.
-   * Requiere tenantId ahora.
+   * Encola una sincronizacion de menu para procesamiento asincrono via BullMQ.
+   * Util cuando se necesita sincronizar sin bloquear la respuesta HTTP.
+   * Requiere tenantId para garantizar aislamiento multi-tenant.
    */
   async enqueueSync(
     tenantId: number,
     platformId: number,
     triggeredBy: 'MANUAL' | 'SCHEDULE' | 'PRODUCT_UPDATE' = 'MANUAL'
   ): Promise<string> {
-    // FIX P0-SEC: Scope platform lookup by tenantId
+    // FIX P0-SEC: Buscar plataforma con scope de tenantId
     const platform = await prisma.deliveryPlatform.findFirst({
       where: { id: platformId, tenantId },
     });
@@ -241,14 +252,16 @@ class MenuSyncService {
   }
 
   /**
-   * Obtiene los productos formateados para una plataforma y tenant.
+   * Obtiene los productos formateados para enviar a una plataforma especifica.
+   * Solo incluye productos activos del tenant que tienen precios de canal configurados
+   * y disponibilidad habilitada para esa plataforma.
    */
   private async getProductsForTenantPlatform(tenantId: number, platformId: number): Promise<ProductForSync[]> {
     const channelPrices = await prisma.productChannelPrice.findMany({
       where: {
         deliveryPlatformId: platformId,
         isAvailable: true,
-        // Filtro crítico de multi-tenancy
+        // Filtro critico de multi-tenancy: solo productos del tenant
         product: {
             tenantId: tenantId,
             isActive: true

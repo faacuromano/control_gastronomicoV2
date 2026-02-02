@@ -1,3 +1,12 @@
+/**
+ * @fileoverview Servicio de configuracion de metodos de pago por tenant.
+ * Gestiona el CRUD de metodos de pago (efectivo, tarjeta, transferencia, QR)
+ * que cada restaurante puede personalizar segun sus necesidades.
+ * Incluye semilla de metodos por defecto para nuevos tenants.
+ *
+ * @module services/paymentMethod.service
+ */
+
 import { prisma } from '../lib/prisma';
 import { NotFoundError, ConflictError } from '../utils/errors';
 
@@ -11,7 +20,8 @@ export interface PaymentMethodConfigInput {
 
 export class PaymentMethodService {
   /**
-   * Get all payment methods (for admin) with pagination
+   * Obtiene todos los metodos de pago (para panel de administracion) con paginacion.
+   * Incluye tanto activos como inactivos para que el admin pueda gestionarlos todos.
    */
   async getAll(tenantId: number, page: number = 1, limit: number = 50) {
     const skip = (page - 1) * limit;
@@ -35,7 +45,8 @@ export class PaymentMethodService {
   }
 
   /**
-   * Get only active payment methods (for POS/checkout)
+   * Obtiene solo los metodos de pago activos (para POS/checkout).
+   * Esta es la consulta que usa el frontend al momento de cobrar una orden.
    */
   async getActive(tenantId: number) {
     return await prisma.paymentMethodConfig.findMany({
@@ -45,7 +56,7 @@ export class PaymentMethodService {
   }
 
   /**
-   * Get by ID
+   * Obtiene un metodo de pago por su ID.
    */
   async getById(id: number, tenantId: number) {
     const method = await prisma.paymentMethodConfig.findFirst({
@@ -56,10 +67,12 @@ export class PaymentMethodService {
   }
 
   /**
-   * Create new payment method
+   * Crea un nuevo metodo de pago.
+   * Valida que el codigo sea unico dentro del tenant antes de crear.
+   * El codigo se almacena en mayusculas para consistencia.
    */
   async create(tenantId: number, data: PaymentMethodConfigInput) {
-    // Check unique code
+    // Verificar unicidad del codigo dentro del tenant
     const existing = await prisma.paymentMethodConfig.findFirst({
       where: { code: data.code, tenantId }
     });
@@ -80,13 +93,14 @@ export class PaymentMethodService {
   }
 
   /**
-   * Update payment method
+   * Actualiza un metodo de pago existente.
+   * Si el codigo cambia, verifica unicidad del nuevo codigo.
    */
   async update(id: number, tenantId: number, data: Partial<PaymentMethodConfigInput>) {
     const method = await prisma.paymentMethodConfig.findFirst({ where: { id, tenantId } });
     if (!method) throw new NotFoundError('Payment Method');
 
-    // If code is changing, check uniqueness
+    // Si se esta cambiando el codigo, verificar que no exista otro con el mismo codigo
     if (data.code && data.code !== method.code) {
       const existing = await prisma.paymentMethodConfig.findFirst({
         where: { code: data.code, tenantId }
@@ -96,7 +110,7 @@ export class PaymentMethodService {
       }
     }
 
-    // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+    // Defensa en profundidad: updateMany garantiza que tenantId este en la clausula WHERE
     return await prisma.paymentMethodConfig.updateMany({
       where: { id, tenantId },
       data: {
@@ -110,13 +124,14 @@ export class PaymentMethodService {
   }
 
   /**
-   * Toggle active status
+   * Alterna el estado activo/inactivo de un metodo de pago.
+   * Util para habilitar o deshabilitar rapidamente un metodo sin eliminarlo.
    */
   async toggleActive(id: number, tenantId: number) {
     const method = await prisma.paymentMethodConfig.findFirst({ where: { id, tenantId } });
     if (!method) throw new NotFoundError('Payment Method');
 
-    // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+    // Defensa en profundidad: updateMany garantiza que tenantId este en la clausula WHERE
     return await prisma.paymentMethodConfig.updateMany({
       where: { id, tenantId },
       data: { isActive: !method.isActive }
@@ -124,20 +139,22 @@ export class PaymentMethodService {
   }
 
   /**
-   * Delete payment method
+   * Elimina un metodo de pago.
+   * NOTA: Podria agregarse validacion de que no existan pagos usando este metodo.
    */
   async delete(id: number, tenantId: number) {
     const method = await prisma.paymentMethodConfig.findFirst({ where: { id, tenantId } });
     if (!method) throw new NotFoundError('Payment Method');
 
-    // Could add check for existing payments using this method
-    
-    // defense-in-depth: deleteMany ensures tenantId is in the WHERE clause
+    // Defensa en profundidad: deleteMany garantiza que tenantId este en la clausula WHERE
     await prisma.paymentMethodConfig.deleteMany({ where: { id, tenantId } });
   }
 
   /**
-   * Seed default payment methods
+   * Siembra los metodos de pago por defecto para un nuevo tenant.
+   * Se ejecuta durante el registro de un nuevo restaurante para que tenga
+   * los metodos basicos configurados de entrada (efectivo, tarjeta, transferencia, QR).
+   * Usa upsert para ser idempotente en caso de re-ejecucion.
    */
   async seedDefaults(tenantId: number) {
     const defaults = [

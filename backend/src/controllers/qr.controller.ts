@@ -1,7 +1,14 @@
 /**
- * @fileoverview QR Menu Controller
- * Handles QR code management and public menu access
- * 
+ * @fileoverview Controlador de Menú QR
+ *
+ * Gestiona los códigos QR que dan acceso al menú digital del restaurante.
+ * Soporta dos modos:
+ * - STATIC: Muestra un PDF del menú (imagen estática)
+ * - INTERACTIVE: Menú dinámico con categorías, productos y opcionalmente pedido autónomo
+ *
+ * Tiene endpoints públicos (sin auth) para que los comensales escaneen el QR,
+ * y endpoints de admin (con auth) para gestionar la configuración y los códigos.
+ *
  * @module controllers/qr.controller
  */
 
@@ -11,33 +18,37 @@ import { asyncHandler } from '../middleware/asyncHandler';
 import { sendSuccess } from '../utils/response';
 
 // ============================================================================
-// PUBLIC ENDPOINTS (No auth required)
+// ENDPOINTS PUBLICOS (Sin autenticación requerida)
 // ============================================================================
 
 /**
- * Validate QR code and get menu config
+ * Valida un código QR y devuelve la configuración del menú.
  * GET /api/v1/qr/:code
+ * El comensal escanea el QR y este endpoint le indica qué tipo de menú mostrar.
+ * Incrementa el contador de escaneos para analíticas.
  */
 export const validateQr = asyncHandler(async (req: Request, res: Response) => {
     const code = req.params.code as string;
-    
+
     const data = await qrService.validateAndScan(code);
-    
+
     sendSuccess(res, data);
 });
 
 /**
- * Get public menu (for INTERACTIVE mode)
+ * Obtiene el menú público completo para modo INTERACTIVE.
  * GET /api/v1/qr/:code/menu
+ * Devuelve categorías y productos con precios para que el comensal navegue el menú.
+ * En modo STATIC solo retorna la URL del PDF.
  */
 export const getPublicMenu = asyncHandler(async (req: Request, res: Response) => {
     const code = req.params.code as string;
-    
-    // First validate the QR code (but don't increment scan again)
+
+    // Validar el QR (sin incrementar el escaneo nuevamente)
     const qr = await qrService.validateAndScan(code);
-    
+
     if (qr.config.mode === 'STATIC') {
-        // For static mode, just return the PDF URL
+        // Para modo estático, solo retornar la URL del PDF del menú
         sendSuccess(res, {
             mode: 'STATIC',
             pdfUrl: qr.config.pdfUrl,
@@ -48,9 +59,9 @@ export const getPublicMenu = asyncHandler(async (req: Request, res: Response) =>
         return;
     }
 
-    // For interactive mode, return full menu
+    // Para modo interactivo, retornar el menú completo con productos
     const menu = await qrService.getPublicMenu(qr.tenantId);
-    
+
     sendSuccess(res, {
         mode: 'INTERACTIVE',
         businessName: qr.config.businessName,
@@ -64,12 +75,13 @@ export const getPublicMenu = asyncHandler(async (req: Request, res: Response) =>
 });
 
 // ============================================================================
-// ADMIN ENDPOINTS (Auth required)
+// ENDPOINTS DE ADMINISTRACION (Requieren autenticación)
 // ============================================================================
 
 /**
- * Get QR menu configuration
+ * Obtiene la configuración del menú QR del tenant.
  * GET /api/v1/admin/qr/config
+ * Incluye modo (STATIC/INTERACTIVE), URL de PDF, banner, tema y si permite auto-pedido.
  */
 export const getConfig = asyncHandler(async (req: Request, res: Response) => {
     const config = await qrService.getConfig(req.user!.tenantId!);
@@ -77,7 +89,7 @@ export const getConfig = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * Update QR menu configuration
+ * Actualiza la configuración del menú QR.
  * PATCH /api/v1/admin/qr/config
  */
 export const updateConfig = asyncHandler(async (req: Request, res: Response) => {
@@ -86,8 +98,9 @@ export const updateConfig = asyncHandler(async (req: Request, res: Response) => 
 });
 
 /**
- * Get all QR codes
+ * Obtiene todos los códigos QR generados para el tenant.
  * GET /api/v1/admin/qr/codes
+ * Incluye información de la mesa asociada y el contador de escaneos.
  */
 export const getAllCodes = asyncHandler(async (req: Request, res: Response) => {
     const codes = await qrService.getAllQrCodes(req.user!.tenantId!);
@@ -95,8 +108,9 @@ export const getAllCodes = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * Generate new QR code
+ * Genera un nuevo código QR opcionalmente vinculado a una mesa.
  * POST /api/v1/admin/qr/codes
+ * Si se asocia a una mesa, el menú QR muestra automáticamente el nombre de la mesa.
  */
 export const generateCode = asyncHandler(async (req: Request, res: Response) => {
     const { tableId } = req.body;
@@ -105,8 +119,9 @@ export const generateCode = asyncHandler(async (req: Request, res: Response) => 
 });
 
 /**
- * Toggle QR code active status
+ * Activa/desactiva un código QR (toggle).
  * PATCH /api/v1/admin/qr/codes/:id/toggle
+ * Un QR desactivado no permite acceder al menú.
  */
 export const toggleCode = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
@@ -115,7 +130,7 @@ export const toggleCode = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * Delete QR code
+ * Elimina un código QR permanentemente.
  * DELETE /api/v1/admin/qr/codes/:id
  */
 export const deleteCode = asyncHandler(async (req: Request, res: Response) => {

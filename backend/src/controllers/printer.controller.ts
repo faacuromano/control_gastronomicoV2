@@ -1,3 +1,20 @@
+/**
+ * @fileoverview Controlador de Impresoras Térmicas
+ *
+ * Gestiona las impresoras térmicas del restaurante: configuración, prueba de conexión,
+ * generación de tickets e impresión directa. Soporta impresoras de red (TCP/IP)
+ * e impresoras USB conectadas al servidor Windows.
+ *
+ * Funcionalidades:
+ * - Generación de tickets en formato base64 (para impresión desde el navegador)
+ * - Impresión directa a dispositivo térmico (red o USB)
+ * - Pre-cuenta (ticket sin pagos para que el cliente revise antes de pagar)
+ * - Página de prueba para verificar conectividad
+ * - CRUD de configuración de impresoras
+ *
+ * @module controllers/printer.controller
+ */
+
 import { Request, Response } from 'express';
 import { AuditAction } from '@prisma/client';
 import { PrinterService } from '../services/printer.service';
@@ -9,10 +26,14 @@ import { auditService } from '../services/audit.service';
 
 const printerService = new PrinterService();
 
-// Validation patterns for printer inputs
+// Patrones de validación para prevenir inyección de comandos en datos de impresora
 const IP_PATTERN = /^(\d{1,3}\.){3}\d{1,3}(:\d{1,5})?$/;
 const SAFE_NAME_PATTERN = /^[a-zA-Z0-9\s\-_().#]+$/;
 
+/**
+ * Valida los datos de entrada de impresora para prevenir inyección de comandos.
+ * Verifica formato de IP, caracteres seguros en nombres y límites de longitud.
+ */
 function validatePrinterInputs(ipAddress?: string, windowsName?: string, name?: string): void {
     if (ipAddress && !IP_PATTERN.test(ipAddress)) {
         throw new ValidationError('Invalid IP address format. Expected: x.x.x.x or x.x.x.x:port');
@@ -36,68 +57,70 @@ function validatePrinterInputs(ipAddress?: string, windowsName?: string, name?: 
 }
 
 /**
- * Generate ticket buffer (for local/browser printing)
+ * Genera un ticket de orden en formato base64 para impresión desde el navegador.
  * GET /print/:id
+ * El frontend decodifica el base64 y lo envía a la impresora local del usuario.
  */
 export const printTicket = asyncHandler(async (req: Request, res: Response) => {
     const orderId = parseInt(req.params.id as string);
     const buffer = await printerService.generateOrderTicket(orderId, req.user!.tenantId!);
-    
-    sendSuccess(res, { 
+
+    sendSuccess(res, {
         message: 'Ticket generated',
         base64: buffer.toString('base64')
     });
 });
 
 /**
- * Print order to a specific thermal printer device
+ * Imprime una orden directamente en una impresora térmica específica.
  * POST /print/:orderId/device/:printerId
+ * El servidor se conecta a la impresora por red (TCP/IP) o USB y envía los datos ESC/POS.
  */
 export const printToDevice = asyncHandler(async (req: Request, res: Response) => {
     const orderId = parseInt(req.params.orderId as string);
     const printerId = parseInt(req.params.printerId as string);
-    
+
     await printerService.printOrderToDevice(orderId, printerId, req.user!.tenantId!);
-    
-    sendSuccess(res, { 
+
+    sendSuccess(res, {
         message: 'Ticket sent to printer successfully'
     });
 });
 
 /**
- * Print pre-account (cuenta) to a thermal printer
- * This prints the order WITHOUT payment info - for customer before paying
+ * Imprime la pre-cuenta (ticket sin información de pagos) para que el cliente
+ * revise los ítems y precios antes de proceder al pago.
  * POST /print/:orderId/preaccount/:printerId
  */
 export const printPreAccount = asyncHandler(async (req: Request, res: Response) => {
     const orderId = parseInt(req.params.orderId as string);
     const printerId = parseInt(req.params.printerId as string);
-    
-    // Use same print method - it already only shows payments if they exist
-    // The pre-account is just printing an order before payment is made
+
+    // Reutiliza el mismo método de impresión — solo muestra pagos si existen
+    // La pre-cuenta es simplemente imprimir la orden antes de que se registren pagos
     await printerService.printOrderToDevice(orderId, printerId, req.user!.tenantId!);
-    
-    sendSuccess(res, { 
+
+    sendSuccess(res, {
         message: 'Pre-check sent to printer successfully'
     });
 });
 
 /**
- * Print test page to verify printer connection
+ * Imprime una página de prueba para verificar la conexión con la impresora.
  * POST /print/test/:printerId
  */
 export const printTestPage = asyncHandler(async (req: Request, res: Response) => {
     const printerId = parseInt(req.params.printerId as string);
-    
+
     await printerService.printTestPage(printerId, req.user!.tenantId!);
-    
-    sendSuccess(res, { 
+
+    sendSuccess(res, {
         message: 'Test page printed successfully'
     });
 });
 
 /**
- * Get all configured printers
+ * Obtiene todas las impresoras configuradas del tenant con sus categorías asignadas.
  * GET /print/printers
  */
 export const getPrinters = asyncHandler(async (req: Request, res: Response) => {
@@ -106,31 +129,33 @@ export const getPrinters = asyncHandler(async (req: Request, res: Response) => {
         include: { categories: { select: { id: true, name: true } } },
         orderBy: { name: 'asc' }
     });
-    
+
     sendSuccess(res, printers);
 });
 
 /**
- * Get available Windows system printers
+ * Obtiene las impresoras disponibles en el sistema operativo Windows del servidor.
  * GET /print/printers/system
+ * Usado para descubrir impresoras USB conectadas al servidor.
  */
 export const getSystemPrinters = asyncHandler(async (_req: Request, res: Response) => {
     const printers = await printerService.listSystemPrinters();
-    
+
     sendSuccess(res, printers);
 });
 
 /**
- * Create a new printer
+ * Crea una nueva impresora en la configuración del tenant.
  * POST /print/printers
+ * Valida los datos de entrada y determina los campos según el tipo de conexión (red vs USB).
  */
 export const createPrinter = asyncHandler(async (req: Request, res: Response) => {
     const { name, connectionType, ipAddress, windowsName } = req.body;
 
-    // Sanitize inputs to prevent command injection
+    // Sanitizar inputs para prevenir inyección de comandos
     validatePrinterInputs(ipAddress, windowsName, name);
 
-    // Validate based on connection type
+    // Validar campos requeridos según tipo de conexión
     if (connectionType === 'USB') {
         if (!windowsName) {
             throw new ValidationError('Windows printer name is required for USB printers');
@@ -140,7 +165,7 @@ export const createPrinter = asyncHandler(async (req: Request, res: Response) =>
             throw new ValidationError('IP address is required for network printers');
         }
     }
-    
+
     const printer = await prisma.printer.create({
         data: {
             tenantId: req.user!.tenantId!,
@@ -151,7 +176,7 @@ export const createPrinter = asyncHandler(async (req: Request, res: Response) =>
         }
     });
 
-    // Audit log - after successful creation
+    // Auditoría: registrar creación de impresora
     auditService.log(
         AuditAction.PRINTER_CREATED,
         'Printer',
@@ -169,21 +194,22 @@ export const createPrinter = asyncHandler(async (req: Request, res: Response) =>
 });
 
 /**
- * Update printer
+ * Actualiza la configuración de una impresora.
  * PUT /print/printers/:id
+ * Usa updateMany con tenantId como defensa en profundidad (P1-009).
  */
 export const updatePrinter = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
     const { name, connectionType, ipAddress, windowsName } = req.body;
 
-    // Sanitize inputs to prevent command injection
+    // Sanitizar inputs para prevenir inyección de comandos
     validatePrinterInputs(ipAddress, windowsName, name);
 
-    // Build update data
+    // Construir datos de actualización según tipo de conexión
     const updateData: Record<string, string | null | undefined> = {};
     if (name !== undefined) updateData.name = name;
     if (connectionType !== undefined) updateData.connectionType = connectionType;
-    
+
     if (connectionType === 'USB') {
         updateData.ipAddress = null;
         updateData.windowsName = windowsName;
@@ -191,12 +217,12 @@ export const updatePrinter = asyncHandler(async (req: Request, res: Response) =>
         updateData.ipAddress = ipAddress;
         updateData.windowsName = null;
     } else {
-        // Partial update - only update fields that were provided
+        // Actualización parcial: solo actualizar campos proporcionados
         if (ipAddress !== undefined) updateData.ipAddress = ipAddress;
         if (windowsName !== undefined) updateData.windowsName = windowsName;
     }
-    
-    // Defense-in-depth: updateMany with tenantId (P1-009 fix)
+
+    // Defensa en profundidad: updateMany con tenantId (fix P1-009)
     const result = await prisma.printer.updateMany({
         where: { id, tenantId: req.user!.tenantId! },
         data: updateData
@@ -207,7 +233,7 @@ export const updatePrinter = asyncHandler(async (req: Request, res: Response) =>
         where: { id, tenantId: req.user!.tenantId! }
     });
 
-    // Audit log - after successful update
+    // Auditoría: registrar modificación de impresora
     auditService.log(
         AuditAction.PRINTER_UPDATED,
         'Printer',
@@ -225,24 +251,25 @@ export const updatePrinter = asyncHandler(async (req: Request, res: Response) =>
 });
 
 /**
- * Delete printer
+ * Elimina una impresora de la configuración del tenant.
  * DELETE /print/printers/:id
+ * Usa deleteMany con tenantId como defensa en profundidad (fix P1-009).
  */
 export const deletePrinter = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
 
-    // Get printer details before deletion for audit log
+    // Obtener datos de la impresora antes de eliminar para el registro de auditoría
     const printer = await prisma.printer.findFirst({
         where: { id, tenantId: req.user!.tenantId! }
     });
 
-    // Defense-in-depth: deleteMany with tenantId (P1-009 fix)
+    // Defensa en profundidad: deleteMany con tenantId (fix P1-009)
     const result = await prisma.printer.deleteMany({
         where: { id, tenantId: req.user!.tenantId! }
     });
     if (result.count === 0) throw new ValidationError('Printer not found');
 
-    // Audit log - after successful deletion
+    // Auditoría: registrar eliminación con los datos previos
     if (printer) {
         auditService.log(
             AuditAction.PRINTER_DELETED,

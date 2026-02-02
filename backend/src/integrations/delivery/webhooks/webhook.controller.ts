@@ -1,14 +1,22 @@
 /**
- * @fileoverview Webhook Controller
+ * @fileoverview Controlador de Webhooks de Delivery
  *
- * Controller to receive and process webhooks from delivery platforms.
- * Implements async processing via Queue for resilience.
+ * Controlador Express que recibe y procesa los webhooks entrantes de las
+ * plataformas de delivery. Implementa el patron de procesamiento asincrono
+ * via cola (BullMQ) para garantizar resiliencia y tiempo de respuesta rapido.
  *
- * FLOW:
- * 1. Receive webhook (validated by HMAC middleware)
- * 2. Enqueue for async processing
- * 3. Respond 200 OK immediately (< 100ms)
- * 4. Worker processes and creates/updates order
+ * FLUJO DE PROCESAMIENTO:
+ * 1. Recibir el webhook (ya validado por el middleware HMAC)
+ * 2. Validar la estructura basica del payload con Zod
+ * 3. Parsear con el adaptador para determinar tipo de evento y extraer datos
+ * 4. Encolar el job en BullMQ para procesamiento asincrono
+ * 5. Responder 200 OK inmediatamente (< 100ms) para cumplir con los SLA de las plataformas
+ * 6. El worker (webhookProcessor) procesa el job y crea/actualiza la orden
+ *
+ * RAZON DEL PROCESAMIENTO ASINCRONO:
+ * Las plataformas de delivery tienen timeouts estrictos para webhooks (tipicamente 5s).
+ * Si la respuesta tarda mas, reintentaran el webhook, causando duplicados.
+ * Al encolar inmediatamente y responder 200 OK, evitamos este problema.
  *
  * @module integrations/delivery/webhooks/webhook.controller
  */
@@ -21,15 +29,15 @@ import { WebhookEventType, DeliveryPlatformCode } from '../types/normalized.type
 import { logger } from '../../../utils/logger';
 
 // ============================================================================
-// TIPOS
+// TIPOS Y VALIDACION
 // ============================================================================
 
-// FIX IP-005: Validate webhook payload schema
+// FIX IP-005: Validar estructura basica del payload del webhook con Zod
 const webhookPayloadSchema = z.object({
   platform: z.string(),
   signature: z.string().optional(),
   timestamp: z.union([z.string(), z.number()]).optional(),
-  body: z.any(), // Allow any structure, adapter will validate specifics
+  body: z.any(), // Permitir cualquier estructura, el adaptador valida los detalles
 });
 
 interface WebhookJobData {
@@ -46,14 +54,15 @@ interface WebhookJobData {
 }
 
 // ============================================================================
-// CONTROLLER
+// CONTROLADOR
 // ============================================================================
 
 class WebhookController {
   /**
-   * Generic handler for webhooks from any platform.
-   * Detects the platform from the route parameter.
-   * 
+   * Handler generico para webhooks de cualquier plataforma.
+   * Detecta la plataforma desde el parametro de la ruta (:platform).
+   * Valida, parsea, encola y responde inmediatamente.
+   *
    * @route POST /api/v1/webhooks/:platform
    */
   async handleWebhook(req: Request, res: Response) {
@@ -61,7 +70,7 @@ class WebhookController {
     const requestId = `wh_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const rawPlatform = String(req.params.platform || '').toUpperCase();
 
-    // FIX IP-002: Validate platform against whitelist to prevent prototype pollution
+    // FIX IP-002: Validar plataforma contra whitelist para prevenir prototype pollution
     const VALID_PLATFORMS: readonly string[] = Object.values(DeliveryPlatformCode);
     if (!VALID_PLATFORMS.includes(rawPlatform)) {
       logger.warn('Unknown delivery platform attempted', {
@@ -80,7 +89,7 @@ class WebhookController {
     try {
       const payload = req.parsedBody || req.body;
 
-      // FIX IP-005: Validate basic payload structure before processing
+      // FIX IP-005: Validar estructura basica del payload antes de procesarlo
       const validation = webhookPayloadSchema.safeParse({
         platform: platformCode,
         signature: req.headers['x-signature'] || req.headers['x-rappi-signature'],
@@ -102,11 +111,11 @@ class WebhookController {
         });
       }
 
-      // Parse with adapter to get event type
+      // Parsear con el adaptador para obtener tipo de evento e ID del pedido
       const adapter = await AdapterFactory.getByPlatformCode(platformCode);
       const processedWebhook = adapter.parseWebhookPayload(payload);
 
-      // Build job data
+      // Construir datos del job para la cola
       const ip = req.ip ?? req.socket.remoteAddress;
       const userAgent = req.headers['user-agent'];
 
@@ -123,7 +132,7 @@ class WebhookController {
         },
       };
 
-      // Enqueue for async processing
+      // Encolar para procesamiento asincrono via BullMQ
       const jobId = await queueService.enqueue(
         QUEUE_NAMES.DELIVERY_WEBHOOKS,
         jobData,
@@ -143,7 +152,7 @@ class WebhookController {
         durationMs: duration,
       });
 
-      // Respond immediately
+      // Responder inmediatamente para cumplir con los SLA de las plataformas
       return res.status(200).json({
         success: true,
         requestId,
@@ -161,7 +170,7 @@ class WebhookController {
         durationMs: duration,
       });
 
-      // Differentiate client errors (400 - don't retry) from server errors (500 - retry)
+      // Diferenciar errores del cliente (400 — no reintentar) de errores del servidor (500 — reintentar)
       const isClientError = error instanceof z.ZodError
         || (error instanceof Error && error.message.includes('Invalid'))
         || (error instanceof Error && error.message.includes('not found'));
@@ -183,9 +192,9 @@ class WebhookController {
   }
 
   /**
-   * Rappi-specific handler.
-   * Alias for handleWebhook with forced platform.
-   * 
+   * Handler especifico para webhooks de Rappi.
+   * Alias que fuerza la plataforma a RAPPI y delega al handler generico.
+   *
    * @route POST /api/v1/webhooks/rappi
    */
   async handleRappiWebhook(req: Request, res: Response) {
@@ -194,8 +203,8 @@ class WebhookController {
   }
 
   /**
-   * Glovo-specific handler.
-   * 
+   * Handler especifico para webhooks de Glovo.
+   *
    * @route POST /api/v1/webhooks/glovo
    */
   async handleGlovoWebhook(req: Request, res: Response) {
@@ -204,8 +213,8 @@ class WebhookController {
   }
 
   /**
-   * PedidosYa-specific handler.
-   * 
+   * Handler especifico para webhooks de PedidosYa.
+   *
    * @route POST /api/v1/webhooks/pedidosya
    */
   async handlePedidosYaWebhook(req: Request, res: Response) {
@@ -214,9 +223,10 @@ class WebhookController {
   }
 
   /**
-   * Health check to verify webhooks are working.
-   * Useful for platform configuration.
-   * 
+   * Health check para verificar que el sistema de webhooks esta operativo.
+   * Verifica la conexion a Redis (cola) y que los workers esten activos.
+   * Util para que las plataformas configuren su endpoint de monitoreo.
+   *
    * @route GET /api/v1/webhooks/health
    */
   async healthCheck(req: Request, res: Response) {

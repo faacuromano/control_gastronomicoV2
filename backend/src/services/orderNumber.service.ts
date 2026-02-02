@@ -1,70 +1,89 @@
+/**
+ * @fileoverview Servicio de Generacion de Numeros de Orden
+ *
+ * Genera numeros de orden secuenciales de forma atomica y segura,
+ * aislados por Tenant y Fecha de Negocio. Cada tenant tiene su propia
+ * secuencia que se reinicia diariamente.
+ *
+ * Usa la tabla OrderSequence con UPSERT atomico para garantizar unicidad
+ * incluso con multiples cajeros creando ordenes simultaneamente.
+ * Implementa reintentos con backoff exponencial para manejar deadlocks.
+ *
+ * Formato de clave: TENANT_{id}_DATE_{YYYYMMDD}
+ * Formato de display: YYYYMMDD-XXXX (ej: 20260119-0001)
+ *
+ * @module services/orderNumber.service
+ */
 
 import { Prisma } from '@prisma/client';
 import { v4 as uuidv4, validate as uuidValidate } from 'uuid';
 import { logger } from '../utils/logger';
 import { ConflictError } from '../utils/errors';
 
-// Utility for strict timeouts
+// Utilidad para pausas con timeout estricto en reintentos
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
- * Transaction client type definition
+ * Tipo de cliente de transaccion Prisma
  */
 type TransactionClient = Prisma.TransactionClient;
 
 /**
- * Order Identifier
+ * Identificador completo de una orden generada.
+ * Incluye UUID (clave primaria), numero secuencial y formato de display.
  */
 export interface OrderIdentifier {
-  id: string;           // UUID Primary Key
-  orderNumber: number;  // Sequential Numeric ID (1, 2, 3...)
-  formattedOrderNumber: string; // "YYYYMMDD-XXXX" (Optional Display)
-  businessDate: Date;   // Business Date Used
+  id: string;           // UUID como clave primaria
+  orderNumber: number;  // Numero secuencial (1, 2, 3...)
+  formattedOrderNumber: string; // Formato display "YYYYMMDD-XXXX" (opcional)
+  businessDate: Date;   // Fecha de negocio utilizada para la secuencia
 }
 
 export class OrderNumberService {
   private readonly MAX_RETRIES = 5;
   private readonly BASE_DELAY_MS = 50;
-  
+
   /**
-   * Generates the next Order Number safely scoped to a Tenant and Business Day.
-   * 
-   * LOGIC:
-   * 1. Relies on `tenantId` and `businessDate` passed from OrderService.
-   * 2. Key Format: "TENANT_{id}_DATE_{YYYYMMDD}"
-   * 3. Uses UPSERT atomic operation.
-   * 
-   * @param tx Prisma Transaction Client
-   * @param tenantId Tenant ID
-   * @param businessDate Business Date (from Shift or System)
+   * Genera el siguiente numero de orden de forma segura, aislado por Tenant y Fecha de Negocio.
+   *
+   * LOGICA:
+   * 1. Recibe tenantId y businessDate desde OrderService
+   * 2. Construye clave de secuencia: "TENANT_{id}_DATE_{YYYYMMDD}"
+   * 3. Usa UPSERT atomico: si la secuencia no existe, la crea con valor 1;
+   *    si existe, incrementa atomicamente
+   * 4. Reintentos con backoff exponencial para manejar deadlocks de BD
+   *
+   * @param tx Cliente de transaccion Prisma (para ejecutar dentro de la tx de la orden)
+   * @param tenantId ID del tenant
+   * @param businessDate Fecha de negocio (del turno o del sistema)
    */
   async getNextOrderNumber(
-    tx: TransactionClient, 
-    tenantId: number, 
+    tx: TransactionClient,
+    tenantId: number,
     businessDate: Date
   ): Promise<OrderIdentifier> {
     const startTime = Date.now();
     const operationId = uuidv4();
     const generatedUuid = uuidv4();
 
-    // 1. Format Date for Key: YYYYMMDD
+    // 1. Formatear fecha para la clave: YYYYMMDD
     const yyyy = businessDate.getFullYear();
     const mm = String(businessDate.getMonth() + 1).padStart(2, '0');
     const dd = String(businessDate.getDate()).padStart(2, '0');
     const dateStr = `${yyyy}${mm}${dd}`;
 
-    // 2. Construct Sequence Key
-    // FORMAT: TENANT_1_DATE_20260119
+    // 2. Construir clave de secuencia unica por tenant y fecha
+    // FORMATO: TENANT_1_DATE_20260119
     const sequenceKey = `TENANT_${tenantId}_DATE_${dateStr}`;
 
     let currentOrderNumber = 0;
     let attempts = 0;
     let successful = false;
 
-    // 3. Retry Loop
+    // 3. Bucle de reintentos con backoff exponencial
     while (attempts < this.MAX_RETRIES && !successful) {
       attempts++;
-      
+
       try {
         const sequence = await tx.orderSequence.upsert({
           where: {
@@ -113,11 +132,11 @@ export class OrderNumberService {
       }
     }
 
-    // 4. Format Display String
+    // 4. Formatear string de display: YYYYMMDD-XXXX (ej: 20260119-0042)
     const paddedNumber = String(currentOrderNumber).padStart(4, '0');
     const formattedOrderNumber = `${dateStr}-${paddedNumber}`;
 
-    // 5. Audit
+    // 5. Registro de auditoria para trazabilidad
     logger.info('ORDER_ID_GENERATED', {
       operationId,
       uuid: generatedUuid,
@@ -135,6 +154,10 @@ export class OrderNumberService {
     };
   }
 
+  /**
+   * Valida que un string sea un UUID v4 valido.
+   * Usado para verificar IDs de orden recibidos en requests.
+   */
   validateUuid(uuid: string): boolean {
     return uuidValidate(uuid);
   }

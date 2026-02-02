@@ -1,20 +1,40 @@
+/**
+ * @fileoverview Punto de entrada del servidor HTTP
+ *
+ * Este archivo crea el servidor HTTP, inicializa Socket.IO para comunicacion
+ * en tiempo real (KDS, actualizacion de mesas) y opcionalmente arranca el
+ * procesador de webhooks BullMQ si Redis esta disponible.
+ *
+ * Tambien implementa el apagado graceful (graceful shutdown) que asegura que
+ * las conexiones abiertas se cierren correctamente antes de terminar el proceso,
+ * evitando perdida de datos en jobs en progreso.
+ *
+ * @module server
+ */
+
 import http from 'http';
 import app from './app';
 import dotenv from 'dotenv';
 import { initSocket } from './lib/socket';
 import { logger } from './utils/logger';
 
+// Cargar variables de entorno desde .env antes de cualquier otra operacion
 dotenv.config();
 
 const PORT = process.env.PORT || 3001;
 
+// Crear el servidor HTTP base sobre el que se monta Express y Socket.IO
 const httpServer = http.createServer(app);
 
-// Initialize Socket.IO
+// Inicializar Socket.IO para comunicacion en tiempo real.
+// Se usa para: actualizaciones del KDS (cocina), cambios de estado de mesas,
+// alertas de stock bajo, y notificaciones a mozos cuando un plato esta listo.
 initSocket(httpServer);
 
-// Initialize Webhook Processor (BullMQ Worker)
-// Solo inicializar si Redis está disponible
+// Inicializar el procesador de webhooks (BullMQ Worker).
+// Solo se activa si Redis esta disponible, ya que BullMQ lo requiere como backend.
+// En entornos sin Redis (desarrollo local simple), los webhooks no se procesan
+// de forma asincrona pero la app sigue funcionando para el POS basico.
 if (process.env.REDIS_HOST || process.env.ENABLE_QUEUE_WORKERS === 'true') {
     import('./integrations/delivery').then(({ initWebhookProcessor }) => {
         initWebhookProcessor();
@@ -26,29 +46,34 @@ if (process.env.REDIS_HOST || process.env.ENABLE_QUEUE_WORKERS === 'true') {
     });
 }
 
-// BIND TO 0.0.0.0 FOR DOCKER COMPATIBILITY
+// Vincular a 0.0.0.0 en lugar de localhost para compatibilidad con Docker.
+// Dentro de un contenedor, localhost solo escucha en la interfaz loopback
+// y no seria accesible desde fuera del contenedor.
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
     logger.info('Server started', { port: PORT });
     logger.info('WebSocket server initialized');
 });
 
 // =============================================================================
-// GRACEFUL SHUTDOWN
+// APAGADO GRACEFUL (GRACEFUL SHUTDOWN)
+// Cuando el proceso recibe SIGTERM (Docker stop) o SIGINT (Ctrl+C), se ejecuta
+// una secuencia ordenada de cierre para no cortar operaciones en progreso.
 // =============================================================================
 let isShuttingDown = false;
 
 const shutdown = async (signal: string) => {
+    // Evitar multiples ejecuciones si llegan senales simultaneas
     if (isShuttingDown) return;
     isShuttingDown = true;
 
     logger.info('Received shutdown signal, starting graceful shutdown...', { signal });
 
-    // 1. Stop accepting new connections
+    // 1. Dejar de aceptar nuevas conexiones HTTP
     httpServer.close(() => {
         logger.info('HTTP server closed');
     });
 
-    // 2. Close WebSocket connections
+    // 2. Cerrar conexiones WebSocket activas
     try {
         const { getIO } = await import('./lib/socket');
         const io = getIO();
@@ -56,43 +81,51 @@ const shutdown = async (signal: string) => {
             io.close();
             logger.info('WebSocket server closed');
         }
-    } catch { /* Socket.IO may not be initialized */ }
+    } catch { /* Socket.IO podria no estar inicializado */ }
 
-    // 3. Close BullMQ workers if running
+    // 3. Cerrar workers de BullMQ si estan corriendo.
+    // Esto espera a que los jobs en progreso terminen antes de cerrar.
     try {
         const { bullMQService } = await import('./lib/queue/BullMQService');
         await bullMQService.close();
         logger.info('BullMQ workers closed');
-    } catch { /* BullMQ may not be initialized */ }
+    } catch { /* BullMQ podria no estar inicializado */ }
 
-    // 4. Disconnect Prisma
+    // 4. Desconectar Prisma para liberar el pool de conexiones a MySQL
     try {
         const { prisma } = await import('./lib/prisma');
         await prisma.$disconnect();
         logger.info('Database connections closed');
-    } catch { /* Prisma may not be initialized */ }
+    } catch { /* Prisma podria no estar inicializado */ }
 
     logger.info('Graceful shutdown complete');
     process.exit(0);
 };
 
+// Escuchar senales del sistema operativo para iniciar el apagado graceful
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
 // =============================================================================
-// UNHANDLED ERROR HANDLERS
+// HANDLERS DE ERRORES NO CAPTURADOS
+// Estos son la ultima linea de defensa contra errores que escaparon de todos
+// los try/catch y middleware de errores de Express.
 // =============================================================================
 process.on('unhandledRejection', (reason: unknown) => {
     logger.error('Unhandled promise rejection', {
         reason: reason instanceof Error ? reason.message : String(reason),
         stack: reason instanceof Error ? reason.stack : undefined
     });
+    // En produccion, un rechazo no manejado indica un bug serio.
+    // Apagamos el proceso de forma segura para evitar estados inconsistentes.
     if (process.env.NODE_ENV === 'production') {
         shutdown('unhandledRejection');
     }
 });
 
 process.on('uncaughtException', (error: Error) => {
+    // Una excepcion no capturada deja el proceso en estado indeterminado.
+    // No hay forma segura de continuar, asi que logueamos y salimos inmediatamente.
     logger.error('Uncaught exception', { error: error.message, stack: error.stack });
     process.exit(1);
 });

@@ -1,7 +1,16 @@
 /**
- * @fileoverview Print Routing Controller.
- * Handles HTTP requests for print routing configuration.
- * 
+ * @fileoverview Controlador de Ruteo de Impresión
+ *
+ * Configura hacia qué impresora se envía cada comanda según la categoría del producto
+ * y el área del restaurante. Permite que los productos de "Bebidas" vayan a la impresora
+ * del bar, los de "Platos principales" a la de cocina, y que un área como "Terraza"
+ * pueda tener overrides que cambien estas asignaciones por defecto.
+ *
+ * Jerarquía de resolución:
+ * 1. Override de área + categoría (si existe)
+ * 2. Impresora por defecto de la categoría
+ * 3. Sin impresora asignada (no se imprime automáticamente)
+ *
  * @module controllers/printRouting.controller
  */
 
@@ -12,16 +21,15 @@ import { printRoutingService } from '../services/printRouting.service';
 import { logger } from '../utils/logger';
 import { sendSuccess } from '../utils/response';
 
-/**
- * Get print routing configuration (for admin UI).
- */
+/** Obtiene la configuración completa de ruteo de impresión para el panel de admin */
 export const getConfiguration = asyncHandler(async (req: Request, res: Response) => {
     const config = await printRoutingService.getRoutingConfiguration(req.user!.tenantId!);
     sendSuccess(res, config);
 });
 
 /**
- * Get routing preview for an order.
+ * Obtiene la vista previa de ruteo para una orden específica.
+ * Muestra a qué impresora iría cada ítem de la orden según las reglas configuradas.
  */
 export const getOrderRouting = asyncHandler(async (req: Request, res: Response) => {
     const orderId = Number(req.params.orderId);
@@ -33,15 +41,14 @@ export const getOrderRouting = asyncHandler(async (req: Request, res: Response) 
     sendSuccess(res, routing);
 });
 
-/**
- * Zod schema for setting category printer.
- */
+/** Esquema para asignar la impresora por defecto de una categoría (null para desasignar) */
 const setCategoryPrinterSchema = z.object({
     printerId: z.number().int().positive().nullable()
 });
 
 /**
- * Set category default printer.
+ * Asigna o desasigna la impresora por defecto de una categoría.
+ * Ej: Categoría "Bebidas" -> Impresora "Bar principal".
  */
 export const setCategoryPrinter = asyncHandler(async (req: Request, res: Response) => {
     const categoryId = Number(req.params.categoryId);
@@ -50,23 +57,23 @@ export const setCategoryPrinter = asyncHandler(async (req: Request, res: Respons
     }
 
     const { printerId } = setCategoryPrinterSchema.parse(req.body);
-    
+
     const category = await printRoutingService.setCategoryPrinter(req.user!.tenantId!, categoryId, printerId);
-    
+
     logger.info('Category printer updated', { categoryId, printerId });
     sendSuccess(res, category);
 });
 
-/**
- * Zod schema for setting area override.
- */
+/** Esquema para crear un override de impresora por área (null en categoryId = override global del área) */
 const setAreaOverrideSchema = z.object({
     categoryId: z.number().int().positive().nullable(),
     printerId: z.number().int().positive()
 });
 
 /**
- * Set area printer override.
+ * Establece un override de impresora para un área específica.
+ * Permite que "Terraza" envíe los productos de "Bebidas" a una impresora diferente
+ * a la configurada por defecto para esa categoría.
  */
 export const setAreaOverride = asyncHandler(async (req: Request, res: Response) => {
     const areaId = Number(req.params.areaId);
@@ -75,23 +82,19 @@ export const setAreaOverride = asyncHandler(async (req: Request, res: Response) 
     }
 
     const { categoryId, printerId } = setAreaOverrideSchema.parse(req.body);
-    
+
     const override = await printRoutingService.setAreaOverride(req.user!.tenantId!, areaId, categoryId, printerId);
-    
+
     logger.info('Area printer override set', { areaId, categoryId, printerId });
     sendSuccess(res, override);
 });
 
-/**
- * Zod schema for removing area override.
- */
+/** Esquema para eliminar un override de área (null en categoryId = override global) */
 const removeAreaOverrideSchema = z.object({
     categoryId: z.number().int().positive().nullable()
 });
 
-/**
- * Remove area printer override.
- */
+/** Elimina un override de impresora de un área, volviendo al ruteo por defecto de categoría */
 export const removeAreaOverride = asyncHandler(async (req: Request, res: Response) => {
     const areaId = Number(req.params.areaId);
     if (isNaN(areaId)) {
@@ -99,9 +102,9 @@ export const removeAreaOverride = asyncHandler(async (req: Request, res: Respons
     }
 
     const { categoryId } = removeAreaOverrideSchema.parse(req.body);
-    
+
     await printRoutingService.removeAreaOverride(req.user!.tenantId!, areaId, categoryId);
-    
+
     logger.info('Area printer override removed', { areaId, categoryId });
     sendSuccess(res, { message: 'Override removed' });
 });

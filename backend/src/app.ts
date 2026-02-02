@@ -1,3 +1,18 @@
+/**
+ * @fileoverview Configuracion principal de la aplicacion Express
+ *
+ * Este archivo es el punto de entrada de la capa HTTP. Aqui se ensambla toda la
+ * cadena de middlewares (seguridad, parseo, CORS, compresion) y se montan todas
+ * las rutas de la API v1. El orden de los middlewares es critico: primero se
+ * parsea el body, luego se sanitiza, y finalmente se aplican las rutas.
+ *
+ * La aplicacion sigue una arquitectura multi-tenant donde cada peticion
+ * autenticada lleva un tenantId en el JWT. Las rutas publicas (health, QR)
+ * no requieren autenticacion.
+ *
+ * @module app
+ */
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -7,20 +22,23 @@ import cookieParser from 'cookie-parser';
 import { prisma } from './lib/prisma';
 import { logger } from './utils/logger';
 
-// Environment validation
+// Validacion del entorno: determinamos si estamos en produccion para ajustar
+// comportamientos de seguridad (CORS estricto, CSP, HSTS)
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = process.env.PORT || 3001;
 
-// P2-06: Validate critical environment variables
+// P2-06: Validacion de variables de entorno criticas al arrancar.
+// Si faltan, la app no puede funcionar (sin DB no hay datos, sin JWT no hay auth).
 const REQUIRED_ENV_VARS = ['DATABASE_URL', 'JWT_SECRET'] as const;
 for (const envVar of REQUIRED_ENV_VARS) {
     if (!process.env[envVar]) {
         throw new Error(`CRITICAL: Missing required environment variable: ${envVar}`);
     }
 }
-// CORS_ORIGINS validation is handled below in the CORS configuration block
+// La validacion de CORS_ORIGINS se maneja mas abajo en el bloque de configuracion CORS
 
-// Conditional: if queue workers enabled, Redis must be configured
+// Condicional: si los workers de cola estan habilitados, Redis debe estar configurado.
+// BullMQ necesita Redis para funcionar; sin el, los webhooks de delivery no se procesan.
 if (process.env.ENABLE_QUEUE_WORKERS === 'true' && !process.env.REDIS_HOST) {
     throw new Error('CRITICAL: REDIS_HOST is required when ENABLE_QUEUE_WORKERS=true');
 }
@@ -28,12 +46,14 @@ if (process.env.ENABLE_QUEUE_WORKERS === 'true' && !process.env.REDIS_PASSWORD) 
     logger.warn('[CONFIG] REDIS_PASSWORD not set — Redis connection may fail if authentication is required');
 }
 
-// CORS Configuration - Use CORS_ORIGINS env var for production
-// SEC-026: In production, require explicit CORS_ORIGINS to prevent localhost fallback
+// Configuracion CORS: en desarrollo se permiten los puertos de Vite (5173/5174).
+// SEC-026: En produccion se exige CORS_ORIGINS explicito para evitar que
+// quede abierto a localhost por error de despliegue.
 const allowedOrigins = process.env.CORS_ORIGINS?.split(',')
     || (isProduction ? [] : ['http://localhost:5173', 'http://localhost:5174']);
 
-// SECURITY: Block startup if CORS not configured in production
+// SEGURIDAD: Bloquear el arranque si CORS no esta configurado en produccion.
+// Esto previene que un deploy olvide configurar los origenes y quede expuesto.
 if (isProduction && !process.env.CORS_ORIGINS) {
     throw new Error(
         'CRITICAL: CORS_ORIGINS must be set in production. ' +
@@ -43,28 +63,40 @@ if (isProduction && !process.env.CORS_ORIGINS) {
 
 const app = express();
 
-// Middleware
+// =============================================================================
+// CADENA DE MIDDLEWARES
+// El orden importa: parseo -> sanitizacion -> seguridad -> rutas -> errores
+// =============================================================================
+
+// Parseo del body JSON y URL-encoded con limite de 1MB para prevenir payloads gigantes
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-// FIX P0-004: Cookie parser for HttpOnly cookie authentication
+// FIX P0-004: Cookie parser necesario para leer la cookie HttpOnly `auth_token`
+// que contiene el JWT. Sin esto, la autenticacion basada en cookies no funciona.
 app.use(cookieParser());
 
-// FIX P1-002: Sanitize body to prevent prototype pollution
+// FIX P1-002: Sanitizacion del body para prevenir ataques de prototype pollution.
+// Un atacante podria enviar { "__proto__": { "isAdmin": true } } y escalar privilegios.
 import { sanitizeBody } from './middleware/sanitize-body.middleware';
-app.use(sanitizeBody); // CRITICAL: Apply AFTER body parsers, BEFORE routes
+app.use(sanitizeBody); // CRITICO: Aplicar DESPUES de los body parsers y ANTES de las rutas
 
-// P1-27: Correlation ID for distributed tracing
+// P1-27: ID de correlacion para trazabilidad distribuida.
+// Cada request recibe un UUID unico que se propaga en los logs para poder
+// rastrear una peticion a traves de todos los servicios.
 import { correlationId } from './middleware/correlationId';
 
+// CORS con credenciales habilitadas para que el navegador envie las cookies
 app.use(cors({ origin: allowedOrigins, credentials: true }));
+
+// Helmet configura headers de seguridad HTTP (X-Frame-Options, X-Content-Type-Options, etc.)
 app.use(helmet({
-  // SEC-020: Explicit CSP for production; disabled in dev for hot-reload
+  // SEC-020: CSP explicito en produccion; deshabilitado en desarrollo para hot-reload de Vite
   contentSecurityPolicy: isProduction ? {
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"], // Required for inline styles
+      styleSrc: ["'self'", "'unsafe-inline'"], // Requerido para estilos inline de TailwindCSS
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: ["'self'", ...(process.env.CORS_ORIGINS?.split(',') || [])],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
@@ -75,17 +107,24 @@ app.use(helmet({
     },
   } : false,
   hsts: isProduction ? { maxAge: 31536000, includeSubDomains: true } : false,
-  crossOriginEmbedderPolicy: false, // Allow loading images from external sources
+  crossOriginEmbedderPolicy: false, // Permitir carga de imagenes externas
 }));
 app.use(correlationId);
+// Morgan registra cada request HTTP en la consola (metodo, ruta, status, tiempo)
 app.use(morgan('dev'));
+// Compresion gzip de las respuestas para reducir el ancho de banda
 app.use(compression());
 
-// CSRF protection: require X-Requested-With header on state-changing requests
+// Proteccion CSRF: exige el header X-Requested-With en peticiones que modifican estado.
+// Esto previene que sitios maliciosos hagan requests POST/PUT/DELETE en nombre del usuario.
 import { csrfProtection } from './middleware/csrf';
 app.use('/api/', csrfProtection);
 
-// Routes - API v1
+// =============================================================================
+// RUTAS - API v1
+// Cada modulo tiene su propio archivo de rutas que define endpoints y middlewares
+// de autenticacion/autorizacion especificos.
+// =============================================================================
 import authRoutes from './routes/auth.routes';
 import menuRoutes from './routes/menu.routes';
 import inventoryRoutes from './routes/inventory.routes';
@@ -109,27 +148,28 @@ import printRoutingRoutes from './routes/printRouting.routes';
 import stockAlertRoutes from './routes/stockAlert.routes';
 import discountRoutes from './routes/discount.routes';
 
-// API-003: Versioning Strategy
-// All routes are mounted under /api/v1. When breaking changes are needed:
-// 1. Create new route files under /api/v2 with updated contracts
-// 2. Keep /api/v1 routes active for backward compatibility (minimum 6 months)
-// 3. Add Deprecation header to v1 responses: res.set('Deprecation', 'true')
-// 4. Document migration guide in release notes
-// 5. Monitor v1 usage via access logs before decommissioning
-// Non-breaking changes (new fields, new endpoints) are added to v1 directly.
+// API-003: Estrategia de versionado
+// Todas las rutas se montan bajo /api/v1. Cuando se necesiten cambios que rompan
+// compatibilidad:
+// 1. Crear nuevos archivos de rutas bajo /api/v2 con los contratos actualizados
+// 2. Mantener las rutas /api/v1 activas para compatibilidad hacia atras (minimo 6 meses)
+// 3. Agregar header Deprecation a las respuestas v1: res.set('Deprecation', 'true')
+// 4. Documentar la guia de migracion en las notas de la release
+// 5. Monitorear el uso de v1 via logs de acceso antes de descomisionar
+// Los cambios no destructivos (nuevos campos, nuevos endpoints) se agregan directamente a v1.
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/roles', roleRoutes);
 app.use('/api/v1/clients', clientRoutes);
 app.use('/api/v1/orders', orderRoutes);
 app.use('/api/v1/delivery', deliveryRoutes);
-app.use('/api/v1', inventoryRoutes);   // ingredients, stock-movements
-app.use('/api/v1', menuRoutes);         // categories, products
+app.use('/api/v1', inventoryRoutes);   // ingredientes, movimientos de stock
+app.use('/api/v1', menuRoutes);         // categorias, productos
 app.use('/api/v1/cash-shifts', cashShiftRoutes);
 app.use('/api/v1', configRoutes);       // /config
 app.use('/api/v1', tableRouter);        // /tables, /areas
 app.use('/api/v1/print', printerRoutes); // /print
-app.use('/api/v1/print-routing', printRoutingRoutes); // Print routing config
+app.use('/api/v1/print-routing', printRoutingRoutes); // Configuracion de ruteo de impresion
 app.use('/api/v1/modifiers', modifierRoutes);
 app.use('/api/v1', supplierRoutes);      // /suppliers
 app.use('/api/v1', purchaseOrderRoutes); // /purchase-orders
@@ -144,21 +184,24 @@ app.use('/api/v1/bulk-prices', bulkPriceRoutes);
 import syncRoutes from './routes/sync.routes';
 app.use('/api/v1/sync', syncRoutes);
 import { qrPublicRouter, qrAdminRouter } from './routes/qr.routes';
-app.use('/api/v1/qr', qrPublicRouter);        // Public: /api/v1/qr/:code
-app.use('/api/v1/admin/qr', qrAdminRouter);   // Admin: /api/v1/admin/qr/...
+app.use('/api/v1/qr', qrPublicRouter);        // Publico: /api/v1/qr/:code (sin autenticacion)
+app.use('/api/v1/admin/qr', qrAdminRouter);   // Admin: /api/v1/admin/qr/... (requiere auth)
 
-// Delivery Platform Webhooks (Rappi, Glovo, PedidosYa)
-// NOTE: These routes use express.raw() internally for HMAC validation
+// Webhooks de plataformas de delivery (Rappi, Glovo, PedidosYa)
+// NOTA: Estas rutas usan express.raw() internamente para validacion HMAC
+// de la firma del webhook, por eso no pueden pasar por el JSON parser normal.
 import { webhookRoutes } from './integrations/delivery';
 app.use('/api/v1/webhooks', webhookRoutes);
 
-// Health Check — deep check verifying database connectivity
+// Health Check — verificacion profunda que confirma conectividad con la base de datos.
+// Usado por Docker healthcheck y balanceadores de carga para determinar si la instancia
+// esta lista para recibir trafico. Retorna 503 si la DB no responde.
 app.get('/health', async (_req, res) => {
     const checks: Record<string, boolean> = { database: false };
     try {
         await prisma.$queryRaw`SELECT 1`;
         checks.database = true;
-    } catch { /* DB unreachable */ }
+    } catch { /* DB inalcanzable */ }
 
     const healthy = Object.values(checks).every(Boolean);
     res.status(healthy ? 200 : 503).json({
@@ -169,14 +212,16 @@ app.get('/health', async (_req, res) => {
     });
 });
 
-// Error Handling (must be after all routes)
+// =============================================================================
+// MANEJO DE ERRORES (debe ir despues de todas las rutas)
+// =============================================================================
 import { errorHandler, notFoundHandler } from './middleware/error';
 
-// 404 handler for undefined routes
+// Handler 404 para rutas no definidas — captura cualquier request que no matcheo ninguna ruta
 app.use(notFoundHandler);
 
-// Global error handler
+// Handler global de errores — captura todos los ApiError y sus subclases,
+// formatea la respuesta con el codigo HTTP apropiado
 app.use(errorHandler);
 
 export default app;
-

@@ -1,15 +1,17 @@
 /**
- * @fileoverview Authentication Middleware
- * 
- * Handles JWT token validation and RBAC authorization.
- * 
- * @complexity O(1) for token validation
- * @guarantee OWASP ASVS 4.0 compliant
- * @implements TDD Section 3.2 - API Request Flow
- * 
- * FIX P0-004: Now reads JWT from HttpOnly cookie (primary) with
- * fallback to Authorization header for API key/service-to-service calls.
- * 
+ * @fileoverview Middleware de Autenticacion y Autorizacion
+ *
+ * Gestiona la validacion de tokens JWT y la autorizacion basada en roles (RBAC).
+ * Este middleware es el punto central de seguridad de la aplicacion: verifica
+ * la identidad del usuario y controla el acceso a los recursos protegidos.
+ *
+ * @complexity O(1) para la verificacion del token
+ * @guarantee Cumple con OWASP ASVS 4.0
+ * @implements TDD Seccion 3.2 - Flujo de solicitudes API
+ *
+ * FIX P0-004: Ahora lee el JWT desde una cookie HttpOnly (fuente principal)
+ * con respaldo al header Authorization para llamadas API key / servicio-a-servicio.
+ *
  * @module middleware/auth
  */
 
@@ -20,44 +22,48 @@ import type { JwtPayload, Permissions } from '../types/express-extensions';
 import { logger } from '../utils/logger';
 
 // ============================================================================
-// CONFIGURATION
+// CONFIGURACION
 // ============================================================================
 
 /**
- * JWT secret from environment.
- * Will throw at import time if missing in auth.service.ts.
+ * Secreto JWT obtenido de las variables de entorno.
+ * Si no esta definido, auth.service.ts lanzara un error al momento de importar.
  */
 const JWT_SECRET = process.env.JWT_SECRET;
 
 /**
- * Cookie name for auth token (must match auth.controller.ts).
+ * Nombre de la cookie de autenticacion (debe coincidir con auth.controller.ts).
+ * Se usa una cookie HttpOnly para resistir ataques XSS.
  */
 const AUTH_COOKIE_NAME = 'auth_token';
 
 // ============================================================================
-// TOKEN EXTRACTION
+// EXTRACCION DEL TOKEN
 // ============================================================================
 
 /**
- * Extract JWT token from request.
- * 
- * Priority:
- * 1. HttpOnly cookie (recommended, XSS-resistant)
- * 2. Authorization Bearer header (for API keys / service-to-service)
- * 
- * @implements TDD Section 3.2 - API Request → Cookie Auth Flow
- * 
- * @param req - Express request object
- * @returns JWT token string or null if not found
+ * Extrae el token JWT de la solicitud HTTP.
+ *
+ * Prioridad de busqueda:
+ * 1. Cookie HttpOnly (recomendado, resistente a XSS)
+ * 2. Header Authorization Bearer (para API keys / comunicacion servicio-a-servicio)
+ *
+ * Se prioriza la cookie porque el frontend envia credenciales via cookies,
+ * mientras que el header se mantiene como respaldo para integraciones externas.
+ *
+ * @implements TDD Seccion 3.2 - API Request -> Flujo de Auth via Cookie
+ *
+ * @param req - Objeto de solicitud de Express
+ * @returns Token JWT como string o null si no se encontro
  */
 function extractToken(req: Request): string | null {
-  // Priority 1: HttpOnly cookie (FIX P0-004)
+  // Prioridad 1: Cookie HttpOnly (FIX P0-004)
   const cookieToken = req.cookies?.[AUTH_COOKIE_NAME];
   if (cookieToken) {
     return cookieToken;
   }
 
-  // Priority 2: Authorization header (backwards compatibility / API keys)
+  // Prioridad 2: Header Authorization (compatibilidad retroactiva / API keys)
   const authHeader = req.headers['authorization'];
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const headerToken = authHeader.split(' ')[1];
@@ -68,17 +74,24 @@ function extractToken(req: Request): string | null {
 }
 
 // ============================================================================
-// AUTHENTICATION MIDDLEWARE
+// MIDDLEWARE DE AUTENTICACION
 // ============================================================================
 
 /**
- * Authenticate requests using JWT token.
- * 
- * @complexity O(1) - JWT verification is constant time
- * @guarantee Token extracted from HttpOnly cookie (XSS-resistant)
- * @implements TDD Section 3.2 - Middleware Validation
- * 
- * FIX P0-004: Primary token source is now req.cookies[auth_token]
+ * Autentica solicitudes usando un token JWT.
+ *
+ * Flujo:
+ * 1. Extrae el token de la cookie o del header Authorization
+ * 2. Verifica la firma del token con el secreto JWT
+ * 3. Decodifica el payload y lo asigna a req.user para uso posterior
+ *
+ * Si el token es invalido o no esta presente, rechaza la solicitud inmediatamente.
+ *
+ * @complexity O(1) - La verificacion JWT es de tiempo constante
+ * @guarantee Token extraido desde cookie HttpOnly (resistente a XSS)
+ * @implements TDD Seccion 3.2 - Validacion en Middleware
+ *
+ * FIX P0-004: La fuente principal del token ahora es req.cookies[auth_token]
  */
 export const authenticateToken = (req: Request, res: Response, next: NextFunction) => {
     const token = extractToken(req);
@@ -97,7 +110,8 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
         return sendError(res, 'CONFIG_ERROR', 'Server configuration error', null, 500);
     }
 
-    // FIX P1-003: Explicit algorithm to prevent "alg: none" attack
+    // FIX P1-003: Algoritmo explicito para prevenir el ataque "alg: none"
+    // donde un atacante envia un token sin firma y el servidor lo acepta
     jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }, (err, decoded) => {
         if (err) {
             logger.debug('Auth failed: invalid token', {
@@ -106,7 +120,7 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
             });
             return sendError(res, 'AUTH_INVALID', 'Invalid token', null, 403);
         }
-        
+
         req.user = decoded as JwtPayload;
         next();
     });
@@ -115,13 +129,16 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
 export const authenticate = authenticateToken;
 
 // ============================================================================
-// AUTHORIZATION MIDDLEWARE
+// MIDDLEWARE DE AUTORIZACION
 // ============================================================================
 
 /**
- * Authorize requests based on role.
- * 
- * @param allowedRoles - Array of role names that can access the route
+ * Autoriza solicitudes basandose en el rol del usuario.
+ *
+ * Este middleware se usa despues de authenticateToken para verificar
+ * que el usuario tenga uno de los roles permitidos para acceder a la ruta.
+ *
+ * @param allowedRoles - Array con los nombres de roles que pueden acceder a la ruta
  */
 export const authorize = (allowedRoles: string[]) => {
     return async (req: Request, res: Response, next: NextFunction) => {
@@ -129,7 +146,7 @@ export const authorize = (allowedRoles: string[]) => {
              return sendError(res, 'AUTH_REQUIRED', 'Not authenticated', null, 401);
         }
 
-        const userRole = req.user.role; 
+        const userRole = req.user.role;
 
         if (!userRole) {
              return sendError(res, 'AUTH_INVALID', 'User has no role assigned', null, 403);
@@ -144,15 +161,19 @@ export const authorize = (allowedRoles: string[]) => {
 };
 
 /**
- * Middleware to enforce granular permissions based on RBAC.
- * Verifies if the authenticated user has the specific action allowed on the resource.
- * 
+ * Middleware para aplicar permisos granulares basados en RBAC (Control de Acceso Basado en Roles).
+ * Verifica si el usuario autenticado tiene la accion especifica permitida sobre el recurso solicitado.
+ *
+ * Cada rol tiene un mapa de permisos en formato { recurso: [acciones] }. Por ejemplo:
+ * { orders: ['create', 'read'], products: ['read'] }
+ *
  * @business_rule
- * - ADMIN role has full access to all resources and actions (bypass)
- * - Other roles require explicit permissions in the token/user object
- * 
- * @param resource - The resource identifier (e.g. 'orders', 'products')
- * @param action - The action attempted (e.g. 'create', 'delete')
+ * - El rol ADMIN tiene acceso total a todos los recursos y acciones (bypass completo)
+ * - Los demas roles requieren permisos explicitos definidos en el token/objeto de usuario
+ * - El wildcard '*' en las acciones otorga acceso total al recurso
+ *
+ * @param resource - Identificador del recurso (ej: 'orders', 'products')
+ * @param action - Accion intentada sobre el recurso (ej: 'create', 'delete')
  */
 export const requirePermission = (resource: string, action: string) => {
     return (req: Request, res: Response, next: NextFunction) => {
@@ -160,21 +181,21 @@ export const requirePermission = (resource: string, action: string) => {
             return sendError(res, 'AUTH_REQUIRED', 'Not authenticated', null, 401);
         }
 
-        // ADMIN BYPASS: Admin role has full access to everything
+        // BYPASS ADMIN: El rol ADMIN tiene acceso total a todo el sistema
         if (req.user.role === 'ADMIN') {
             return next();
         }
 
         const permissions: Permissions | undefined = req.user.permissions;
 
-        // If no permissions found in token/user object, deny access
+        // Si no se encontraron permisos en el token/usuario, denegar acceso
         if (!permissions) {
             return sendError(res, 'AUTH_INVALID', 'User has no permissions assigned', null, 403);
         }
 
-        // Check if resource exists in permissions
+        // Verificar si el recurso existe en el mapa de permisos del usuario
         const resourcePermissions = permissions[resource];
-        
+
         if (!resourcePermissions || !Array.isArray(resourcePermissions)) {
             return sendError(res, 'AUTH_FORBIDDEN', `Access to resource '${resource}' denied`, null, 403);
         }
@@ -186,5 +207,3 @@ export const requirePermission = (resource: string, action: string) => {
         next();
     };
 };
-
-

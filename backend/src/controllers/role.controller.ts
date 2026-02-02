@@ -1,10 +1,17 @@
 /**
- * @fileoverview Role Management Controller
+ * @fileoverview Controlador de Gestión de Roles (RBAC)
  *
- * @business_rule
- * - GET /roles: Authenticated users can list roles (for dropdowns)
- * - POST/DELETE: ADMIN role only
- * - System roles (ADMIN, CASHIER, WAITER, KITCHEN) cannot be deleted
+ * Gestiona los roles y permisos del sistema de control de acceso basado en roles.
+ * Cada tenant tiene sus propios roles con permisos configurables que controlan:
+ * - Acceso a módulos de navegación (pos, tables, cash, kds, delivery, admin)
+ * - Operaciones CRUD sobre recursos de datos (products, orders, users, etc.)
+ *
+ * Reglas de negocio:
+ * - GET /roles: Cualquier usuario autenticado puede listar roles (para dropdowns)
+ * - POST/DELETE: Solo rol ADMIN
+ * - Los roles de sistema (ADMIN, CASHIER, WAITER, KITCHEN) no pueden eliminarse
+ *
+ * @module controllers/role.controller
  */
 
 import { Request, Response } from 'express';
@@ -21,14 +28,15 @@ const createRoleSchema = z.object({
 });
 
 /**
- * Feature modules - Control Header/navigation visibility
- * These are the main sections of the application
- */
-/**
- * System role names that cannot be deleted (seeded per tenant).
+ * Nombres de roles de sistema que no se pueden eliminar.
+ * Se crean automáticamente con el seed de cada tenant.
  */
 const SYSTEM_ROLE_NAMES = ['ADMIN', 'CASHIER', 'WAITER', 'KITCHEN'] as const;
 
+/**
+ * Módulos de funcionalidad: controlan la visibilidad en el header/navegación.
+ * Representan las secciones principales de la aplicación.
+ */
 const VALID_MODULES = [
     'pos',      // Punto de Venta
     'tables',   // Mesas
@@ -39,30 +47,28 @@ const VALID_MODULES = [
 ] as const;
 
 /**
- * Resources for CRUD operations within modules
- * These are data entities that can have CRUD permissions
+ * Recursos para operaciones CRUD dentro de los módulos.
+ * Son las entidades de datos sobre las que se pueden otorgar permisos granulares.
  */
 const VALID_RESOURCES = [
-    'products', 'categories', 'orders', 'stock', 'users', 
+    'products', 'categories', 'orders', 'stock', 'users',
     'clients', 'analytics', 'suppliers', 'settings', 'roles'
 ] as const;
 
-/**
- * All permissionable items (modules + resources)
- */
+/** Unión de todos los elementos sobre los que se pueden asignar permisos */
 const ALL_PERMISSIONABLES = [...VALID_MODULES, ...VALID_RESOURCES] as const;
 
 /**
- * Actions for RBAC
- * - access: Can see the module in navigation
- * - create/read/update/delete: CRUD operations
+ * Acciones del sistema RBAC:
+ * - access: Puede ver el módulo en la navegación
+ * - create/read/update/delete: Operaciones CRUD sobre recursos
  */
 const VALID_ACTIONS = ['access', 'create', 'read', 'update', 'delete'] as const;
 
 /**
- * Zod schema for permissions object
- * Structure: { [module_or_resource]: [action1, action2, ...] }
- * Keys are validated manually to ensure they are valid
+ * Esquema Zod para el objeto de permisos.
+ * Estructura: { [modulo_o_recurso]: [accion1, accion2, ...] }
+ * Las claves se validan manualmente para asegurar que sean válidas.
  */
 const permissionsSchema = z.record(
     z.string(),
@@ -73,20 +79,18 @@ const updatePermissionsSchema = z.object({
     permissions: permissionsSchema
 });
 
-/**
- * Get all roles with pagination
- */
+/** Lista todos los roles del tenant con paginación */
 export const getRoles = asyncHandler(async (req: Request, res: Response) => {
     const { page: pageStr, limit: limitStr } = req.query;
 
-    // Parse pagination params
+    // Parsear parámetros de paginación
     const page = Math.max(1, parseInt(pageStr as string) || 1);
     const limit = Math.max(1, parseInt(limitStr as string) || 50);
     const skip = (page - 1) * limit;
 
     const where = { tenantId: req.user!.tenantId! };
 
-    // Get total count for pagination
+    // Obtener total para metadatos de paginación
     const total = await prisma.role.count({ where });
 
     const roles = await prisma.role.findMany({
@@ -104,12 +108,10 @@ export const getRoles = asyncHandler(async (req: Request, res: Response) => {
     sendSuccess(res, roles, { page, limit, total, totalPages: Math.ceil(total / limit) });
 });
 
-/**
- * Get role by ID with user count
- */
+/** Obtiene un rol por ID incluyendo la cantidad de usuarios asignados */
 export const getRoleById = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
-    
+
     if (isNaN(id)) {
         throw new ValidationError('Invalid role ID');
     }
@@ -131,19 +133,18 @@ export const getRoleById = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * Create a new role
- * Permissions will be set to empty object {} by default
+ * Crea un nuevo rol con permisos vacíos por defecto.
+ * Los permisos se configuran posteriormente con updateRolePermissions.
  */
 export const createRole = asyncHandler(async (req: Request, res: Response) => {
     const { name } = createRoleSchema.parse(req.body);
 
-    // Check if role with same name exists
-    // FIX: Role name is unique per Tenant. Use findFirst.
-    const existing = await prisma.role.findFirst({ 
-        where: { 
-            name, 
-            tenantId: req.user!.tenantId! 
-        } 
+    // Verificar unicidad del nombre dentro del tenant (FIX: usar findFirst en vez de findUnique)
+    const existing = await prisma.role.findFirst({
+        where: {
+            name,
+            tenantId: req.user!.tenantId!
+        }
     });
     if (existing) {
         throw new ConflictError('Role name already exists');
@@ -153,11 +154,11 @@ export const createRole = asyncHandler(async (req: Request, res: Response) => {
         data: {
             tenantId: req.user!.tenantId!,
             name,
-            permissions: {} // Placeholder for future RBAC implementation
+            permissions: {} // Se configura luego con la UI de permisos
         }
     });
 
-    // Audit log - after successful creation
+    // Auditoría: registrar creación del rol
     auditService.log(
         AuditAction.ROLE_CREATED,
         'Role',
@@ -175,38 +176,36 @@ export const createRole = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * Update role permissions
- * @param id - Role ID
- * @body permissions - Object with resource keys and action arrays
+ * Actualiza los permisos de un rol existente.
+ * Valida que todas las claves sean módulos o recursos válidos.
  */
 export const updateRolePermissions = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
-    
+
     if (isNaN(id)) {
         throw new ValidationError('Invalid role ID');
     }
 
-    // Validate basic structure
+    // Validar estructura básica del cuerpo
     const { permissions } = updatePermissionsSchema.parse(req.body);
 
-    // Validate that all keys are valid modules or resources
+    // Validar que todas las claves sean módulos o recursos válidos
     const validPermissionables = new Set<string>(ALL_PERMISSIONABLES);
     const invalidKeys = Object.keys(permissions).filter(key => !validPermissionables.has(key));
-    
+
     if (invalidKeys.length > 0) {
         throw new ValidationError(`Invalid keys: ${invalidKeys.join(', ')}. Valid options: ${ALL_PERMISSIONABLES.join(', ')}`);
     }
 
-    // Check role exists
-    // Check role exists and belongs to tenant
-    const role = await prisma.role.findFirst({ 
-        where: { id, tenantId: req.user!.tenantId! } 
+    // Verificar que el rol exista y pertenezca al tenant
+    const role = await prisma.role.findFirst({
+        where: { id, tenantId: req.user!.tenantId! }
     });
     if (!role) {
         throw new NotFoundError('Role');
     }
 
-    // Update permissions with tenantId guard
+    // Actualizar permisos con guardia de tenantId
     await prisma.role.updateMany({
         where: { id, tenantId: req.user!.tenantId! },
         data: { permissions }
@@ -216,7 +215,7 @@ export const updateRolePermissions = asyncHandler(async (req: Request, res: Resp
         where: { id, tenantId: req.user!.tenantId! }
     });
 
-    // Audit log - after successful permissions update
+    // Auditoría: registrar actualización de permisos
     auditService.log(
         AuditAction.ROLE_PERMISSIONS_UPDATED,
         'Role',
@@ -234,8 +233,11 @@ export const updateRolePermissions = asyncHandler(async (req: Request, res: Resp
 });
 
 /**
- * Delete a role
- * System roles (ADMIN, CASHIER, WAITER, KITCHEN) are protected
+ * Elimina un rol personalizado.
+ * Protecciones:
+ * - Los roles de sistema (ADMIN, CASHIER, WAITER, KITCHEN) no se pueden eliminar
+ * - No se puede eliminar un rol que tenga usuarios asignados
+ * - Usa deleteMany con tenantId como defensa en profundidad (P0-005)
  */
 export const deleteRole = asyncHandler(async (req: Request, res: Response) => {
     const idString = (req.params.id as string) || '';
@@ -245,7 +247,7 @@ export const deleteRole = asyncHandler(async (req: Request, res: Response) => {
         throw new ValidationError('Invalid role ID');
     }
 
-    // Check role ownership
+    // Verificar que el rol exista y pertenezca al tenant
     const role = await prisma.role.findFirst({
         where: { id, tenantId: req.user!.tenantId! }
     });
@@ -253,12 +255,12 @@ export const deleteRole = asyncHandler(async (req: Request, res: Response) => {
         throw new NotFoundError('Role');
     }
 
-    // Protect system roles by name (works for all tenants)
+    // Proteger roles de sistema por nombre (funciona para todos los tenants)
     if (SYSTEM_ROLE_NAMES.includes(role.name as typeof SYSTEM_ROLE_NAMES[number])) {
         throw new ForbiddenError('Cannot delete system roles');
     }
 
-    // Check if role has users (scoped to tenant)
+    // Verificar que no haya usuarios asignados a este rol (dentro del tenant)
     const usersCount = await prisma.user.count({
         where: {
             roleId: id,
@@ -269,10 +271,10 @@ export const deleteRole = asyncHandler(async (req: Request, res: Response) => {
         throw new ValidationError(`Cannot delete role: ${usersCount} users are assigned to this role`);
     }
 
-    // Use deleteMany with tenantId for defense-in-depth (P0-005 fix)
+    // Defensa en profundidad: deleteMany con tenantId (fix P0-005)
     await prisma.role.deleteMany({ where: { id, tenantId: req.user!.tenantId! } });
 
-    // Audit log - after successful deletion
+    // Auditoría: registrar eliminación del rol
     auditService.log(
         AuditAction.ROLE_DELETED,
         'Role',
@@ -289,9 +291,7 @@ export const deleteRole = asyncHandler(async (req: Request, res: Response) => {
     sendSuccess(res, { message: 'Role deleted successfully' });
 });
 
-/**
- * Get available modules, resources and actions for UI
- */
+/** Devuelve los módulos, recursos y acciones válidas para la UI de configuración de permisos */
 export const getPermissionOptions = asyncHandler(async (req: Request, res: Response) => {
     sendSuccess(res, {
         modules: VALID_MODULES,

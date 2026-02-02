@@ -1,22 +1,24 @@
 /**
- * @fileoverview Queue Service Interface and Types
+ * @fileoverview Interfaz y tipos del servicio de colas
  *
- * Abstraction layer for the queue system.
- * Allows switching from BullMQ to RabbitMQ/SQS without modifying application code.
+ * Capa de abstraccion para el sistema de colas. Define la interfaz IQueueService
+ * que permite cambiar de BullMQ a RabbitMQ/SQS sin modificar el codigo de la
+ * aplicacion. Todos los servicios que encolan o procesan jobs dependen de esta
+ * interfaz, no de la implementacion concreta.
  *
  * @module lib/queue/types
  */
 
 // ============================================================================
-// CONFIGURACIÓN DE COLA
+// CONFIGURACION DE COLAS
 // ============================================================================
 
 /**
- * Retry policy configuration.
+ * Configuracion de la politica de reintentos.
  *
- * RATIONALE: 10 attempts with exponential backoff
+ * JUSTIFICACION: 10 intentos con backoff exponencial
  *
- * | Attempt | Delay    | Cumulative Time  |
+ * | Intento | Espera   | Tiempo Acumulado |
  * |---------|----------|------------------|
  * | 1       | 0s       | 0s               |
  * | 2       | 30s      | 30s              |
@@ -28,42 +30,42 @@
  * | 8       | 32m      | 63.5m (~1h)      |
  * | 9       | 64m      | 127.5m (~2h)     |
  * | 10      | 128m     | 255.5m (~4h)     |
- * | FAIL    | -        | Dead Letter      |
+ * | FALLO   | -        | Dead Letter      |
  *
- * Why 10 attempts?
- * - During a 10-minute outage, the first 5 attempts cover up to 7.5 min
- * - This allows recovery from most infrastructure outages
- * - If still failing after 4+ hours, it's a real problem requiring intervention
+ * Por que 10 intentos?
+ * - Durante una caida de 10 minutos, los primeros 5 intentos cubren hasta 7.5 min
+ * - Esto permite recuperarse de la mayoria de las caidas de infraestructura
+ * - Si sigue fallando despues de 4+ horas, es un problema real que requiere intervencion humana
  */
 export const DEFAULT_RETRY_CONFIG = {
   attempts: 10,
   backoff: {
     type: 'exponential' as const,
-    delay: 30000,  // 30 seconds initial
+    delay: 30000,  // 30 segundos inicial
   },
 } as const;
 
 /**
- * Options for enqueuing a job.
+ * Opciones para encolar un job.
  */
 export interface JobOptions {
-  /** Delay execution (ms) */
+  /** Retrasar la ejecucion (milisegundos). Util para programar acciones futuras. */
   delay?: number;
-  /** Priority: 1 = most urgent */
+  /** Prioridad: 1 = mas urgente. Los jobs de mayor prioridad se procesan primero. */
   priority?: number;
-  /** Override retry count */
+  /** Sobreescribir el numero de reintentos por defecto */
   attempts?: number;
-  /** Backoff configuration */
+  /** Configuracion de backoff personalizada */
   backoff?: {
     type: 'exponential' | 'fixed';
     delay: number;
   };
-  /** Unique job ID (for deduplication) */
+  /** ID unico del job (para deduplicacion). Si ya existe un job con este ID, no se encola otro. */
   jobId?: string;
 }
 
 /**
- * Job result.
+ * Resultado de consultar el estado de un job.
  */
 export interface JobResult<T = unknown> {
   id: string;
@@ -78,53 +80,62 @@ export interface JobResult<T = unknown> {
 }
 
 /**
- * Handler for processing jobs.
+ * Handler para procesar jobs.
+ * Recibe el ID del job, los datos y el numero de intentos realizados.
+ * Debe lanzar error si el procesamiento falla (BullMQ reintentara automaticamente).
  */
 export type JobHandler<T> = (job: { id: string; data: T; attemptsMade: number }) => Promise<void>;
 
 /**
- * Abstract queue service interface.
- * Implementations: BullMQService, InMemoryQueueService (testing)
+ * Interfaz abstracta del servicio de colas.
+ * Implementaciones: BullMQService (produccion), InMemoryQueueService (testing).
+ * Usar esta interfaz en lugar de la implementacion concreta para facilitar
+ * el testing y la migracion a otros proveedores.
  */
 export interface IQueueService {
   /**
-   * Enqueue a job for async processing.
-   * @param queueName - Queue name
-   * @param data - Job data
-   * @param options - Optional options
-   * @returns Enqueued job ID
+   * Encola un job para procesamiento asincrono.
+   * @param queueName - Nombre de la cola (usar constantes de QUEUE_NAMES)
+   * @param data - Datos del job que recibira el handler
+   * @param options - Opciones opcionales (delay, prioridad, reintentos)
+   * @returns ID del job encolado
    */
   enqueue<T>(queueName: string, data: T, options?: JobOptions): Promise<string>;
 
   /**
-   * Register a processor for a queue.
-   * The handler will execute for each job in that queue.
+   * Registra un procesador para una cola.
+   * El handler se ejecutara por cada job en esa cola.
+   * Solo se debe registrar un handler por cola.
    */
   process<T>(queueName: string, handler: JobHandler<T>): void;
 
   /**
-   * Get job status.
+   * Obtiene el estado de un job por su ID.
+   * Retorna null si el job no existe o fue eliminado por la politica de limpieza.
    */
   getJob<T>(queueName: string, jobId: string): Promise<JobResult<T> | null>;
 
   /**
-   * Redis connection health check.
+   * Health check de la conexion a Redis.
+   * Retorna true si Redis responde al ping.
    */
   isHealthy(): Promise<boolean>;
 
   /**
-   * TST-008: Check if any workers are registered and processing jobs.
+   * TST-008: Verifica si hay workers registrados y procesando jobs.
+   * Util para diagnosticar cuando los jobs se encolan pero no se procesan.
    */
   hasActiveWorkers(): boolean;
 
   /**
-   * Close connections gracefully.
+   * Cierra conexiones de forma graceful.
+   * Espera a que los jobs en progreso terminen antes de cerrar.
    */
   close(): Promise<void>;
 }
 
 // ============================================================================
-// RE-EXPORTS
+// RE-EXPORTACIONES
 // ============================================================================
 
 export { DEFAULT_RETRY_CONFIG as RETRY_CONFIG };

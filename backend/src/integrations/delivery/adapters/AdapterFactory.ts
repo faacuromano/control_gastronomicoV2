@@ -1,8 +1,13 @@
 /**
- * @fileoverview Adapter Factory
+ * @fileoverview Fabrica de Adaptadores de Delivery
  *
- * Factory to get the correct adapter for each delivery platform.
- * Implements the Factory Method pattern to abstract adapter creation.
+ * Fabrica centralizada que instancia y retorna el adaptador correcto para cada
+ * plataforma de delivery. Implementa el patron Factory Method para abstraer
+ * la creacion de adaptadores y desacoplar el codigo consumidor de las
+ * implementaciones concretas.
+ *
+ * Tambien incluye un sistema de cache con TTL para reutilizar instancias
+ * de adaptadores y evitar recrearlos en cada request.
  *
  * @module integrations/delivery/adapters/AdapterFactory
  */
@@ -18,14 +23,14 @@ import { NotFoundError, ValidationError } from '../../../utils/errors';
 import { logger } from '../../../utils/logger';
 
 // ============================================================================
-// ADAPTER REGISTRY
+// REGISTRO DE ADAPTADORES DISPONIBLES
 // ============================================================================
 
 /**
- * Platform code to adapter class mapping.
- * To add a new platform:
- * 1. Create the adapter (e.g., GlovoAdapter.ts)
- * 2. Add it to this registry
+ * Mapeo de codigo de plataforma a su clase adaptadora concreta.
+ * Para agregar soporte de una nueva plataforma:
+ * 1. Crear el adaptador (ej: GlovoAdapter.ts) que extienda AbstractDeliveryAdapter
+ * 2. Agregar la entrada correspondiente en este registro
  */
 const ADAPTER_REGISTRY: Record<
   string,
@@ -33,42 +38,44 @@ const ADAPTER_REGISTRY: Record<
 > = {
   [DeliveryPlatformCode.RAPPI]: RappiAdapter,
   [DeliveryPlatformCode.PEDIDOSYA]: PedidosYaAdapter,
-  // [DeliveryPlatformCode.GLOVO]: GlovoAdapter,       // TODO
-  // [DeliveryPlatformCode.UBEREATS]: UberEatsAdapter, // TODO
+  // [DeliveryPlatformCode.GLOVO]: GlovoAdapter,       // TODO: Pendiente de implementacion
+  // [DeliveryPlatformCode.UBEREATS]: UberEatsAdapter, // TODO: Pendiente de implementacion
 };
 
 // ============================================================================
-// ADAPTER CACHE
+// CACHE DE ADAPTADORES CON TTL
 // ============================================================================
 
 /**
- * Instantiated adapter cache with TTL (PERF-009).
- * Avoids creating multiple instances of the same adapter.
- * TTL ensures credential changes are reflected without restart.
+ * Cache de adaptadores ya instanciados con tiempo de vida (TTL) (PERF-009).
+ * Evita crear multiples instancias del mismo adaptador por plataforma.
+ * El TTL garantiza que cambios en credenciales se reflejen sin reiniciar
+ * el servidor — al expirar, se recrea el adaptador con datos frescos de la BD.
  */
-const ADAPTER_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const ADAPTER_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutos de vida en cache
 const adapterCache = new Map<number, { adapter: AbstractDeliveryAdapter; expiry: number }>();
 
 // ============================================================================
-// FACTORY
+// CLASE FACTORY
 // ============================================================================
 
 class AdapterFactoryClass {
   /**
-   * Get an adapter by platform database ID.
+   * Obtiene un adaptador buscando la plataforma por su ID en la base de datos.
+   * Si existe en cache y no expiro, retorna la instancia cacheada.
    *
-   * @param platformId - Platform ID in the database
-   * @returns Corresponding adapter
-   * @throws NotFoundError if the platform does not exist
-   * @throws Error if no adapter is implemented for that platform
+   * @param platformId - ID de la plataforma en la tabla DeliveryPlatform
+   * @returns Adaptador correspondiente listo para usar
+   * @throws NotFoundError si la plataforma no existe en la BD
+   * @throws ValidationError si no hay adaptador implementado para esa plataforma
    */
   async getByPlatformId(platformId: number): Promise<AbstractDeliveryAdapter> {
-    // Check cache first (with TTL check)
+    // Verificar cache primero (con control de TTL)
     const cached = adapterCache.get(platformId);
     if (cached && cached.expiry > Date.now()) {
       return cached.adapter;
     }
-    if (cached) adapterCache.delete(platformId); // Expired
+    if (cached) adapterCache.delete(platformId); // Entrada expirada, eliminar
 
     const platform = await prisma.deliveryPlatform.findUnique({
       where: { id: platformId },
@@ -82,13 +89,15 @@ class AdapterFactoryClass {
   }
 
   /**
-   * Get an adapter by platform code.
+   * Obtiene un adaptador buscando la plataforma por su codigo (RAPPI, PEDIDOSYA, etc.).
+   * Opcionalmente filtra por tenantId para soportar multi-tenancy.
    *
-   * @param code - Platform code (RAPPI, GLOVO, etc.)
-   * @returns Corresponding adapter
+   * @param code - Codigo de la plataforma
+   * @param tenantId - ID del tenant (opcional, para filtrado multi-tenant)
+   * @returns Adaptador correspondiente
    */
   async getByPlatformCode(code: string, tenantId?: number): Promise<AbstractDeliveryAdapter> {
-    // FIX P0-SEC: code is now unique per tenant, not globally
+    // FIX P0-SEC: El codigo ahora se busca con scope de tenant, no globalmente
     const where: Prisma.DeliveryPlatformWhereInput = { code: code.toUpperCase() };
     if (tenantId) where.tenantId = tenantId;
     const platform = await prisma.deliveryPlatform.findFirst({ where });
@@ -97,7 +106,7 @@ class AdapterFactoryClass {
       throw new NotFoundError(`Delivery platform with code=${code}`);
     }
 
-    // Check cache (with TTL)
+    // Verificar cache (con TTL)
     const cachedEntry = adapterCache.get(platform.id);
     if (cachedEntry && cachedEntry.expiry > Date.now()) {
       return cachedEntry.adapter;
@@ -108,9 +117,11 @@ class AdapterFactoryClass {
   }
 
   /**
-   * Get all adapters for active platforms.
+   * Obtiene todos los adaptadores para plataformas habilitadas.
+   * Util para operaciones masivas como sincronizacion de menu a todas las plataformas.
    *
-   * @returns Array of active adapters
+   * @param tenantId - ID del tenant (opcional, para filtrado multi-tenant)
+   * @returns Array de adaptadores activos y configurados
    */
   async getActiveAdapters(tenantId?: number): Promise<AbstractDeliveryAdapter[]> {
     const where: Prisma.DeliveryPlatformWhereInput = { isEnabled: true };
@@ -124,6 +135,7 @@ class AdapterFactoryClass {
         const adapter = this.createAdapter(platform);
         adapters.push(adapter);
       } catch (error) {
+        // Si un adaptador falla al crearse, se salta pero se registra el warning
         logger.warn('Skipping platform - no adapter available', {
           platformCode: platform.code,
           error: error instanceof Error ? error.message : String(error),
@@ -135,25 +147,26 @@ class AdapterFactoryClass {
   }
 
   /**
-   * Check if an adapter exists for a platform.
+   * Verifica si existe un adaptador implementado para un codigo de plataforma dado.
    *
-   * @param code - Platform code
-   * @returns true if an adapter is implemented
+   * @param code - Codigo de la plataforma
+   * @returns true si hay un adaptador registrado para esa plataforma
    */
   hasAdapter(code: string): boolean {
     return code.toUpperCase() in ADAPTER_REGISTRY;
   }
 
   /**
-   * List platform codes with available adapters.
+   * Retorna la lista de codigos de plataforma que tienen adaptador implementado.
    */
   getAvailablePlatformCodes(): string[] {
     return Object.keys(ADAPTER_REGISTRY);
   }
 
   /**
-   * Invalidate the cache for a specific adapter.
-   * Useful when platform credentials are updated.
+   * Invalida la entrada de cache para un adaptador especifico.
+   * Util cuando se actualizan las credenciales de una plataforma
+   * y se necesita forzar la recreacion del adaptador.
    */
   invalidateCache(platformId: number): void {
     adapterCache.delete(platformId);
@@ -161,7 +174,7 @@ class AdapterFactoryClass {
   }
 
   /**
-   * Clear the entire adapter cache.
+   * Limpia completamente el cache de adaptadores.
    */
   clearCache(): void {
     adapterCache.clear();
@@ -169,13 +182,14 @@ class AdapterFactoryClass {
   }
 
   // ============================================================================
-  // TENANT-SPECIFIC ADAPTERS
+  // ADAPTADORES ESPECIFICOS POR TENANT
   // ============================================================================
 
   /**
-   * Get an adapter configured specifically for a tenant.
-   * This allows using tenant-specific credentials (storeId, apiKey, etc.)
-   * instead of the platform's global ones.
+   * Obtiene un adaptador configurado especificamente para un tenant.
+   * Permite usar credenciales propias del tenant (storeId, apiKey, etc.)
+   * en lugar de las credenciales globales de la plataforma.
+   * Este metodo NO cachea porque la configuracion es unica por tenant.
    */
   async getAdapterForTenant(
     platformId: number,
@@ -189,12 +203,12 @@ class AdapterFactoryClass {
       throw new NotFoundError(`Delivery platform with id=${platformId}`);
     }
 
-    // No global cache here because configuration is tenant-specific
+    // No se usa cache global porque la configuracion es especifica del tenant
     return this.createAdapter(platform, configOverrides);
   }
 
   // ============================================================================
-  // PRIVATE METHODS
+  // METODOS PRIVADOS
   // ============================================================================
 
   private createAdapter(
@@ -210,15 +224,15 @@ class AdapterFactoryClass {
       );
     }
 
-    // Merge base configuration with tenant overrides
-    // Overrides take priority (e.g., tenant storeId over platform storeId)
+    // Mezclar configuracion base de la plataforma con overrides del tenant.
+    // Los overrides tienen prioridad (ej: storeId del tenant sobre storeId global)
     const adapter = new AdapterClass(platform, configOverrides);
-    
-    // Only cache if NO overrides (global instance), with TTL
+
+    // Solo cachear si NO hay overrides (instancia global), con TTL
     if (Object.keys(configOverrides).length === 0) {
       adapterCache.set(platform.id, { adapter, expiry: Date.now() + ADAPTER_CACHE_TTL_MS });
     }
-    
+
     logger.debug('Adapter created', {
       platformId: platform.id,
       platformCode: platform.code,
@@ -230,8 +244,8 @@ class AdapterFactoryClass {
   }
 }
 
-// Singleton
+// Singleton — Una unica instancia de la factory para toda la aplicacion
 export const AdapterFactory = new AdapterFactoryClass();
 
-// Re-export classes for direct use if needed
+// Re-exportar clases concretas por si se necesitan instanciar directamente
 export { RappiAdapter };

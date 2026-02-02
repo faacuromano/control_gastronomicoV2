@@ -1,10 +1,18 @@
 /**
- * @fileoverview Status Update Service
+ * @fileoverview Servicio de Actualizacion de Estado en Plataformas de Delivery
  *
- * Service to send order status updates to delivery platforms.
+ * Servicio encargado de enviar actualizaciones de estado de pedidos a las
+ * plataformas de delivery externas. Cuando el restaurante cambia el estado
+ * de un pedido internamente (ej: marca como listo para retiro), este servicio
+ * notifica a la plataforma correspondiente para que el cliente y el repartidor
+ * vean el progreso actualizado.
  *
- * When the restaurant updates an order's status (e.g., ready for pickup),
- * this service notifies the corresponding platform.
+ * FLUJO:
+ * 1. El restaurante actualiza el estado en el POS
+ * 2. Se llama a notifyStatusChange() con el nuevo estado
+ * 3. El servicio busca la orden y verifica si es de delivery externo
+ * 4. Mapea el estado interno al formato de la plataforma
+ * 5. Envia la actualizacion via el adaptador correspondiente
  *
  * @module integrations/delivery/sync/statusUpdate.service
  */
@@ -16,11 +24,12 @@ import { NotFoundError } from '../../../utils/errors';
 import { NormalizedOrderStatus, type StatusUpdateResult } from '../types/normalized.types';
 
 // ============================================================================
-// MAPEO DE ESTADOS
+// MAPEO DE ESTADOS INTERNOS A NORMALIZADOS
 // ============================================================================
 
 /**
- * Internal status to normalized delivery status mapping.
+ * Mapeo de estados internos del POS a estados normalizados de delivery.
+ * Se usa para traducir el estado interno al formato que entienden las plataformas.
  */
 const INTERNAL_TO_NORMALIZED_STATUS: Record<string, NormalizedOrderStatus> = {
   'OPEN': NormalizedOrderStatus.NEW,
@@ -33,16 +42,17 @@ const INTERNAL_TO_NORMALIZED_STATUS: Record<string, NormalizedOrderStatus> = {
 };
 
 // ============================================================================
-// SERVICIO
+// SERVICIO DE ACTUALIZACION DE ESTADO
 // ============================================================================
 
 class StatusUpdateService {
   /**
-   * Notifies the external platform about a status change.
+   * Notifica a la plataforma externa sobre un cambio de estado en un pedido.
+   * Solo actua si el pedido es de delivery externo (tiene deliveryPlatformId y externalId).
    *
-   * @param orderId - Internal order ID
-   * @param newStatus - New internal status
-   * @returns Update result
+   * @param orderId - ID interno de la orden
+   * @param newStatus - Nuevo estado interno del pedido
+   * @returns Resultado del envio, o null si no es pedido de delivery externo
    */
   async notifyStatusChange(
     orderId: number,
@@ -55,12 +65,12 @@ class StatusUpdateService {
       },
     });
 
-    // If not an external delivery order, nothing to do
+    // Si no es un pedido de delivery externo, no hay nada que notificar
     if (!order || !order.deliveryPlatformId || !order.externalId) {
       return null;
     }
 
-    // Map internal status to normalized
+    // Mapear estado interno al formato normalizado
     const normalizedStatus = INTERNAL_TO_NORMALIZED_STATUS[newStatus];
 
     if (!normalizedStatus) {
@@ -73,7 +83,7 @@ class StatusUpdateService {
 
     try {
       const adapter = await AdapterFactory.getByPlatformId(order.deliveryPlatformId);
-      
+
       const result = await adapter.updateOrderStatus(
         order.externalId,
         normalizedStatus
@@ -107,7 +117,8 @@ class StatusUpdateService {
   }
 
   /**
-   * Marks an order as ready for pickup and notifies the platform.
+   * Marca un pedido como listo para retiro y notifica a la plataforma.
+   * Actualiza el estado interno a PREPARED y envia la notificacion.
    */
   async markAsReady(orderId: number): Promise<StatusUpdateResult | null> {
     await prisma.order.update({
@@ -119,7 +130,8 @@ class StatusUpdateService {
   }
 
   /**
-   * Marks an order as in preparation and notifies the platform.
+   * Marca un pedido como en preparacion y notifica a la plataforma.
+   * Actualiza el estado interno a IN_PREPARATION y envia la notificacion.
    */
   async markAsInPreparation(orderId: number): Promise<StatusUpdateResult | null> {
     await prisma.order.update({
@@ -131,7 +143,9 @@ class StatusUpdateService {
   }
 
   /**
-   * Cancels an order and notifies the platform.
+   * Cancela un pedido internamente y notifica a la plataforma externa.
+   * Si es un pedido de delivery externo, envia la cancelacion (rechazo)
+   * al adaptador correspondiente.
    */
   async cancelOrder(orderId: number, reason?: string): Promise<StatusUpdateResult | null> {
     const order = await prisma.order.findUnique({
@@ -143,7 +157,7 @@ class StatusUpdateService {
       throw new NotFoundError(`Order ${orderId}`);
     }
 
-    // Update in DB
+    // Actualizar el estado en la base de datos local
     await prisma.order.update({
       where: { id: orderId },
       data: {
@@ -152,7 +166,7 @@ class StatusUpdateService {
       },
     });
 
-    // If external order, notify the platform
+    // Si es un pedido externo, notificar a la plataforma
     if (order.externalId && order.deliveryPlatformId) {
       try {
         const adapter = await AdapterFactory.getByPlatformId(order.deliveryPlatformId);

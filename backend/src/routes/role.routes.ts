@@ -1,9 +1,17 @@
 /**
- * @fileoverview Role Management Routes
- * 
- * @business_rule
- * - GET /roles: Authenticated users can list (for assignment dropdowns)
- * - POST/PUT/DELETE: ADMIN role only
+ * @fileoverview Rutas de Gestión de Roles y Permisos
+ *
+ * Define los endpoints para administrar los roles del sistema (ADMIN, MANAGER,
+ * WAITER, CASHIER, etc.) y sus permisos granulares. Los permisos se almacenan
+ * como JSON en el campo permissions del modelo Role, siguiendo el formato:
+ * { recurso: { acción: boolean } } (ej: { orders: { create: true, read: true } }).
+ *
+ * @regla_de_negocio
+ * - GET /roles: Cualquier usuario autenticado puede listar roles (necesario
+ *   para los dropdowns de asignación de rol en la UI de usuarios).
+ * - POST/PUT/DELETE: Solo el rol ADMIN puede crear, modificar o eliminar roles.
+ *
+ * @module routes/role.routes
  */
 
 import { Router } from 'express';
@@ -20,22 +28,22 @@ import { validateId } from '../middleware/validateId';
 
 const router = Router();
 
-// List roles - any authenticated user (for dropdowns)
+// Listar roles - cualquier usuario autenticado (para dropdowns de asignación)
 router.get('/', authenticate, getRoles);
 
-// Get permission options (resources + actions) - any authenticated user
+// Obtener catálogo de recursos y acciones disponibles para configurar permisos
 router.get('/permission-options', authenticate, getPermissionOptions);
 
-// Get role by ID - ADMIN only
+// Obtener detalle de un rol con sus permisos - solo ADMIN
 router.get('/:id', authenticate, validateId(), authorize(['ADMIN']), getRoleById);
 
-// Create role - ADMIN only
+// Crear nuevo rol con permisos iniciales - solo ADMIN
 router.post('/', authenticate, authorize(['ADMIN']), createRole);
 
-// Update role permissions - ADMIN only
+// Actualizar los permisos de un rol existente - solo ADMIN
 router.put('/:id/permissions', authenticate, validateId(), authorize(['ADMIN']), updateRolePermissions);
 
-// Delete role - ADMIN only
+// Eliminar un rol (falla si hay usuarios asignados a él) - solo ADMIN
 router.delete('/:id', authenticate, validateId(), authorize(['ADMIN']), deleteRole);
 
 export default router;

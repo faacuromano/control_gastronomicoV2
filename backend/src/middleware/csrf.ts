@@ -1,15 +1,20 @@
 import { Request, Response, NextFunction } from 'express';
 
 /**
- * CSRF protection middleware.
- * Requires X-Requested-With header on state-changing requests.
+ * Middleware de proteccion contra CSRF (Cross-Site Request Forgery).
+ * Requiere el header X-Requested-With en solicitudes que modifican estado.
  *
- * Since the app uses HttpOnly cookies with SameSite=lax, this custom header
- * check provides defense-in-depth against CSRF attacks. Browsers won't
- * add custom headers on cross-origin form submissions.
+ * La aplicacion usa cookies HttpOnly con SameSite=lax para la autenticacion.
+ * Esta verificacion de header personalizado proporciona defensa en profundidad
+ * contra ataques CSRF: los navegadores no agregan headers personalizados
+ * en envios de formularios cross-origin, por lo que un atacante no puede
+ * falsificar este header desde un sitio externo.
+ *
+ * El frontend (Axios) envia automaticamente X-Requested-With: XMLHttpRequest
+ * en cada solicitud, por lo que este middleware es transparente para el cliente.
  */
 export function csrfProtection(req: Request, res: Response, next: NextFunction): void {
-    // Safe methods don't need CSRF protection
+    // Los metodos seguros (solo lectura) no necesitan proteccion CSRF
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
         next();
         return;

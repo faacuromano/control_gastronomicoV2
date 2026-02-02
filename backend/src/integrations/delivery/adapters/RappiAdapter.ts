@@ -1,12 +1,18 @@
 /**
- * @fileoverview Rappi Adapter Implementation
+ * @fileoverview Implementacion del Adaptador de Rappi
  *
- * Concrete adapter implementation for the Rappi platform.
+ * Adaptador concreto que implementa la integracion con la plataforma Rappi.
+ * Convierte las APIs propietarias de Rappi al formato normalizado del sistema.
  *
- * RAPPI DOCS:
- * - Webhooks: HMAC-SHA256 signature in X-Rappi-Signature header
- * - Timeout: 4 minutes to accept/reject
- * - API Base: https://services.rappi.com.ar/api/v1
+ * DOCUMENTACION DE RAPPI:
+ * - Webhooks: Firma HMAC-SHA256 en el header X-Rappi-Signature
+ * - Timeout: 4 minutos para aceptar o rechazar un pedido
+ * - API Base (Argentina): https://services.rappi.com.ar/api/v1
+ *
+ * PARTICULARIDADES DE RAPPI:
+ * - Usa autenticacion Bearer Token estatico (no OAuth)
+ * - Los modificadores se llaman "toppings" en su API
+ * - El storeId se envia en el header X-Store-Id
  *
  * @module integrations/delivery/adapters/RappiAdapter
  */
@@ -31,11 +37,12 @@ import {
 } from '../types/normalized.types';
 
 // ============================================================================
-// RAPPI-SPECIFIC TYPES (Raw Payloads)
+// TIPOS ESPECIFICOS DE RAPPI (Payloads crudos de la API)
 // ============================================================================
 
 /**
- * Zod schema to validate the Rappi webhook payload.
+ * Schemas Zod para validar el payload del webhook de Rappi.
+ * Garantizan que los datos recibidos cumplan con la estructura esperada.
  */
 const RappiToppingSchema = z.object({
   sku: z.string(),
@@ -98,8 +105,8 @@ const RappiOrderPayloadSchema = z.object({
 });
 
 /**
- * Raw new order payload from Rappi.
- * Structure based on Rappi Partners API documentation.
+ * Payload crudo de un pedido nuevo de Rappi.
+ * La estructura corresponde a la documentacion de la Partners API de Rappi.
  */
 interface RappiOrderPayload {
   order_id: string;
@@ -156,7 +163,8 @@ interface RappiOrderPayload {
 }
 
 /**
- * Rappi status → Normalized status mapping
+ * Mapeo de estados de Rappi a estados normalizados internos.
+ * Permite traducir los estados propietarios de Rappi al formato comun.
  */
 const RAPPI_STATUS_MAP: Record<string, NormalizedOrderStatus> = {
   'NEW': NormalizedOrderStatus.NEW,
@@ -171,7 +179,8 @@ const RAPPI_STATUS_MAP: Record<string, NormalizedOrderStatus> = {
 };
 
 /**
- * Reverse mapping: Normalized status → Rappi status
+ * Mapeo inverso: de estado normalizado a estado de Rappi.
+ * Se usa para enviar actualizaciones de estado desde nuestro sistema a Rappi.
  */
 const NORMALIZED_TO_RAPPI_STATUS: Record<NormalizedOrderStatus, string> = {
   [NormalizedOrderStatus.NEW]: 'NEW',
@@ -186,7 +195,7 @@ const NORMALIZED_TO_RAPPI_STATUS: Record<NormalizedOrderStatus, string> = {
 };
 
 // ============================================================================
-// RAPPI ADAPTER
+// ADAPTADOR DE RAPPI
 // ============================================================================
 
 export class RappiAdapter extends AbstractDeliveryAdapter {
@@ -194,7 +203,9 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
 
   constructor(platform: DeliveryPlatform, config: Partial<AdapterConfig> = {}) {
     super(platform, config);
-    
+
+    // Rappi usa autenticacion Bearer Token estatico (no OAuth como PedidosYa).
+    // El storeId se envia en cada request via header X-Store-Id.
     this.httpClient = axios.create({
       baseURL: this.config.baseUrl,
       timeout: this.config.timeout,
@@ -205,7 +216,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
       },
     });
 
-    // Log requests for debugging
+    // Interceptor para registrar requests salientes en los logs de debug
     this.httpClient.interceptors.request.use((config) => {
       this.log('debug', 'Outgoing request to Rappi', {
         method: config.method,
@@ -216,7 +227,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   // ============================================================================
-  // ABSTRACT METHOD IMPLEMENTATIONS
+  // IMPLEMENTACION DE METODOS ABSTRACTOS
   // ============================================================================
 
   protected get platformCode(): DeliveryPlatformCode {
@@ -224,13 +235,14 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   protected getDefaultBaseUrl(): string {
-    // Argentina endpoint
+    // Endpoint de Argentina por defecto
     return process.env.RAPPI_API_URL || 'https://services.rappi.com.ar/api/v1';
   }
 
   /**
-   * Validates the Rappi webhook HMAC signature.
-   * Rappi uses HMAC-SHA256 with the raw body.
+   * Valida la firma HMAC del webhook de Rappi.
+   * Rappi usa HMAC-SHA256 con el body crudo y la firma viene directamente
+   * en el header X-Rappi-Signature (sin prefijo de algoritmo).
    */
   validateWebhookSignature(signature: string, rawBody: Buffer): boolean {
     if (!this.config.webhookSecret) {
@@ -252,10 +264,10 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Parses the Rappi webhook payload into normalized format.
+   * Parsea el payload del webhook de Rappi al formato normalizado interno.
    */
   parseWebhookPayload(rawPayload: unknown): ProcessedWebhook {
-    // Validate payload with Zod
+    // Validar la estructura del payload con Zod
     const parsed = RappiOrderPayloadSchema.safeParse(rawPayload);
     if (!parsed.success) {
       this.log('error', 'Invalid Rappi webhook payload', {
@@ -266,10 +278,10 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
 
     const payload = parsed.data as RappiOrderPayload;
 
-    // Determine event type
+    // Determinar tipo de evento segun el estado del pedido
     const eventType = this.determineEventType(payload);
 
-    // Convert to normalized format
+    // Convertir al formato normalizado interno
     const order = this.normalizeOrder(payload);
 
     return {
@@ -283,14 +295,14 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Accepts an order in Rappi.
+   * Acepta un pedido en Rappi con el tiempo estimado de preparacion.
    */
   async acceptOrder(externalOrderId: string, estimatedPrepTime: number): Promise<void> {
     try {
       await this.httpClient.post(`/orders/${externalOrderId}/accept`, {
         estimated_time_minutes: estimatedPrepTime,
       });
-      
+
       this.log('info', 'Order accepted in Rappi', { externalOrderId, estimatedPrepTime });
     } catch (error) {
       this.log('error', 'Failed to accept order in Rappi', {
@@ -302,14 +314,14 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Rejects an order in Rappi.
+   * Rechaza un pedido en Rappi con el motivo indicado.
    */
   async rejectOrder(externalOrderId: string, reason: string): Promise<void> {
     try {
       await this.httpClient.post(`/orders/${externalOrderId}/reject`, {
         reason,
       });
-      
+
       this.log('info', 'Order rejected in Rappi', { externalOrderId, reason });
     } catch (error) {
       this.log('error', 'Failed to reject order in Rappi', {
@@ -321,14 +333,15 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Updates the order status in Rappi.
+   * Actualiza el estado de un pedido en Rappi.
+   * A diferencia de PedidosYa, Rappi usa un unico endpoint generico para todos los estados.
    */
   async updateOrderStatus(
     externalOrderId: string,
     status: NormalizedOrderStatus
   ): Promise<StatusUpdateResult> {
     const rappiStatus = NORMALIZED_TO_RAPPI_STATUS[status];
-    
+
     if (!rappiStatus) {
       return {
         success: false,
@@ -342,9 +355,9 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
       await this.httpClient.patch(`/orders/${externalOrderId}/status`, {
         status: rappiStatus,
       });
-      
+
       this.log('info', 'Order status updated in Rappi', { externalOrderId, status: rappiStatus });
-      
+
       return {
         success: true,
         externalId: externalOrderId,
@@ -361,7 +374,8 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Pushes the menu to Rappi.
+   * Envia el menu completo a Rappi.
+   * Rappi espera el menu agrupado por categorias con timestamp de actualizacion.
    */
   async pushMenu(products: Array<{
     productId: number;
@@ -376,7 +390,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
     const errors: Array<{ productId: number; error: string }> = [];
     let syncedProducts = 0;
 
-    // Rappi expects the menu in a specific format
+    // Rappi espera el menu con categorias y un timestamp de actualizacion
     const rappiMenu = {
       categories: this.groupProductsByCategory(products),
       updated_at: new Date().toISOString(),
@@ -385,14 +399,14 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
     try {
       await this.httpClient.put(`/stores/${this.config.storeId}/menu`, rappiMenu);
       syncedProducts = products.length;
-      
+
       this.log('info', 'Menu synced to Rappi', { productCount: syncedProducts });
     } catch (error) {
       this.log('error', 'Failed to sync menu to Rappi', {
         error: error instanceof Error ? error.message : String(error),
       });
-      
-      // Mark all as failed
+
+      // Si fallo, marcar todos los productos como fallidos
       products.forEach((p) => {
         errors.push({ productId: p.productId, error: 'Menu sync failed' });
       });
@@ -408,7 +422,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Updates product availability in Rappi.
+   * Actualiza la disponibilidad de un producto individual en Rappi.
    */
   async updateProductAvailability(update: AvailabilityUpdate): Promise<void> {
     try {
@@ -416,7 +430,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
         `/stores/${this.config.storeId}/products/${update.externalSku}/availability`,
         { is_available: update.isAvailable }
       );
-      
+
       this.log('info', 'Product availability updated in Rappi', {
         externalSku: update.externalSku,
         isAvailable: update.isAvailable,
@@ -431,12 +445,12 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   // ============================================================================
-  // PRIVATE NORMALIZATION METHODS
+  // METODOS PRIVADOS DE NORMALIZACION — Conversion de formatos Rappi a interno
   // ============================================================================
 
   private determineEventType(payload: RappiOrderPayload): WebhookEventType {
     const status = payload.status?.toUpperCase();
-    
+
     if (status === 'NEW') return WebhookEventType.ORDER_NEW;
     if (status === 'CANCELLED') return WebhookEventType.ORDER_CANCELLED;
     return WebhookEventType.STATUS_UPDATE;
@@ -450,28 +464,28 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
       status: RAPPI_STATUS_MAP[payload.status?.toUpperCase()] || NormalizedOrderStatus.NEW,
       createdAt: new Date(payload.created_at),
       fulfillmentType: 'PLATFORM_DELIVERY',
-      
+
       customer: this.normalizeCustomer(payload.customer),
-      deliveryAddress: payload.delivery_address 
-        ? this.normalizeAddress(payload.delivery_address) 
+      deliveryAddress: payload.delivery_address
+        ? this.normalizeAddress(payload.delivery_address)
         : undefined,
-      
+
       items: payload.items.map((item) => this.normalizeItem(item)),
-      
+
       subtotal: payload.totals.subtotal,
       deliveryFee: payload.totals.delivery_fee,
       discount: payload.totals.discount,
       tip: payload.totals.tip,
       total: payload.totals.total,
-      
-      estimatedDeliveryAt: payload.estimated_delivery_time 
-        ? new Date(payload.estimated_delivery_time) 
+
+      estimatedDeliveryAt: payload.estimated_delivery_time
+        ? new Date(payload.estimated_delivery_time)
         : undefined,
-        
+
       notes: payload.notes,
       paymentMethod: payload.payment.method,
       isPrepaid: payload.payment.is_prepaid,
-      
+
       rawPayload: payload,
     };
   }
@@ -507,13 +521,14 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
       quantity: item.quantity,
       unitPrice: item.unit_price,
       notes: item.comments,
+      // En Rappi los modificadores se llaman "toppings"
       modifiers: (item.toppings || []).map((t) => ({
         externalSku: t.sku,
         name: t.name,
         price: t.price,
         quantity: t.quantity,
       })),
-      removedIngredients: [], // Rappi sends this in comments normally
+      removedIngredients: [], // Rappi envia ingredientes removidos dentro de los comentarios
     };
   }
 
@@ -521,7 +536,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
     products: Array<{ categoryName: string; [key: string]: unknown }>
   ): Array<{ name: string; products: unknown[] }> {
     const categoryMap = new Map<string, unknown[]>();
-    
+
     for (const product of products) {
       const existing = categoryMap.get(product.categoryName) || [];
       existing.push({
@@ -534,7 +549,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
       });
       categoryMap.set(product.categoryName, existing);
     }
-    
+
     return Array.from(categoryMap.entries()).map(([name, prods]) => ({
       name,
       products: prods,

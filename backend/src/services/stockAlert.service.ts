@@ -1,12 +1,22 @@
 /**
- * Stock Alert Service
- * Monitors stock levels and emits WebSocket alerts when below threshold
+ * @fileoverview Servicio de alertas de stock bajo.
+ * Monitorea los niveles de inventario y emite alertas via WebSocket
+ * cuando un ingrediente cae por debajo de su umbral minimo configurado.
+ *
+ * Las alertas se emiten al room de Socket.IO `tenant:{id}:admin:stock`
+ * para que los administradores vean las notificaciones en tiempo real.
+ *
+ * @module services/stockAlert.service
  */
 
 import { prisma } from '../lib/prisma';
 import { getIO } from '../lib/socket';
 import { logger } from '../utils/logger';
 
+/**
+ * Estructura de una alerta de stock bajo.
+ * Incluye severidad: 'warning' si esta por debajo del minimo, 'critical' si llego a 0.
+ */
 export interface StockAlert {
     id: number;
     ingredientId: number;
@@ -19,12 +29,17 @@ export interface StockAlert {
 }
 
 class StockAlertService {
-    // PERF-004: Throttle alerts per ingredient to avoid flooding WebSocket
-    private alertThrottle = new Map<string, number>(); // key -> lastEmitTimestamp
-    private static THROTTLE_MS = 5000; // Max 1 alert per ingredient per 5 seconds
+    // PERF-004: Throttle de alertas por ingrediente para evitar inundar el WebSocket.
+    // Sin throttle, cada movimiento de stock en una venta podria generar una alerta.
+    private alertThrottle = new Map<string, number>(); // clave -> timestamp del ultimo envio
+    private static THROTTLE_MS = 5000; // Maximo 1 alerta por ingrediente cada 5 segundos
 
     /**
-     * Check if ingredient is below minimum stock and emit alert if so
+     * Verifica si un ingrediente esta por debajo del stock minimo y emite alerta si corresponde.
+     * Se llama automaticamente despues de cada movimiento de stock.
+     *
+     * PERF-004: Implementa throttle por ingrediente para evitar alertas excesivas
+     * durante operaciones masivas (ej: una venta con 10 items).
      */
     async checkAndAlert(ingredientId: number, tenantId: number, newStock: number): Promise<void> {
         try {
@@ -37,20 +52,20 @@ class StockAlertService {
             const minStock = Number(ingredient.minStock);
             const currentStock = Number(newStock);
 
-            // Only alert if minStock is configured (> 0)
+            // Solo alertar si el stock minimo esta configurado (mayor a 0)
             if (minStock <= 0) return;
 
             if (currentStock <= minStock) {
-                // PERF-004: Throttle per-ingredient alerts
+                // PERF-004: Verificar throttle por ingrediente antes de emitir
                 const throttleKey = `${tenantId}:${ingredientId}`;
                 const lastEmit = this.alertThrottle.get(throttleKey) || 0;
                 const now = Date.now();
                 if (now - lastEmit < StockAlertService.THROTTLE_MS) {
-                    return; // Skip - alert was recently emitted for this ingredient
+                    return; // Omitir: ya se emitio una alerta reciente para este ingrediente
                 }
                 this.alertThrottle.set(throttleKey, now);
 
-                // Evict stale throttle entries periodically (prevent memory leak)
+                // Limpiar entradas viejas del mapa de throttle para prevenir memory leak
                 if (this.alertThrottle.size > 1000) {
                     const cutoff = now - StockAlertService.THROTTLE_MS * 2;
                     for (const [key, ts] of this.alertThrottle) {
@@ -83,7 +98,8 @@ class StockAlertService {
     }
 
     /**
-     * Emit stock alert via WebSocket to admin:stock room
+     * Emite una alerta de stock via WebSocket al room de administradores de stock.
+     * El room sigue el formato `tenant:{id}:admin:stock` para aislamiento multi-tenant.
      */
     private emitAlert(tenantId: number, alert: StockAlert): void {
         try {
@@ -96,7 +112,9 @@ class StockAlertService {
     }
 
     /**
-     * Get all ingredients currently below minimum stock
+     * Obtiene todos los ingredientes actualmente por debajo del stock minimo.
+     * Usa una consulta raw SQL para eficiencia, ordenando por ratio stock/minStock
+     * (los mas criticos primero).
      */
     async getLowStockItems(tenantId: number): Promise<StockAlert[]> {
         const ingredients = await prisma.$queryRaw<{
@@ -126,7 +144,8 @@ class StockAlertService {
     }
 
     /**
-     * Broadcast current low stock status to all connected admin clients
+     * Transmite el estado actual de stock bajo a todos los clientes admin conectados.
+     * Se usa para sincronizar el panel de alertas cuando un admin se conecta.
      */
     async broadcastLowStockStatus(tenantId: number): Promise<void> {
         try {

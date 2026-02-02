@@ -1,3 +1,17 @@
+/**
+ * @fileoverview Rutas de Autenticación y Registro
+ *
+ * Maneja todos los flujos de acceso al sistema: login por PIN (operación rápida
+ * en POS), login por email/contraseña (acceso administrativo), registro de
+ * usuarios dentro de un tenant existente, y signup de nuevos tenants (SaaS).
+ *
+ * Todas las rutas de login están protegidas con rate limiting para prevenir
+ * ataques de fuerza bruta. El token JWT se almacena en una cookie HttpOnly
+ * (no en localStorage) para mayor seguridad contra XSS.
+ *
+ * @module routes/auth.routes
+ */
+
 import { Router } from 'express';
 import { loginPin, loginUser, registerUser, logoutUser, registerNewTenant, resolveTenant, refreshTokenHandler } from '../controllers/auth.controller';
 import { authRateLimiter } from '../middleware/rateLimit';
@@ -5,21 +19,24 @@ import { authenticateToken } from '../middleware/auth';
 
 const router = Router();
 
-// Public: Resolve tenant by business code (for login page)
+// Público: Resolver tenant por código de negocio (usado en la página de login para
+// identificar a qué empresa pertenece el usuario antes de autenticarse)
 router.get('/tenant/:code', authRateLimiter, resolveTenant);
 
-// Apply rate limiting to login endpoints (protecting against brute force)
+// Endpoints de login protegidos con rate limiting para evitar ataques de fuerza bruta.
+// Login por PIN: flujo rápido para meseros y cajeros en el punto de venta
 router.post('/login/pin', authRateLimiter, loginPin);
+// Login por email/contraseña: flujo estándar para administradores y managers
 router.post('/login', authRateLimiter, loginUser);
+// Registro de nuevo usuario dentro de un tenant ya existente
 router.post('/register', authRateLimiter, registerUser);
-router.post('/signup', authRateLimiter, registerNewTenant); // Public SaaS Registration
+// Registro público SaaS: crea un nuevo tenant con su usuario administrador inicial
+router.post('/signup', authRateLimiter, registerNewTenant);
 
-// Token refresh (uses refresh_token cookie, no auth required)
+// Renovación de token usando la cookie refresh_token (no requiere auth_token vigente)
 router.post('/refresh', authRateLimiter, refreshTokenHandler);
 
-// FIX P0-004: Logout endpoint to clear HttpOnly cookie
+// FIX P0-004: Endpoint de logout para limpiar la cookie HttpOnly de autenticación
 router.post('/logout', logoutUser);
 
 export default router;
-
-

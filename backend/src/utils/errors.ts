@@ -1,10 +1,24 @@
 /**
- * Custom Error Classes
- * Provides typed errors for consistent error handling
+ * @fileoverview Clases de error personalizadas para la API.
+ *
+ * Define una jerarquia de errores tipados que extienden ApiError como clase base.
+ * Cada subclase representa un codigo HTTP especifico, lo que permite al middleware
+ * global de errores (middleware/error.ts) capturar cualquier instancia de ApiError
+ * y responder con el statusCode y estructura JSON correctos.
+ *
+ * Patron de uso en servicios:
+ *   throw new NotFoundError('Producto');        // -> 404 { code: 'NOT_FOUND', message: 'Producto not found' }
+ *   throw new ValidationError('Campo invalido'); // -> 400 { code: 'VALIDATION_ERROR', ... }
+ *
+ * @module utils/errors
  */
 
 /**
- * Base class for API errors
+ * Clase base para todos los errores de la API.
+ *
+ * Contiene el codigo interno (string), mensaje legible, statusCode HTTP
+ * y un campo opcional 'details' para informacion adicional (ej: errores de validacion por campo).
+ * Captura el stack trace para facilitar el debugging en desarrollo.
  */
 export class ApiError extends Error {
     constructor(
@@ -15,12 +29,15 @@ export class ApiError extends Error {
     ) {
         super(message);
         this.name = 'ApiError';
+        // Captura el stack trace excluyendo el constructor para trazas mas limpias
         Error.captureStackTrace(this, this.constructor);
     }
 }
 
 /**
- * 400 Bad Request - Validation errors
+ * 400 Bad Request - Errores de validacion de datos de entrada.
+ * Se usa cuando el body del request no cumple con el schema esperado (Zod, etc.).
+ * El campo 'details' tipicamente contiene los errores de validacion por campo.
  */
 export class ValidationError extends ApiError {
     constructor(message: string = 'Validation failed', details?: unknown) {
@@ -30,7 +47,9 @@ export class ValidationError extends ApiError {
 }
 
 /**
- * 400 Bad Request - Generic bad request error
+ * 400 Bad Request - Error generico de solicitud incorrecta.
+ * Se usa cuando la solicitud es invalida por razones de logica de negocio
+ * (ej: intentar cerrar un turno que ya esta cerrado), no por validacion de schema.
  */
 export class BadRequestError extends ApiError {
     constructor(message: string = 'Bad request', details?: unknown) {
@@ -40,7 +59,9 @@ export class BadRequestError extends ApiError {
 }
 
 /**
- * 401 Unauthorized - Authentication required or failed
+ * 401 Unauthorized - Autenticacion requerida o fallida.
+ * Se lanza cuando no hay token JWT, el token es invalido o ha expirado.
+ * El middleware de auth (middleware/auth.ts) lanza este error automaticamente.
  */
 export class UnauthorizedError extends ApiError {
     constructor(message: string = 'Authentication required') {
@@ -50,7 +71,9 @@ export class UnauthorizedError extends ApiError {
 }
 
 /**
- * 403 Forbidden - Not enough permissions
+ * 403 Forbidden - Permisos insuficientes.
+ * El usuario esta autenticado pero no tiene los permisos RBAC necesarios
+ * para ejecutar la accion solicitada (ej: un mozo intentando eliminar productos).
  */
 export class ForbiddenError extends ApiError {
     constructor(message: string = 'Access denied') {
@@ -60,7 +83,9 @@ export class ForbiddenError extends ApiError {
 }
 
 /**
- * 404 Not Found - Resource not found
+ * 404 Not Found - Recurso no encontrado.
+ * Recibe el nombre del recurso como parametro para construir un mensaje descriptivo.
+ * Ejemplo: new NotFoundError('Orden') -> "Orden not found"
  */
 export class NotFoundError extends ApiError {
     constructor(resource: string = 'Resource') {
@@ -70,7 +95,9 @@ export class NotFoundError extends ApiError {
 }
 
 /**
- * 409 Conflict - Resource already exists or conflict
+ * 409 Conflict - Conflicto con el estado actual del recurso.
+ * Se usa cuando hay duplicados (ej: email ya registrado),
+ * o estados inconsistentes (ej: orden ya cancelada).
  */
 export class ConflictError extends ApiError {
     constructor(message: string = 'Resource conflict') {
@@ -80,7 +107,9 @@ export class ConflictError extends ApiError {
 }
 
 /**
- * 429 Too Many Requests - Rate limited
+ * 429 Too Many Requests - Limite de tasa excedido.
+ * Se lanza desde el middleware de rate limiting cuando un cliente
+ * supera el numero maximo de requests permitidos por ventana de tiempo.
  */
 export class RateLimitError extends ApiError {
     constructor(message: string = 'Too many requests') {
@@ -90,7 +119,10 @@ export class RateLimitError extends ApiError {
 }
 
 /**
- * 500 Internal Server Error
+ * 500 Internal Server Error - Error interno del servidor.
+ * Error generico para fallos inesperados. En produccion, el middleware global
+ * captura excepciones no controladas y las convierte en este tipo de error
+ * para evitar exponer detalles internos al cliente.
  */
 export class InternalError extends ApiError {
     constructor(message: string = 'Internal server error') {
@@ -100,13 +132,17 @@ export class InternalError extends ApiError {
 }
 
 /**
- * 400 Insufficient Stock - Not enough ingredients to prepare the product
+ * 400 Insufficient Stock - Stock insuficiente para preparar un producto.
+ * Se lanza durante la validacion de items de una orden cuando un ingrediente
+ * no tiene cantidad suficiente en inventario. Incluye detalles especificos
+ * (nombre del producto, ingrediente, cantidad requerida vs disponible)
+ * para que el frontend pueda mostrar un mensaje informativo al usuario.
  */
 export class InsufficientStockError extends ApiError {
     constructor(
-        productName: string, 
-        ingredientName: string, 
-        required: number, 
+        productName: string,
+        ingredientName: string,
+        required: number,
         available: number
     ) {
         const message = `Insufficient "${ingredientName}" to prepare "${productName}". ` +
@@ -122,7 +158,9 @@ export class InsufficientStockError extends ApiError {
 }
 
 /**
- * 503 Service Unavailable - Database or external service down
+ * 503 Service Unavailable - Servicio temporalmente no disponible.
+ * Se usa cuando la base de datos, Redis u otro servicio externo
+ * no responde. Indica al cliente que debe reintentar mas tarde.
  */
 export class ServiceUnavailableError extends ApiError {
     constructor(message: string = 'Service temporarily unavailable') {

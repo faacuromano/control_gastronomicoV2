@@ -1,8 +1,12 @@
 /**
- * Rate Limiting Middleware
- * Protects against brute force attacks on auth endpoints
+ * @fileoverview Middleware de Limitacion de Tasa (Rate Limiting)
  *
- * Rate limiting is ALWAYS active for auth, even in development
+ * Protege contra ataques de fuerza bruta en endpoints de autenticacion
+ * y contra abuso general de la API. Utiliza express-rate-limit para
+ * rastrear solicitudes por IP y aplicar limites configurables.
+ *
+ * El rate limiting de autenticacion esta SIEMPRE activo, incluso en desarrollo,
+ * porque los PINes de 4 digitos son vulnerables a fuerza bruta.
  */
 
 import rateLimit from "express-rate-limit";
@@ -12,13 +16,16 @@ import { logger } from "../utils/logger";
 const isDevelopment = process.env.NODE_ENV === "development";
 
 /**
- * Auth rate limiter - strict limits for login attempts
- * 5 attempts per 15 minutes per IP
- * ALWAYS ACTIVE - never skip for security
+ * Limitador de tasa para autenticacion - limites estrictos para intentos de login.
+ * 5 intentos cada 15 minutos por IP.
+ *
+ * SIEMPRE ACTIVO - nunca se omite por seguridad, ya que los PINes de 4 digitos
+ * tienen solo 10,000 combinaciones posibles y son vulnerables a fuerza bruta.
+ * Solo se puede desactivar explicitamente en desarrollo con DISABLE_RATE_LIMIT=true.
  */
 export const authRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // SECURITY: Strict limit to prevent PIN brute force
+  windowMs: 15 * 60 * 1000, // Ventana de 15 minutos
+  max: 5, // SEGURIDAD: Limite estricto para prevenir fuerza bruta de PINes
   message: {
     success: false,
     error: {
@@ -28,17 +35,20 @@ export const authRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  // SECURITY: Never skip rate limiting in production
+  // SEGURIDAD: Nunca omitir rate limiting en produccion
   skip: () => process.env.NODE_ENV !== 'production' && process.env.DISABLE_RATE_LIMIT === 'true',
-  validate: { xForwardedForHeader: false }, // Disable validation that causes IPv6 error
+  validate: { xForwardedForHeader: false }, // Desactivar validacion que causa error con IPv6
 });
 
 /**
- * General API rate limiter - more permissive
- * 100 requests per minute per IP
+ * Limitador de tasa general para la API - mas permisivo que el de autenticacion.
+ * 100 solicitudes por minuto por IP en produccion, 10,000 en desarrollo.
+ *
+ * En desarrollo se eleva el limite a 10,000 para no interferir con pruebas
+ * y recarga automatica del frontend (HMR), que genera muchas solicitudes.
  */
 export const apiRateLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
+  windowMs: 60 * 1000, // Ventana de 1 minuto
   max: isDevelopment ? 10000 : 100,
   message: {
     success: false,
@@ -53,11 +63,15 @@ export const apiRateLimiter = rateLimit({
 });
 
 /**
- * Webhook rate limiter - per-IP protection against flood attacks
- * 60 requests per minute per IP (delivery platforms send bursts)
+ * Limitador de tasa para webhooks - proteccion por IP contra ataques de inundacion.
+ * 60 solicitudes por minuto por IP.
+ *
+ * Las plataformas de delivery (PedidosYa, Rappi) envian rafagas de webhooks
+ * al actualizar estados de pedidos, por lo que el limite es mas generoso
+ * que el de autenticacion pero aun protege contra abuso.
  */
 export const webhookRateLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
+  windowMs: 60 * 1000, // Ventana de 1 minuto
   max: 60,
   message: {
     success: false,
@@ -72,7 +86,9 @@ export const webhookRateLimiter = rateLimit({
 });
 
 /**
- * Middleware to log when rate limit is approaching
+ * Middleware que loguea una advertencia cuando una IP esta cerca del limite de tasa.
+ * Se activa cuando quedan menos de 3 solicitudes disponibles, permitiendo
+ * detectar posibles abusos antes de que el rate limiter bloquee al cliente.
  */
 export const rateLimitLogger = (
   req: Request,

@@ -1,3 +1,17 @@
+/**
+ * @fileoverview Servicio de Facturacion
+ *
+ * Genera y consulta comprobantes fiscales (tickets y facturas) asociados a ordenes.
+ * Usa numeracion secuencial atomica con formato YYYY-NNNNNNNN para evitar
+ * colisiones en entornos concurrentes.
+ *
+ * La generacion del numero de factura se realiza dentro de una transaccion
+ * con logica de reintentos para manejar condiciones de carrera (race conditions)
+ * cuando multiples cajeros facturan simultaneamente.
+ *
+ * @module services/invoice.service
+ */
+
 import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { NotFoundError, ConflictError, ValidationError } from '../utils/errors';
@@ -11,15 +25,22 @@ interface GenerateInvoiceData {
 }
 
 /**
- * Generate invoice for an order
+ * Genera una factura/ticket para una orden.
  *
- * Uses transaction with retry logic to prevent invoice number race conditions.
- * The invoice number is generated inside the transaction to ensure atomicity.
+ * Utiliza transaccion con reintentos para prevenir condiciones de carrera
+ * en la numeracion de facturas. El numero se genera dentro de la transaccion
+ * para garantizar atomicidad.
+ *
+ * Flujo:
+ * 1. Valida que la orden exista, no tenga factura previa y este pagada
+ * 2. Calcula impuestos segun la tasa configurada en TenantConfig
+ * 3. Genera numero secuencial dentro de transaccion con reintentos
+ * 4. Crea el registro de factura con todos los datos
  */
 export async function generateInvoice(tenantId: number, data: GenerateInvoiceData) {
     const { orderId, type = 'RECEIPT', clientName, clientTaxId } = data;
 
-    // Validate order BEFORE transaction (read-only, safe outside)
+    // Validar la orden ANTES de la transaccion (lectura segura fuera del tx)
     const order = await prisma.order.findFirst({
         where: { id: orderId, tenantId },
         include: { invoice: true, client: true }
@@ -29,21 +50,21 @@ export async function generateInvoice(tenantId: number, data: GenerateInvoiceDat
         throw new NotFoundError('Order');
     }
 
-    // Check if invoice already exists for this order
+    // Verificar que no exista ya una factura para esta orden (idempotencia)
     if (order.invoice) {
         throw new ConflictError('Invoice already exists for this order');
     }
 
-    // Validate payment status
+    // Solo se puede facturar una orden completamente pagada
     if (order.paymentStatus !== 'PAID') {
         throw new ValidationError('Cannot generate invoice for unpaid order');
     }
 
-    // Use client data from order if not provided
+    // Usar datos del cliente de la orden si no se proporcionan explicitamente
     const finalClientName = clientName || order.client?.name || null;
     const finalClientTaxId = clientTaxId || order.client?.taxId || null;
 
-    // Calculate tax based on tenant config
+    // Calcular impuesto segun la tasa configurada en TenantConfig
     const tenantConfig = await prisma.tenantConfig.findFirst({
         where: { tenantId },
         select: { defaultTaxRate: true }
@@ -53,21 +74,21 @@ export async function generateInvoice(tenantId: number, data: GenerateInvoiceDat
         throw new ValidationError(`Invalid tax rate: ${taxRate}%. Must be between 0 and 100.`);
     }
     const subtotal = Number(order.subtotal);
-    // Tax is included in total: subtotal = total / (1 + rate), tax = total - subtotal
-    // If rate is 0, tax is 0
+    // El impuesto esta incluido en el total: subtotal = total / (1 + tasa), impuesto = total - subtotal
+    // Si la tasa es 0, el impuesto es 0
     const tax = taxRate > 0
         ? Math.round((subtotal - subtotal / (1 + taxRate / 100)) * 100) / 100
         : 0;
 
-    // Retry loop for race condition on invoice number
-    // The @@unique([tenantId, invoiceNumber]) constraint will cause P2002 errors on collision
+    // Bucle de reintentos para manejar colisiones en el numero de factura.
+    // La restriccion @@unique([tenantId, invoiceNumber]) causa errores P2002 en colision.
     const MAX_RETRIES = 3;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
         try {
             return await prisma.$transaction(async (tx) => {
-                // Generate invoice number INSIDE transaction for atomicity
-                // Format: YYYY-NNNNNNNN (Year + sequential number)
-                // BIZ-016 FIX: Use business date to avoid timezone boundary issues
+                // Generar numero de factura DENTRO de la transaccion para atomicidad
+                // Formato: YYYY-NNNNNNNN (Anio + numero secuencial)
+                // BIZ-016 FIX: Usar fecha de negocio para evitar problemas en el limite de zona horaria
                 const year = getBusinessDate().getFullYear();
 
                 const lastInvoice = await tx.invoice.findFirst({
@@ -88,8 +109,8 @@ export async function generateInvoice(tenantId: number, data: GenerateInvoiceDat
 
                 const invoiceNumber = `${year}-${nextNumber.toString().padStart(8, '0')}`;
 
-                // Create invoice with generated number
-                // PERF-014: Use select instead of full include for lighter response
+                // Crear la factura con el numero generado
+                // PERF-014: Usar select en lugar de include completo para una respuesta mas liviana
                 return await tx.invoice.create({
                     data: {
                         tenantId,
@@ -126,7 +147,7 @@ export async function generateInvoice(tenantId: number, data: GenerateInvoiceDat
                 });
             });
         } catch (error: unknown) {
-            // Retry on unique constraint violation (P2002)
+            // Reintentar solo en caso de violacion de constraint unico (P2002)
             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && attempt < MAX_RETRIES - 1) {
                 continue;
             }
@@ -138,7 +159,7 @@ export async function generateInvoice(tenantId: number, data: GenerateInvoiceDat
 }
 
 /**
- * Get invoice by order ID
+ * Obtiene una factura por el ID de la orden, incluyendo items, pagos y cliente.
  */
 export async function getByOrderId(orderId: number, tenantId: number) {
     const invoice = await prisma.invoice.findFirst({
@@ -164,10 +185,11 @@ export async function getByOrderId(orderId: number, tenantId: number) {
 }
 
 /**
- * Get invoice by invoice number
+ * Obtiene una factura por su numero de comprobante.
+ * El numero es unico por tenant (constraint @@unique([tenantId, invoiceNumber])).
  */
 export async function getByInvoiceNumber(invoiceNumber: string, tenantId: number) {
-    // FIX: Invoice number is unique per Tenant. Use findFirst.
+    // FIX: El numero de factura es unico por Tenant. Usar findFirst con tenantId.
     const invoice = await prisma.invoice.findFirst({
         where: { invoiceNumber, tenantId },
         include: {
@@ -197,7 +219,8 @@ interface GetAllFilters {
 }
 
 /**
- * Get all invoices with optional filters
+ * Lista todas las facturas del tenant con filtros opcionales por tipo y rango de fechas.
+ * Limitado a 200 resultados para evitar respuestas excesivamente grandes.
  */
 export async function getAll(tenantId: number, filters: GetAllFilters = {}) {
     const { type, startDate, endDate } = filters;

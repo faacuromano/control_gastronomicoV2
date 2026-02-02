@@ -1,3 +1,11 @@
+/**
+ * @fileoverview Servicio de impresion termica para tickets de ordenes.
+ * Soporta impresoras conectadas por red (ESC/POS TCP) y por USB (via API nativa de Windows).
+ * Genera tickets con formato de restaurante: encabezado, items, modificadores, totales y pagos.
+ *
+ * @module services/printer.service
+ */
+
 import { ThermalPrinter, PrinterTypes, CharacterSet, BreakLine } from 'node-thermal-printer';
 import { prisma } from '../lib/prisma';
 import { NotFoundError, ValidationError } from '../utils/errors';
@@ -11,21 +19,27 @@ import * as crypto from 'crypto';
 const execFileAsync = promisify(execFile);
 import { logger } from '../utils/logger';
 
+/**
+ * Configuracion interna de una impresora.
+ * Soporta dos tipos de conexion: red (TCP) y USB (via nombre de impresora Windows).
+ */
 interface PrinterConfig {
     type: 'EPSON' | 'STAR';
     connectionType: 'NETWORK' | 'USB';
-    interface: string; // 'tcp://192.168.1.100:9100' for NETWORK
-    windowsName?: string; // Windows printer name for USB
+    interface: string; // 'tcp://192.168.1.100:9100' para impresoras de red
+    windowsName?: string; // Nombre de impresora en Windows para USB
 }
 
 export class PrinterService {
     /**
-     * Create a printer instance configured for a specific target
+     * Crea una instancia de impresora termica configurada para un destino especifico.
+     * Para impresoras USB se usa una interfaz dummy ya que la impresion se maneja por separado
+     * a traves de la API nativa de Windows (winspool.drv).
      */
     private createPrinter(config: PrinterConfig): ThermalPrinter {
-        // For USB printers, we'll use a dummy interface and handle printing separately
-        const printerInterface = config.connectionType === 'USB' 
-            ? 'tcp://0.0.0.0' 
+        // Para impresoras USB usamos una interfaz dummy; la impresion real se hace via PowerShell
+        const printerInterface = config.connectionType === 'USB'
+            ? 'tcp://0.0.0.0'
             : config.interface;
 
         return new ThermalPrinter({
@@ -42,7 +56,9 @@ export class PrinterService {
     }
 
     /**
-     * Get printer config from database by ID
+     * Obtiene la configuracion de una impresora desde la base de datos por su ID.
+     * Valida que la impresora exista, pertenezca al tenant y tenga la configuracion
+     * necesaria segun su tipo de conexion (IP para red, nombre para USB).
      */
     private async getPrinterConfig(printerId: number, tenantId: number): Promise<PrinterConfig> {
         const printer = await prisma.printer.findFirst({
@@ -60,16 +76,16 @@ export class PrinterService {
             return {
                 type: 'EPSON',
                 connectionType: 'USB',
-                interface: 'tcp://0.0.0.0', // Dummy, won't be used
+                interface: 'tcp://0.0.0.0', // Dummy, no se usa para USB
                 windowsName: printer.windowsName
             };
         } else {
             if (!printer.ipAddress) {
                 throw new ValidationError('Network printer does not have an IP address configured');
             }
-            // Default to port 9100 (standard ESC/POS port)
-            const ip = printer.ipAddress.includes(':') 
-                ? printer.ipAddress 
+            // Puerto por defecto 9100 (estandar ESC/POS)
+            const ip = printer.ipAddress.includes(':')
+                ? printer.ipAddress
                 : `${printer.ipAddress}:9100`;
 
             return {
@@ -81,11 +97,12 @@ export class PrinterService {
     }
 
     /**
-     * List available Windows printers
+     * Lista las impresoras instaladas en el sistema operativo Windows.
+     * Usa PowerShell para obtener la lista de impresoras disponibles.
      */
     async listSystemPrinters(): Promise<string[]> {
         try {
-            // SEC-039: Use execFile with argument array to prevent command injection
+            // SEC-039: Usar execFile con array de argumentos para prevenir inyeccion de comandos
             const { stdout } = await execFileAsync(
                 'powershell',
                 ['-NoProfile', '-Command', 'Get-Printer | Select-Object -ExpandProperty Name'],
@@ -103,24 +120,30 @@ export class PrinterService {
     }
 
     /**
-     * Print raw ESC/POS data to a Windows USB printer
-     * Uses PowerShell script with Windows winspool.drv API for true raw printing
+     * Envia datos raw ESC/POS a una impresora USB de Windows.
+     * Usa un script PowerShell que invoca la API winspool.drv de Windows
+     * para impresion raw (sin procesamiento del driver de impresora).
+     *
+     * Flujo:
+     * 1. Escribe el buffer ESC/POS en un archivo temporal con nombre aleatorio
+     * 2. Ejecuta el script PowerShell que envia el archivo a la impresora
+     * 3. Limpia el archivo temporal al finalizar
      */
     private async printToWindowsPrinter(buffer: Buffer, printerName: string): Promise<void> {
         const tempDir = os.tmpdir();
-        // SEC-036: Use crypto-random filename to prevent predictable temp file paths
+        // SEC-036: Usar nombre de archivo aleatorio (crypto) para evitar rutas predecibles
         const tempFile = path.join(tempDir, `escpos_${crypto.randomBytes(16).toString('hex')}.bin`);
-        
-        // Get the path to the RawPrinter.ps1 script
+
+        // Ruta al script PowerShell de impresion raw
         const scriptPath = path.join(__dirname, '..', '..', 'scripts', 'RawPrinter.ps1');
-        
+
         try {
-            // Write buffer to temp file
+            // Escribir el buffer ESC/POS en archivo temporal
             fs.writeFileSync(tempFile, buffer);
 
-            // SEC-039: Use execFile with argument array to prevent command injection.
-            // printerName comes from DB but could contain metacharacters; execFile
-            // passes args directly to the process without shell interpolation.
+            // SEC-039: Usar execFile con array de argumentos para prevenir inyeccion de comandos.
+            // printerName viene de la DB pero podria contener metacaracteres; execFile
+            // pasa los argumentos directamente al proceso sin interpolacion de shell.
             logger.info('Sending raw data to printer', { printerName });
             const { stdout, stderr } = await execFileAsync(
                 'powershell',
@@ -138,22 +161,23 @@ export class PrinterService {
             const message = error instanceof Error ? error.message : 'Unknown error';
             throw new ValidationError(`Failed to print to USB printer '${printerName}': ${message}`);
         } finally {
-            // Clean up temp file
+            // Limpiar archivo temporal sin importar si la impresion tuvo exito o no
             try {
                 if (fs.existsSync(tempFile)) {
                     fs.unlinkSync(tempFile);
                 }
             } catch (_error) {
-                // Ignore cleanup errors
+                // Ignorar errores de limpieza; no son criticos
             }
         }
     }
 
     /**
-     * Generate a buffer-only ticket (for preview or local printing)
+     * Genera un ticket como buffer (para preview o impresion local).
+     * No envia a ninguna impresora, solo construye los datos ESC/POS en memoria.
      */
     async generateOrderTicket(orderId: number, tenantId: number): Promise<Buffer> {
-        // Use dummy interface for buffer generation only
+        // Usar interfaz dummy ya que solo se genera el buffer
         const printer = this.createPrinter({
             type: 'EPSON',
             connectionType: 'NETWORK',
@@ -162,12 +186,13 @@ export class PrinterService {
 
         const order = await this.getOrderForPrint(orderId, tenantId);
         await this.buildTicketContent(printer, order, tenantId);
-        
+
         return printer.getBuffer();
     }
 
     /**
-     * Print order ticket to a specific printer by printer ID
+     * Imprime el ticket de una orden en una impresora especifica por su ID.
+     * Detecta automaticamente si es USB o red y usa el metodo de envio apropiado.
      */
     async printOrderToDevice(orderId: number, printerId: number, tenantId: number): Promise<boolean> {
         const config = await this.getPrinterConfig(printerId, tenantId);
@@ -177,12 +202,12 @@ export class PrinterService {
         await this.buildTicketContent(printer, order, tenantId);
 
         if (config.connectionType === 'USB' && config.windowsName) {
-            // Use Windows raw printing for USB printers
+            // Impresion raw via Windows para impresoras USB
             const buffer = printer.getBuffer();
             await this.printToWindowsPrinter(buffer, config.windowsName);
             return true;
         } else {
-            // Use network printing
+            // Impresion por red TCP directa
             try {
                 const isConnected = await printer.isPrinterConnected();
                 if (!isConnected) {
@@ -200,7 +225,8 @@ export class PrinterService {
     }
 
     /**
-     * Print test page to verify printer connection
+     * Imprime una pagina de prueba para verificar la conexion con la impresora.
+     * Util durante la configuracion inicial para confirmar que todo funciona.
      */
     async printTestPage(printerId: number, tenantId: number): Promise<boolean> {
         const config = await this.getPrinterConfig(printerId, tenantId);
@@ -230,7 +256,7 @@ export class PrinterService {
         printer.cut();
 
         if (config.connectionType === 'USB' && config.windowsName) {
-            // Use Windows raw printing for USB printers
+            // Impresion raw via Windows para impresoras USB
             const buffer = printer.getBuffer();
             await this.printToWindowsPrinter(buffer, config.windowsName);
             return true;
@@ -252,7 +278,8 @@ export class PrinterService {
     }
 
     /**
-     * Get order with all relations needed for printing
+     * Obtiene una orden con todas las relaciones necesarias para imprimir el ticket:
+     * items con productos, modificadores, mesa con area, mesero, pagos y cliente.
      */
     private async getOrderForPrint(orderId: number, tenantId: number) {
         const order = await prisma.order.findFirst({
@@ -276,16 +303,24 @@ export class PrinterService {
     }
 
     /**
-     * Build the ticket content on a printer instance
+     * Construye el contenido del ticket en la instancia de impresora.
+     *
+     * Estructura del ticket:
+     * 1. Encabezado: nombre del negocio (de TenantConfig)
+     * 2. Info de orden: fecha, numero, mesa, mesero, cliente
+     * 3. Items: cantidad x nombre, precio, modificadores y notas
+     * 4. Totales: subtotal, descuento (si aplica) y TOTAL
+     * 5. Pagos: desglose por metodo de pago
+     * 6. Pie: mensaje de agradecimiento
      */
     private async buildTicketContent(printer: ThermalPrinter, order: Awaited<ReturnType<PrinterService['getOrderForPrint']>>, tenantId: number): Promise<void> {
-        // Get business name from config
+        // Obtener nombre del negocio desde la configuracion del tenant
         const config = await prisma.tenantConfig.findFirst({ where: { tenantId } });
         const businessName = config?.businessName || 'RESTAURANTE';
 
         printer.clear();
-        
-        // Header
+
+        // Encabezado del ticket
         printer.alignCenter();
         printer.bold(true);
         printer.setTextSize(1, 1);
@@ -293,12 +328,12 @@ export class PrinterService {
         printer.bold(false);
         printer.setTextSize(0, 0);
         printer.println("--------------------------------");
-        
-        // Order Info
+
+        // Informacion de la orden
         printer.alignLeft();
         printer.println(`Fecha: ${order.createdAt.toLocaleString('es-AR')}`);
         printer.println(`Orden #: ${order.orderNumber}`);
-        
+
         if (order.table) {
             printer.println(`Mesa: ${order.table.name} (${order.table.area.name})`);
         }
@@ -308,21 +343,21 @@ export class PrinterService {
         if (order.client) {
             printer.println(`Cliente: ${order.client.name}`);
         }
-        
+
         printer.println("--------------------------------");
 
-        // Items
+        // Listado de items con sus modificadores y notas
         printer.alignLeft();
         for (const item of order.items) {
-            // Format: Qty x Name                    $Price
+            // Formato: Cantidad x Nombre                    $Precio
             const itemTotal = Number(item.unitPrice) * item.quantity;
             const itemLine = `${item.quantity} x ${item.product.name}`;
             printer.println(itemLine);
             printer.alignRight();
             printer.println(`$${itemTotal.toFixed(2)}`);
             printer.alignLeft();
-            
-            // Modifiers
+
+            // Modificadores del item (ej: "sin cebolla", "extra queso")
             if (item.modifiers && item.modifiers.length > 0) {
                 for (const mod of item.modifiers) {
                     const modPrice = Number(mod.priceCharged);
@@ -333,8 +368,8 @@ export class PrinterService {
                     }
                 }
             }
-            
-            // Notes
+
+            // Notas especiales del item
             if (item.notes) {
                 printer.println(`   Nota: ${item.notes}`);
             }
@@ -342,13 +377,13 @@ export class PrinterService {
 
         printer.println("--------------------------------");
 
-        // Totals
+        // Seccion de totales
         if (Number(order.discount) > 0) {
             printer.alignRight();
             printer.println(`Subtotal: $${Number(order.subtotal).toFixed(2)}`);
             printer.println(`Descuento: -$${Number(order.discount).toFixed(2)}`);
         }
-        
+
         printer.alignRight();
         printer.bold(true);
         printer.setTextSize(1, 0);
@@ -356,7 +391,7 @@ export class PrinterService {
         printer.setTextSize(0, 0);
         printer.bold(false);
 
-        // Payments
+        // Desglose de pagos por metodo
         if (order.payments && order.payments.length > 0) {
             printer.println("");
             printer.println("Pagos:");
@@ -365,12 +400,12 @@ export class PrinterService {
             }
         }
 
-        // Footer
+        // Pie del ticket
         printer.alignCenter();
         printer.println("--------------------------------");
         printer.println("Gracias por su visita!");
         printer.println("");
-        
+
         printer.cut();
     }
 }

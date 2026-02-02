@@ -1,3 +1,17 @@
+/**
+ * @fileoverview Servicio de turnos de caja (Cash Shifts).
+ *
+ * Gestiona el ciclo de vida completo de los turnos de caja: apertura, cierre,
+ * arqueo ciego (blind count), cálculo de efectivo esperado y generación de reportes.
+ *
+ * Los turnos son la unidad contable fundamental del POS: cada pago se asocia a un turno,
+ * y al cerrar se compara el efectivo contado con el esperado para detectar diferencias.
+ *
+ * CONCURRENCIA: Las operaciones de apertura y cierre usan transacciones serializables
+ * para prevenir condiciones de carrera (doble apertura/cierre simultáneo).
+ *
+ * @module services/cashShift.service
+ */
 
 import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
@@ -28,17 +42,17 @@ export interface ShiftReport {
 }
 
 export class CashShiftService {
-    
+
     /**
-     * Open a new cash shift for a user.
-     * FIX RC-004: Atomic transaction prevents double shift opening under concurrent requests.
+     * Abre un nuevo turno de caja para un usuario.
+     * FIX RC-004: Transacción atómica con nivel Serializable previene apertura doble bajo concurrencia.
      */
     async openShift(tenantId: number, userId: number, startAmount: number) {
         const businessDate = getBusinessDate(new Date());
 
-        // FIX RC-004: Wrap check + create in atomic transaction
+        // FIX RC-004: Verificación y creación dentro de transacción atómica
         return await prisma.$transaction(async (tx) => {
-            // Check inside transaction - prevents race condition
+            // Verificar dentro de la transacción para evitar condición de carrera
             const existingShift = await tx.cashShift.findFirst({
                 where: {
                     userId,
@@ -67,11 +81,12 @@ export class CashShiftService {
     }
 
     /**
-     * Close the current shift for a user.
-     * FIX RC-005: Atomic transaction prevents double closing under concurrent requests.
+     * Cierra el turno activo de un usuario.
+     * FIX RC-005: Transacción atómica con nivel Serializable previene cierre doble bajo concurrencia.
+     * Valida que no haya mesas ocupadas antes de permitir el cierre.
      */
     async closeShift(tenantId: number, userId: number, endAmount: number) {
-        // FIX RC-005: Entire operation in atomic transaction
+        // FIX RC-005: Toda la operación en transacción atómica
         return await prisma.$transaction(async (tx) => {
             const currentShift = await tx.cashShift.findFirst({
                 where: {
@@ -85,7 +100,7 @@ export class CashShiftService {
                 throw new NotFoundError('No open shift found for this user');
             }
 
-            // Check for open tables inside transaction (scoped to tenant)
+            // Verificar mesas ocupadas dentro de la transacción (aislado por tenant)
             const openTables = await tx.table.count({
                 where: {
                     status: 'OCCUPIED',
@@ -97,7 +112,7 @@ export class CashShiftService {
                 throw new ConflictError(`Cannot close shift. There are ${openTables} occupied tables. Please close them first.`);
             }
 
-            // SAFE: tx.cashShift.findFirst L86 verifies tenant ownership
+            // SAFE: tx.cashShift.findFirst en L86 verifica propiedad del tenant
             return await tx.cashShift.update({
                 where: { id: currentShift.id },
                 data: {
@@ -112,11 +127,12 @@ export class CashShiftService {
     }
 
     /**
-     * Close shift with blind count (arqueo ciego).
-     * FIX RC-005: Atomic transaction prevents double closing under concurrent requests.
+     * Cierra el turno con arqueo ciego (blind count / arqueo de caja).
+     * El cajero cuenta el efectivo sin saber cuánto debería haber; el sistema calcula la diferencia.
+     * FIX RC-005: Transacción atómica previene cierre doble bajo concurrencia.
      */
     async closeShiftWithCount(tenantId: number, userId: number, countedCash: number) {
-        // FIX RC-005: Wrap in transaction for atomicity
+        // FIX RC-005: Envolver en transacción para atomicidad
         const closedShiftId = await prisma.$transaction(async (tx) => {
             const currentShift = await tx.cashShift.findFirst({
                 where: {
@@ -130,7 +146,7 @@ export class CashShiftService {
                 throw new NotFoundError('No open shift found for this user');
             }
 
-            // Check for open tables inside transaction (scoped to tenant)
+            // Verificar mesas ocupadas dentro de la transacción (aislado por tenant)
             const openTables = await tx.table.count({
                 where: { status: 'OCCUPIED', tenantId: currentShift.tenantId }
             });
@@ -139,7 +155,7 @@ export class CashShiftService {
                 throw new ConflictError(`Cannot close shift. There are ${openTables} occupied tables. Please close them first.`);
             }
 
-            // SAFE: tx.cashShift.findFirst L134 verifies tenant ownership
+            // SAFE: tx.cashShift.findFirst en L134 verifica propiedad del tenant
             const closedShift = await tx.cashShift.update({
                 where: { id: currentShift.id },
                 data: {
@@ -154,13 +170,13 @@ export class CashShiftService {
             timeout: 5000
         });
 
-        // Return report (outside transaction - read-only)
+        // Generar reporte fuera de la transacción (solo lectura)
         return await this.getShiftReport(closedShiftId, tenantId);
     }
 
     /**
-     * Calculate expected cash for a shift
-     * startAmount + cash payments received
+     * Calcula el efectivo esperado en caja para un turno.
+     * Fórmula: monto inicial + total de pagos en efectivo del turno.
      */
     async calculateExpectedCash(shiftId: number, tenantId: number): Promise<number> {
         const shift = await prisma.cashShift.findFirst({
@@ -171,7 +187,7 @@ export class CashShiftService {
             throw new NotFoundError('Shift not found');
         }
 
-        // Get all CASH payments for this shift
+        // Sumar todos los pagos en EFECTIVO asociados a este turno
         const cashPayments = await prisma.payment.aggregate({
             where: {
                 shiftId: shiftId,
@@ -190,7 +206,8 @@ export class CashShiftService {
     }
 
     /**
-     * Get detailed report for a shift
+     * Genera el reporte detallado de un turno de caja.
+     * Incluye: datos del turno, ventas por método de pago, y conciliación de efectivo.
      */
     async getShiftReport(shiftId: number, tenantId: number): Promise<ShiftReport> {
         const shift = await prisma.cashShift.findFirst({
@@ -205,7 +222,7 @@ export class CashShiftService {
             throw new NotFoundError('Shift not found');
         }
 
-        // Get payments grouped by method
+        // Agrupar pagos por método de pago para el desglose
         const paymentsByMethod = await prisma.payment.groupBy({
             by: ['method'],
             where: { shiftId: shiftId, tenantId: shift.tenantId },
@@ -213,11 +230,11 @@ export class CashShiftService {
             _count: true
         });
 
-        // Get total orders for this shift (orders that have payments in this shift)
+        // Contar órdenes únicas que tuvieron pagos en este turno
         const orderIds = [...new Set(shift.payments.map(p => p.orderId))];
         const totalSales = shift.payments.reduce((sum, p) => sum + Number(p.amount), 0);
 
-        // Calculate cash specifics
+        // Calcular métricas específicas de efectivo para la conciliación
         const cashPayments = paymentsByMethod.find(p => p.method === 'CASH');
         const cashSales = Number(cashPayments?._sum.amount || 0);
         const startAmount = Number(shift.startAmount);
@@ -253,6 +270,9 @@ export class CashShiftService {
         };
     }
 
+    /**
+     * Obtiene el turno activo (abierto) del usuario actual.
+     */
     async getCurrentShift(tenantId: number, userId: number) {
         return await prisma.cashShift.findFirst({
             where: {
@@ -266,8 +286,12 @@ export class CashShiftService {
         });
     }
 
+    /**
+     * Obtiene el historial de turnos de un usuario.
+     * Busca el tenantId del usuario para garantizar aislamiento multi-inquilino.
+     */
     async getShiftHistory(userId: number, limit = 10) {
-        // Get user to obtain tenantId for multi-tenant isolation
+        // Obtener tenantId del usuario para aislamiento multi-inquilino
         const user = await prisma.user.findUnique({
             where: { id: userId },
             select: { tenantId: true }
@@ -277,7 +301,7 @@ export class CashShiftService {
             throw new NotFoundError('User not found');
         }
 
-        // PERF-013: Cap limit to prevent unbounded queries
+        // PERF-013: Limitar resultados para evitar consultas sin cota
         return await prisma.cashShift.findMany({
             where: {
                 userId,
@@ -289,8 +313,8 @@ export class CashShiftService {
     }
 
     /**
-     * Get all shifts with optional filters
-     * Used by Dashboard analytics
+     * Obtiene todos los turnos con filtros opcionales.
+     * Usado por el Dashboard de analíticas para supervisión gerencial.
      */
     async getAll(tenantId: number, filters?: { fromDate?: string; userId?: number }) {
         const where: Prisma.CashShiftWhereInput = { tenantId };

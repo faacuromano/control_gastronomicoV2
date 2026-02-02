@@ -1,15 +1,21 @@
 /**
- * @fileoverview Structured logging utility using a lightweight implementation.
- * Provides JSON-formatted logs for production environments.
- * 
+ * @fileoverview Utilidad de logging estructurado con implementacion ligera.
+ *
+ * Produce logs en formato JSON para facilitar el procesamiento en entornos de produccion
+ * (ej: ELK stack, CloudWatch, Datadog). Reemplaza las llamadas dispersas a console.log
+ * con un sistema centralizado que soporta niveles, metadata y loggers hijos.
+ *
  * @module utils/logger
+ *
  * @remarks
- * For production, consider replacing with Pino for better performance.
- * Install: npm install pino
+ * Para produccion con alto volumen, considerar reemplazar por Pino para mejor rendimiento.
+ * Instalacion: npm install pino
  */
 
+/** Niveles de log soportados, de menor a mayor severidad */
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+/** Estructura de una entrada de log serializada a JSON */
 interface LogEntry {
     timestamp: string;
     level: LogLevel;
@@ -18,17 +24,25 @@ interface LogEntry {
 }
 
 /**
- * Structured logger for consistent, JSON-formatted log output.
- * Replaces unstructured console.log calls throughout the application.
- * 
+ * Logger estructurado para salida de logs consistente en formato JSON.
+ * Reemplaza las llamadas desestructuradas a console.log en toda la aplicacion.
+ *
+ * Caracteristicas:
+ * - Filtrado por nivel minimo configurable via variable de entorno LOG_LEVEL
+ * - Metadata arbitraria adjunta a cada entrada (orderId, tenantId, etc.)
+ * - Loggers hijos con contexto preestablecido (util para request IDs)
+ *
  * @example
- * logger.info('Order created', { orderId: 123, total: 50.00 });
- * // Output: {"timestamp":"2024-01-15T03:00:00.000Z","level":"info","message":"Order created","orderId":123,"total":50}
- * 
- * logger.error('Failed to process payment', { error: err.message, orderId: 123 });
+ * logger.info('Orden creada', { orderId: 123, total: 50.00 });
+ * // Salida: {"timestamp":"2024-01-15T03:00:00.000Z","level":"info","message":"Orden creada","orderId":123,"total":50}
+ *
+ * logger.error('Fallo al procesar pago', { error: err.message, orderId: 123 });
  */
 class Logger {
+    /** Nivel minimo de log; los mensajes por debajo de este nivel se descartan */
     private readonly minLevel: LogLevel;
+
+    /** Mapa de prioridad numerica por nivel para comparacion rapida */
     private readonly levelPriority: Record<LogLevel, number> = {
         debug: 0,
         info: 1,
@@ -37,19 +51,23 @@ class Logger {
     };
 
     constructor() {
+        // Lee el nivel de log de la variable de entorno, con 'info' como valor por defecto
         const envLevel = (process.env.LOG_LEVEL || 'info') as LogLevel;
         this.minLevel = envLevel in this.levelPriority ? envLevel : 'info';
     }
 
     /**
-     * Check if a log level should be output based on minimum level.
+     * Determina si un nivel de log debe emitirse segun el nivel minimo configurado.
+     * Compara la prioridad numerica del nivel solicitado contra el minimo.
      */
     private shouldLog(level: LogLevel): boolean {
         return this.levelPriority[level] >= this.levelPriority[this.minLevel];
     }
 
     /**
-     * Format and output a log entry.
+     * Formatea y emite una entrada de log como JSON.
+     * Agrega timestamp ISO 8601 automaticamente y fusiona la metadata adicional.
+     * Dirige la salida al metodo de consola apropiado segun el nivel.
      */
     private log(level: LogLevel, message: string, meta?: Record<string, unknown>): void {
         if (!this.shouldLog(level)) return;
@@ -63,6 +81,8 @@ class Logger {
 
         const output = JSON.stringify(entry);
 
+        // Usa el metodo de consola correspondiente para que los sistemas de captura
+        // de logs (Docker, PM2, etc.) puedan diferenciar stderr de stdout
         switch (level) {
             case 'error':
                 console.error(output);
@@ -76,44 +96,50 @@ class Logger {
     }
 
     /**
-     * Log debug-level message.
-     * Only output when LOG_LEVEL=debug.
+     * Registra un mensaje de nivel debug.
+     * Solo se emite cuando LOG_LEVEL=debug. Util para trazas detalladas
+     * durante desarrollo o diagnostico de problemas especificos.
      */
     debug(message: string, meta?: Record<string, unknown>): void {
         this.log('debug', message, meta);
     }
 
     /**
-     * Log info-level message.
-     * Default log level for normal operations.
+     * Registra un mensaje de nivel info.
+     * Nivel por defecto para operaciones normales del negocio:
+     * creacion de ordenes, inicio de turnos, login exitoso, etc.
      */
     info(message: string, meta?: Record<string, unknown>): void {
         this.log('info', message, meta);
     }
 
     /**
-     * Log warning-level message.
-     * For non-critical issues that should be addressed.
+     * Registra un mensaje de nivel warning.
+     * Para situaciones no criticas que requieren atencion:
+     * stock bajo, metodo de pago desconocido, reintentos de conexion, etc.
      */
     warn(message: string, meta?: Record<string, unknown>): void {
         this.log('warn', message, meta);
     }
 
     /**
-     * Log error-level message.
-     * For errors that need immediate attention.
+     * Registra un mensaje de nivel error.
+     * Para errores que requieren atencion inmediata:
+     * fallos de base de datos, errores de autenticacion, excepciones no controladas.
      */
     error(message: string, meta?: Record<string, unknown>): void {
         this.log('error', message, meta);
     }
 
     /**
-     * Create a child logger with preset context.
-     * Useful for adding request IDs or user context.
-     * 
+     * Crea un logger hijo con metadata preestablecida.
+     * Cada llamada al logger hijo incluye automaticamente esta metadata,
+     * evitando repetirla en cada invocacion. Util para agregar requestId
+     * o tenantId a todas las entradas de un flujo especifico.
+     *
      * @example
      * const requestLogger = logger.child({ requestId: 'abc123' });
-     * requestLogger.info('Processing request'); // includes requestId in output
+     * requestLogger.info('Procesando solicitud'); // incluye requestId en la salida
      */
     child(defaultMeta: Record<string, unknown>): ChildLogger {
         return new ChildLogger(this, defaultMeta);
@@ -121,7 +147,9 @@ class Logger {
 }
 
 /**
- * Child logger that includes preset metadata in all log calls.
+ * Logger hijo que incluye metadata preestablecida en todas las llamadas.
+ * Se crea mediante logger.child() y delega la emision real al logger padre,
+ * fusionando la metadata por defecto con la metadata especifica de cada llamada.
  */
 class ChildLogger {
     constructor(
@@ -147,7 +175,10 @@ class ChildLogger {
 }
 
 /**
- * Singleton logger instance for application-wide use.
- * Import and use: `import { logger } from './utils/logger';`
+ * Instancia singleton del logger para uso en toda la aplicacion.
+ * Se importa como: `import { logger } from './utils/logger';`
+ *
+ * Al ser singleton, la configuracion de nivel se lee una sola vez al arrancar
+ * y se mantiene consistente en todo el proceso.
  */
 export const logger = new Logger();

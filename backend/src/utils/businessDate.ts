@@ -1,96 +1,109 @@
 /**
- * @fileoverview Business Date utility functions
- * Centralized logic for calculating business dates with 6 AM cutoff
- * 
+ * @fileoverview Funciones utilitarias para el calculo de la fecha de negocio.
+ *
+ * Centraliza la logica de fecha de negocio con corte a las 6 AM.
+ * Este concepto es fundamental para la gastronomia: un restaurante que cierra
+ * a las 3 AM necesita que las operaciones de madrugada se agrupen con el dia
+ * anterior para reportes, numeracion de ordenes y cierre de caja.
+ *
  * @module utils/businessDate
- * 
- * BUSINESS RULE:
- * Orders created before 6 AM belong to the previous calendar day.
- * This ensures late-night operations (e.g., 2 AM) are grouped with
- * the previous day's business for reporting and order numbering.
+ *
+ * REGLA DE NEGOCIO:
+ * Las ordenes creadas antes de las 6 AM pertenecen al dia calendario anterior.
+ * Esto asegura que las operaciones nocturnas (ej: 2 AM) se agrupen con el
+ * dia de negocio anterior para reportes y numeracion de ordenes.
+ *
+ * Ejemplo: Una orden a las 3:00 AM del 20 de enero pertenece al dia de negocio 19 de enero.
  */
 
 /**
- * Calculate the business date for a given datetime.
- * 
- * @param date - The datetime to calculate business date for (defaults to now)
- * @returns Date object set to midnight of the business day
- * 
+ * Calcula la fecha de negocio para un datetime dado.
+ *
+ * Si la hora es anterior a las 6 AM, retrocede un dia calendario.
+ * Luego normaliza a medianoche para comparaciones consistentes de fechas.
+ *
+ * @param date - El datetime para el cual calcular la fecha de negocio (por defecto: ahora)
+ * @returns Objeto Date establecido a medianoche del dia de negocio
+ *
  * @example
- * // If it's 2026-01-19 at 5:30 AM:
- * getBusinessDate() // Returns 2026-01-18 00:00:00
- * 
- * // If it's 2026-01-19 at 6:00 AM or later:
- * getBusinessDate() // Returns 2026-01-19 00:00:00
+ * // Si son las 5:30 AM del 2026-01-19:
+ * getBusinessDate() // Retorna 2026-01-18 00:00:00 (dia anterior)
+ *
+ * // Si son las 6:00 AM o mas tarde del 2026-01-19:
+ * getBusinessDate() // Retorna 2026-01-19 00:00:00 (mismo dia)
  */
 export function getBusinessDate(date: Date = new Date()): Date {
     const businessDate = new Date(date);
-    
-    // If before 6 AM, use previous day
+
+    // Si es antes de las 6 AM, la operacion pertenece al dia de negocio anterior
     if (businessDate.getHours() < 6) {
         businessDate.setDate(businessDate.getDate() - 1);
     }
-    
-    // Reset to midnight for consistent date comparison
+
+    // Normaliza a medianoche para que las comparaciones de fecha sean consistentes
     businessDate.setHours(0, 0, 0, 0);
-    
+
     return businessDate;
 }
 
 /**
- * Get the business date key in YYYYMMDD format.
- * Used for OrderSequence sharding (legacy/daily sharding).
- * 
- * @param date - The datetime to calculate business date for (defaults to now)
- * @returns String in format "YYYYMMDD" (e.g., "20260119")
- * 
+ * Obtiene la clave de fecha de negocio en formato YYYYMMDD.
+ * Usada para el sharding de OrderSequence (sharding diario, legacy).
+ *
+ * @param date - El datetime para el cual calcular la fecha de negocio (por defecto: ahora)
+ * @returns String en formato "YYYYMMDD" (ej: "20260119")
+ *
  * @example
  * getBusinessDateKey() // "20260119"
- * 
- * @deprecated Use getBusinessDateKeyHourly() for better performance
+ *
+ * @deprecated Usar getBusinessDateKeyHourly() para mejor rendimiento bajo concurrencia.
+ * La version diaria genera contention de locks en horas pico.
  */
 export function getBusinessDateKey(date: Date = new Date()): string {
     const businessDate = getBusinessDate(date);
-    
+
     const year = businessDate.getFullYear();
     const month = String(businessDate.getMonth() + 1).padStart(2, '0');
     const day = String(businessDate.getDate()).padStart(2, '0');
-    
+
     return `${year}${month}${day}`;
 }
 
 /**
- * Get the business date key with HOUR granularity in YYYYMMDDHH format.
- * 
- * PERFORMANCE OPTIMIZATION:
- * - Reduces OrderSequence lock contention by 24x (1 row per day → 24 rows per day)
- * - Expected latency improvement: 1200ms → 50ms
- * - Each hour gets its own sequence counter (isolated locking)
- * 
- * BUSINESS RULE:
- * - Hour is based on the ORIGINAL timestamp (before 6 AM adjustment)
- * - This ensures chronological ordering within the business day
- * 
- * @param date - The datetime to calculate business date for (defaults to now)
- * @returns String in format "YYYYMMDDHH" (e.g., "2026011914" for 2 PM)
- * 
+ * Obtiene la clave de fecha de negocio con granularidad HORARIA en formato YYYYMMDDHH.
+ *
+ * OPTIMIZACION DE RENDIMIENTO:
+ * - Reduce la contention de locks en OrderSequence 24x (1 fila por dia -> 24 filas por dia)
+ * - Mejora de latencia esperada: 1200ms -> 50ms en horas pico
+ * - Cada hora obtiene su propio contador de secuencia (locking aislado)
+ * - Esto es critico en restaurantes con alto volumen de ordenes simultaneas
+ *
+ * REGLA DE NEGOCIO:
+ * - La hora se toma del timestamp ORIGINAL (antes del ajuste de 6 AM)
+ * - Esto asegura ordenamiento cronologico dentro del dia de negocio
+ * - Ejemplo: a las 2 AM del dia 20, la clave es "2026011902" (fecha negocio: 19, hora: 02)
+ *
+ * @param date - El datetime para el cual calcular la clave (por defecto: ahora)
+ * @returns String en formato "YYYYMMDDHH" (ej: "2026011914" para las 2 PM)
+ *
  * @example
- * // If it's 2026-01-19 at 14:30 (2:30 PM):
+ * // Si son las 14:30 (2:30 PM) del 2026-01-19:
  * getBusinessDateKeyHourly() // "2026011914"
- * 
- * // If it's 2026-01-20 at 02:30 AM (before 6 AM cutoff):
- * getBusinessDateKeyHourly() // "2026011902" (business date is 2026-01-19, hour is 02)
+ *
+ * // Si son las 02:30 AM del 2026-01-20 (antes del corte de 6 AM):
+ * getBusinessDateKeyHourly() // "2026011902" (fecha negocio es 2026-01-19, hora es 02)
  */
 export function getBusinessDateKeyHourly(date: Date = new Date()): string {
     const businessDate = getBusinessDate(date);
-    
+
     const year = businessDate.getFullYear();
     const month = String(businessDate.getMonth() + 1).padStart(2, '0');
     const day = String(businessDate.getDate()).padStart(2, '0');
-    
-    // CRITICAL: Use ORIGINAL hour (not adjusted business date hour)
-    // Rationale: businessDate is always midnight (00), we need actual hour for sharding
+
+    // CRITICO: Usa la hora ORIGINAL (no la hora de la fecha de negocio ajustada).
+    // La fecha de negocio siempre queda en medianoche (00), asi que necesitamos
+    // la hora real del timestamp para particionar correctamente la secuencia.
     const hour = String(date.getHours()).padStart(2, '0');
-    
+
     return `${year}${month}${day}${hour}`;
 }

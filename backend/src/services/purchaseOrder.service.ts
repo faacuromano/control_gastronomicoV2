@@ -1,3 +1,13 @@
+/**
+ * @fileoverview Servicio de ordenes de compra a proveedores.
+ * Gestiona el ciclo de vida completo de las ordenes de compra:
+ * creacion, cambio de estado, recepcion (con actualizacion de stock)
+ * y cancelacion. Incluye logica de reintento para generacion atomica
+ * de numeros de orden.
+ *
+ * @module services/purchaseOrder.service
+ */
+
 import { prisma } from '../lib/prisma';
 import { Prisma, StockMoveType, PurchaseStatus } from '@prisma/client';
 import { NotFoundError, ConflictError, ValidationError } from '../utils/errors';
@@ -5,6 +15,10 @@ import { StockMovementService } from './stockMovement.service';
 
 const stockService = new StockMovementService();
 
+/**
+ * Estructura de entrada para crear una orden de compra.
+ * Incluye proveedor, notas opcionales y lista de items con ingrediente, cantidad y costo.
+ */
 interface CreatePurchaseOrderInput {
   supplierId: number;
   notes?: string;
@@ -17,12 +31,13 @@ interface CreatePurchaseOrderInput {
 
 export class PurchaseOrderService {
   /**
-   * Get all purchase orders with supplier info
+   * Obtiene todas las ordenes de compra con informacion del proveedor.
+   * Opcionalmente filtra por estado (PENDING, ORDERED, RECEIVED, etc.).
    */
   async getAll(tenantId: number, status?: PurchaseStatus) {
     const whereClause: { tenantId: number; status?: PurchaseStatus } = { tenantId };
     if (status) whereClause.status = status;
-    
+
     return await prisma.purchaseOrder.findMany({
       where: whereClause,
       include: {
@@ -39,7 +54,7 @@ export class PurchaseOrderService {
   }
 
   /**
-   * Get purchase order by ID with all details
+   * Obtiene una orden de compra por ID con todos sus detalles e items.
    */
   async getById(id: number, tenantId: number) {
     const order = await prisma.purchaseOrder.findFirst({
@@ -61,11 +76,21 @@ export class PurchaseOrderService {
   }
 
   /**
-   * Create a new purchase order
-   * Uses transaction with retry logic to handle race conditions on order number generation
+   * Crea una nueva orden de compra.
+   *
+   * Usa transaccion con logica de reintento para manejar condiciones de carrera
+   * en la generacion del numero de orden. Si dos ordenes se crean simultaneamente,
+   * el numero secuencial podria colisionar (P2002: unique constraint violation),
+   * en cuyo caso se reintenta hasta 3 veces.
+   *
+   * Validaciones:
+   * - Proveedor existe y esta activo
+   * - Al menos un item en la orden
+   * - Todos los ingredientes existen en el tenant
+   * - Cantidades dentro de limites razonables
    */
   async create(tenantId: number, data: CreatePurchaseOrderInput) {
-    // Validate supplier exists (outside transaction - read-only, safe)
+    // Validar proveedor (fuera de transaccion: solo lectura, seguro)
     const supplier = await prisma.supplier.findFirst({
       where: { id: data.supplierId, tenantId }
     });
@@ -73,12 +98,12 @@ export class PurchaseOrderService {
       throw new NotFoundError('Supplier');
     }
 
-    // Validate items
+    // Validar que haya al menos un item
     if (!data.items || data.items.length === 0) {
       throw new ValidationError('Order must have at least one item');
     }
 
-    // Validate all ingredients exist (outside transaction - read-only, safe)
+    // Validar que todos los ingredientes existan (fuera de transaccion: solo lectura, seguro)
     const ingredientIds = data.items.map(i => i.ingredientId);
     const ingredients = await prisma.ingredient.findMany({
       where: { id: { in: ingredientIds }, tenantId }
@@ -87,7 +112,7 @@ export class PurchaseOrderService {
       throw new ValidationError('One or more ingredients do not exist');
     }
 
-    // Validate item bounds
+    // Validar limites de cantidad y costo por item
     const MAX_ITEM_QUANTITY = 100000;
     for (const item of data.items) {
       if (item.quantity <= 0 || item.quantity > MAX_ITEM_QUANTITY) {
@@ -98,18 +123,18 @@ export class PurchaseOrderService {
       }
     }
 
-    // Calculate totals
+    // Calcular subtotal sumando cantidad * costo unitario de cada item
     let subtotal = 0;
     for (const item of data.items) {
       subtotal += item.quantity * item.unitCost;
     }
 
-    // Retry loop for race condition on order number
+    // Bucle de reintento para condiciones de carrera en el numero de orden
     const MAX_RETRIES = 3;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         return await prisma.$transaction(async (tx) => {
-          // Generate order number INSIDE transaction to prevent race conditions
+          // Generar numero de orden DENTRO de la transaccion para prevenir condiciones de carrera
           const lastOrder = await tx.purchaseOrder.findFirst({
             where: { tenantId },
             orderBy: { orderNumber: 'desc' },
@@ -124,7 +149,7 @@ export class PurchaseOrderService {
               supplierId: data.supplierId,
               status: 'PENDING',
               subtotal,
-              total: subtotal, // No taxes for now
+              total: subtotal, // Sin impuestos por ahora
               notes: data.notes ?? null,
               items: {
                 create: data.items.map(item => ({
@@ -146,7 +171,7 @@ export class PurchaseOrderService {
           });
         });
       } catch (error: unknown) {
-        // Retry on unique constraint violation (P2002) for orderNumber
+        // Reintentar en caso de violacion de constraint unico (P2002) por numero de orden
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && attempt < MAX_RETRIES - 1) {
           continue;
         }
@@ -157,7 +182,8 @@ export class PurchaseOrderService {
   }
 
   /**
-   * Update purchase order status
+   * Actualiza el estado de una orden de compra.
+   * No permite modificar ordenes ya recibidas o canceladas (estados terminales).
    */
   async updateStatus(id: number, tenantId: number, status: PurchaseStatus) {
     const order = await prisma.purchaseOrder.findFirst({
@@ -181,14 +207,22 @@ export class PurchaseOrderService {
   }
 
   /**
-   * Receive purchase order - updates stock
+   * Recibe una orden de compra: actualiza el stock de cada ingrediente.
+   *
+   * Flujo dentro de una transaccion atomica:
+   * 1. Obtiene la orden con sus items
+   * 2. Valida que no este ya recibida o cancelada
+   * 3. Registra movimientos de stock tipo PURCHASE para cada ingrediente
+   * 4. Marca la orden como RECEIVED con la fecha actual
+   *
+   * PERF-011: Usa registerBatch en vez de N llamadas individuales a register()
    */
   async receivePurchaseOrder(id: number, tenantId: number) {
     return await prisma.$transaction(async (tx) => {
-      // 1. Get order with items
+      // 1. Obtener orden con items e ingredientes
       const order = await tx.purchaseOrder.findFirst({
         where: { id, tenantId },
-        include: { 
+        include: {
           items: {
             include: {
               ingredient: true
@@ -207,8 +241,8 @@ export class PurchaseOrderService {
         throw new ConflictError('Cannot receive a cancelled order');
       }
 
-      // 2. Create stock movements for each item
-      // PERF-011: Use registerBatch instead of N individual register() calls
+      // 2. Crear movimientos de stock para cada item (incrementa inventario)
+      // PERF-011: Usar registerBatch en vez de N llamadas individuales a register()
       const stockUpdates = order.items.map(item => ({
         ingredientId: item.ingredientId,
         quantity: Number(item.quantity)
@@ -221,8 +255,8 @@ export class PurchaseOrderService {
         tx
       );
 
-      // 3. Mark as received
-      // SAFE: tx.findFirst L177 verifies tenant ownership
+      // 3. Marcar como recibida con fecha de recepcion
+      // SEGURO: tx.findFirst en L177 verifica propiedad del tenant
       return await tx.purchaseOrder.update({
         where: { id },
         data: {
@@ -242,7 +276,8 @@ export class PurchaseOrderService {
   }
 
   /**
-   * Cancel purchase order
+   * Cancela una orden de compra.
+   * Solo se pueden cancelar ordenes que no hayan sido recibidas.
    */
   async cancel(id: number, tenantId: number) {
     const order = await prisma.purchaseOrder.findFirst({
@@ -262,7 +297,8 @@ export class PurchaseOrderService {
   }
 
   /**
-   * Delete purchase order (only if PENDING)
+   * Elimina una orden de compra (solo si esta en estado PENDING).
+   * Ordenes en cualquier otro estado no pueden eliminarse, solo cancelarse.
    */
   async delete(id: number, tenantId: number) {
     const order = await prisma.purchaseOrder.findFirst({

@@ -1,5 +1,12 @@
 /**
- * Bulk Price Update Routes
+ * @fileoverview Rutas de Actualización Masiva de Precios
+ *
+ * Permite a los administradores modificar precios de múltiples productos
+ * de forma simultánea. El flujo es: consultar productos en grilla, previsualizar
+ * cambios (para verificar antes de aplicar), y finalmente aplicar los ajustes.
+ * También soporta actualización por categoría completa (ej: subir 10% a "Bebidas").
+ *
+ * @module routes/bulkPriceUpdate.routes
  */
 
 import { Router } from 'express';
@@ -8,33 +15,34 @@ import * as bulkPriceController from '../controllers/bulkPriceUpdate.controller'
 
 const router = Router();
 
+// Todas las rutas requieren autenticación
 router.use(authenticate);
 
-// Get products for price grid
+// Obtener productos formateados para la grilla de edición de precios
 router.get('/products',
     requirePermission('products', 'browse'),
     bulkPriceController.getProductsForGrid
 );
 
-// Get categories for dropdown
+// Obtener categorías para el dropdown de filtrado en la UI
 router.get('/categories',
     requirePermission('products', 'browse'),
     bulkPriceController.getCategories
 );
 
-// Preview price changes
+// Previsualizar cambios de precio antes de aplicarlos (muestra precio actual vs nuevo)
 router.post('/preview',
     requirePermission('products', 'update'),
     bulkPriceController.previewChanges
 );
 
-// Apply bulk updates (requires admin-level permission)
+// Aplicar actualizaciones masivas de precio (requiere permiso de actualización de productos)
 router.post('/apply',
     requirePermission('products', 'update'),
     bulkPriceController.applyUpdates
 );
 
-// Update entire category
+// Actualizar precios de todos los productos de una categoría específica
 router.post('/category/:categoryId',
     requirePermission('products', 'update'),
     bulkPriceController.updateByCategory

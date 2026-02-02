@@ -1,9 +1,10 @@
 /**
- * @fileoverview Order item void/cancel service.
- * Handles item voiding with stock reversal and audit logging.
- * 
+ * @fileoverview Servicio de anulacion/cancelacion de items de orden.
+ * Gestiona la eliminacion de items con reversion de stock y registro de auditoria.
+ * Cada anulacion requiere un motivo valido para mantener trazabilidad completa.
+ *
  * @module services/orderVoid.service
- * @phase2 Operational Features
+ * @phase2 Funcionalidades Operativas
  */
 
 import { prisma } from '../lib/prisma';
@@ -16,7 +17,8 @@ import { NotFoundError, ValidationError } from '../utils/errors';
 const stockService = new StockMovementService();
 
 /**
- * Valid reasons for voiding an item.
+ * Razones validas para anular un item.
+ * Se usan como catalogo cerrado para garantizar consistencia en reportes y auditorias.
  */
 export const VOID_REASONS = [
     'CUSTOMER_CHANGED_MIND',
@@ -44,31 +46,34 @@ export interface VoidItemResult {
 }
 
 /**
- * Service for voiding/cancelling order items.
+ * Servicio para anular/cancelar items de ordenes.
+ * La anulacion implica eliminar el item, revertir el stock consumido
+ * y recalcular los totales de la orden afectada.
  */
 export class OrderVoidService {
-    
+
     /**
-     * Void (remove) an item from an order.
-     * 
-     * This operation:
-     * 1. Deletes the item from the order
-     * 2. Reverses stock deductions (adds ingredients back)
-     * 3. Recalculates order totals
-     * 4. Creates an audit log entry
-     * 
-     * @param input - Void item input with reason
-     * @param context - Audit context (user, IP)
-     * @returns Result with new order total
+     * Anula (elimina) un item de una orden.
+     *
+     * Esta operacion realiza los siguientes pasos en una transaccion atomica:
+     * 1. Elimina el item de la orden
+     * 2. Revierte las deducciones de stock (devuelve ingredientes al inventario)
+     * 3. Recalcula los totales de la orden
+     * 4. Crea una entrada en el log de auditoria con el motivo
+     *
+     * @param input - Datos de anulacion con motivo obligatorio
+     * @param tenantId - ID del tenant para aislamiento multi-tenant
+     * @param context - Contexto de auditoria (usuario, IP)
+     * @returns Resultado con el nuevo total de la orden
      */
     async voidItem(input: VoidItemInput, tenantId: number, context: AuditContext): Promise<VoidItemResult> {
-        // Validate reason
+        // Validar que el motivo sea uno de los permitidos
         if (!VOID_REASONS.includes(input.reason)) {
             throw new ValidationError(`Invalid void reason: ${input.reason}`);
         }
-        
+
         const result = await prisma.$transaction(async (tx) => {
-            // 1. Get the item with product and order info
+            // 1. Obtener el item con su producto, ingredientes y orden asociada
             const item = await tx.orderItem.findFirst({
                 where: {
                     id: input.orderItemId,
@@ -90,22 +95,22 @@ export class OrderVoidService {
             if (!item) {
                 throw new NotFoundError('OrderItem');
             }
-            
-            // 2. Check if order is still modifiable
+
+            // 2. Verificar que la orden aun sea modificable (no pagada)
             if (item.order.paymentStatus === 'PAID') {
                 throw new ValidationError('Cannot void items from a paid order');
             }
-            
-            // 3. Calculate item value being removed
+
+            // 3. Calcular el valor monetario del item que se esta removiendo
             const itemPrice = Number(item.unitPrice) * item.quantity;
             const modifiersPrice = item.modifiers.reduce(
-                (sum, m) => sum + Number(m.priceCharged), 
+                (sum, m) => sum + Number(m.priceCharged),
                 0
             ) * item.quantity;
             const totalRemoved = itemPrice + modifiersPrice;
-            
-            // 4. Reverse stock if product is stockable
-            // PERF-010: Use registerBatch instead of N individual register() calls
+
+            // 4. Revertir stock si el producto es rastreable en inventario
+            // PERF-010: Usar registerBatch en vez de N llamadas individuales a register()
             let stockReversed = false;
             if (item.product.isStockable && item.product.ingredients.length > 0) {
                 const stockUpdates = item.product.ingredients.map(ing => ({
@@ -126,8 +131,8 @@ export class OrderVoidService {
                     reason: input.reason
                 });
             }
-            
-            // 5. Delete modifiers first, then the item
+
+            // 5. Eliminar modificadores primero (FK), luego el item
             await tx.orderItemModifier.deleteMany({
                 where: { orderItemId: item.id, tenantId }
             });
@@ -139,12 +144,12 @@ export class OrderVoidService {
                 throw new NotFoundError('OrderItem');
             }
 
-            // 6. Recalculate order totals
+            // 6. Recalcular totales de la orden sin el item eliminado
             const remainingItems = await tx.orderItem.findMany({
                 where: { orderId: item.orderId, tenantId },
                 include: { modifiers: true }
             });
-            
+
             let newSubtotal = 0;
             for (const remaining of remainingItems) {
                 newSubtotal += Number(remaining.unitPrice) * remaining.quantity;
@@ -152,8 +157,8 @@ export class OrderVoidService {
                     newSubtotal += Number(mod.priceCharged) * remaining.quantity;
                 }
             }
-            
-            // SAFE: tx.orderItem.findFirst at L72 verifies tenant ownership via order relation
+
+            // SEGURO: tx.orderItem.findFirst en L72 verifica propiedad del tenant via relacion con order
             await tx.order.update({
                 where: { id: item.orderId },
                 data: {
@@ -161,7 +166,7 @@ export class OrderVoidService {
                     total: newSubtotal - Number(item.order.discount)
                 }
             });
-            
+
             return {
                 orderId: item.orderId,
                 orderNumber: item.order.orderNumber,
@@ -172,8 +177,8 @@ export class OrderVoidService {
                 stockReversed
             };
         });
-        
-        // 7. Log to audit trail (outside transaction for safety)
+
+        // 7. Registrar en log de auditoria (fuera de la transaccion por seguridad)
         await auditService.log(
             AuditAction.ITEM_VOIDED,
             'OrderItem',
@@ -190,14 +195,14 @@ export class OrderVoidService {
                 stockReversed: result.stockReversed
             }
         );
-        
+
         logger.info('Order item voided', {
             orderItemId: input.orderItemId,
             orderId: result.orderId,
             reason: input.reason,
             totalRemoved: result.totalRemoved
         });
-        
+
         return {
             success: true,
             orderItemId: input.orderItemId,
@@ -205,9 +210,10 @@ export class OrderVoidService {
             newOrderTotal: result.newOrderTotal
         };
     }
-    
+
     /**
-     * Get available void reasons for UI.
+     * Obtiene las razones de anulacion disponibles para mostrar en la UI.
+     * Retorna codigo interno y etiqueta legible para el usuario.
      */
     getVoidReasons(): { code: VoidReason; label: string }[] {
         return [

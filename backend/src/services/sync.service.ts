@@ -1,7 +1,14 @@
 /**
- * @fileoverview Sync Service for offline synchronization
- * Handles pull (server→client) and push (client→server) operations
- * 
+ * @fileoverview Servicio de sincronizacion offline.
+ * Gestiona las operaciones pull (servidor -> cliente) y push (cliente -> servidor)
+ * para permitir que la aplicacion POS funcione sin conexion a internet.
+ *
+ * El flujo de sincronizacion es:
+ * 1. PULL: El cliente descarga productos, categorias y rutas de impresion
+ * 2. OFFLINE: El cliente opera normalmente, guardando ordenes y pagos localmente
+ * 3. PUSH: Cuando recupera conexion, envia las operaciones pendientes al servidor
+ * 4. RECONCILIACION: El servidor procesa ordenes y pagos, detecta conflictos
+ *
  * @module services/sync.service
  */
 
@@ -27,13 +34,17 @@ import type {
 } from '../types/sync.types';
 
 /**
- * Service for handling offline data synchronization
+ * Servicio para gestionar la sincronizacion de datos offline.
+ * Implementa deteccion de conflictos, idempotencia y reconciliacion de pagos.
  */
 export class SyncService {
 
     /**
-     * Pull all data needed for offline operation
-     * Called when client goes online or on startup
+     * Descarga todos los datos necesarios para operacion offline.
+     * Se llama cuando el cliente se conecta o al iniciar la aplicacion.
+     *
+     * Retorna productos activos, categorias y rutas de impresion,
+     * junto con un token de sincronizacion para deteccion de conflictos posterior.
      */
     async pull(tenantId: number): Promise<SyncPullResponse> {
         const [products, categories, printerRouting] = await Promise.all([
@@ -52,8 +63,17 @@ export class SyncService {
     }
 
     /**
-     * Push offline operations to server
-     * Processes orders and payments created offline
+     * Recibe y procesa las operaciones realizadas offline por el cliente.
+     * Procesa ordenes y pagos creados durante la desconexion.
+     *
+     * Flujo:
+     * 1. Detecta conflictos comparando el syncToken con cambios recientes
+     * 2. Filtra tempIds duplicados (idempotencia en reintentos)
+     * 3. Procesa ordenes pendientes (crea ordenes reales con IDs del servidor)
+     * 4. Mapea tempIds a IDs reales para los pagos
+     * 5. Procesa pagos pendientes usando transacciones serializables
+     * 6. Reconcilia estados de pago por si algun pago fallo
+     * 7. Registra la operacion de sincronizacion en auditoria
      */
     async push(
         request: SyncPushRequest,
@@ -64,11 +84,11 @@ export class SyncService {
         const errors: SyncError[] = [];
         const warnings: SyncWarning[] = [];
 
-        // BIZ-009: Conflict detection — warn if server data changed since last sync
+        // BIZ-009: Deteccion de conflictos: advertir si los datos del servidor cambiaron desde el ultimo sync
         const conflictWarnings = await this.validateSyncToken(request.syncToken, tenantId);
         warnings.push(...conflictWarnings);
 
-        // BIZ-010: Idempotency check — detect duplicate tempIds in retry scenarios
+        // BIZ-010: Verificacion de idempotencia: detectar tempIds duplicados en escenarios de reintento
         const seenTempIds = new Set<string>();
         for (const pendingOrder of request.pendingOrders) {
             if (seenTempIds.has(pendingOrder.tempId)) {
@@ -84,7 +104,7 @@ export class SyncService {
             arr.findIndex(x => x.tempId === o.tempId) === i
         );
 
-        // 1. Process orders first (they need real IDs before payments)
+        // 1. Procesar ordenes primero (necesitan IDs reales antes de los pagos)
         for (const pendingOrder of uniqueOrders) {
             try {
                 const result = await this.processOfflineOrder(pendingOrder, tenantId, context);
@@ -109,7 +129,7 @@ export class SyncService {
             }
         }
 
-        // 2. Create mapping for payment resolution
+        // 2. Crear mapeo de tempId a ID real para resolucion de pagos
         const tempToRealId = new Map<string, number>();
         for (const mapping of orderMappings) {
             if (mapping.status === 'SYNCED' && mapping.realId) {
@@ -117,7 +137,7 @@ export class SyncService {
             }
         }
 
-        // 3. Process payments using the mapping
+        // 3. Procesar pagos usando el mapeo de IDs
         for (const pendingPayment of request.pendingPayments) {
             try {
                 await this.processOfflinePayment(pendingPayment, tenantId, tempToRealId, context);
@@ -135,8 +155,8 @@ export class SyncService {
             }
         }
 
-        // 4. DB-010: Reconcile payment statuses after all payments processed
-        //    If some payments failed, the order paymentStatus may be inconsistent
+        // 4. DB-010: Reconciliar estados de pago despues de procesar todos los pagos.
+        //    Si algunos pagos fallaron, el paymentStatus de la orden podria ser inconsistente.
         for (const mapping of orderMappings) {
             if (mapping.status === 'SYNCED' && mapping.realId) {
                 try {
@@ -151,7 +171,7 @@ export class SyncService {
             }
         }
 
-        // 5. Log sync operation
+        // 5. Registrar la operacion de sincronizacion en auditoria
         await auditService.log(
             AuditAction.SYNC_COMPLETED,
             'Sync',
@@ -176,7 +196,9 @@ export class SyncService {
     }
 
     /**
-     * Process a single offline order
+     * Procesa una orden offline individual.
+     * Busca el turno de caja activo y crea la orden usando el OrderService existente.
+     * Si el turno original del cliente difiere del actual, emite una advertencia.
      */
     private async processOfflineOrder(
         pendingOrder: PendingOrder,
@@ -185,7 +207,7 @@ export class SyncService {
     ): Promise<{ mapping: OrderMapping; warnings: SyncWarning[] }> {
         const warnings: SyncWarning[] = [];
 
-        // Get active cash shift
+        // Obtener el turno de caja activo para este tenant
         const activeShift = await prisma.cashShift.findFirst({
             where: { tenantId, endTime: null },
             orderBy: { startTime: 'desc' }
@@ -195,7 +217,7 @@ export class SyncService {
             throw new ValidationError('No active cash shift for sync');
         }
 
-        // Check if original shift differs from current
+        // Advertir si el turno original difiere del actual (puede indicar cambio de turno durante offline)
         if (pendingOrder.shiftId && pendingOrder.shiftId !== activeShift.id) {
             warnings.push({
                 tempId: pendingOrder.tempId,
@@ -204,8 +226,8 @@ export class SyncService {
             });
         }
 
-        // Create order using existing service
-        // userId is guaranteed by the sync controller before calling this
+        // Crear la orden usando el servicio existente para reutilizar toda la logica de negocio
+        // userId esta garantizado por el sync controller antes de llegar aqui
         if (!context.userId) {
             throw new ValidationError('userId required for sync');
         }
@@ -216,7 +238,7 @@ export class SyncService {
             channel: pendingOrder.channel,
             tableId: pendingOrder.tableId,
             clientId: pendingOrder.clientId,
-            // Note: payments handled separately
+            // Nota: los pagos se procesan por separado
         });
 
         return {
@@ -231,17 +253,17 @@ export class SyncService {
     }
 
     /**
-     * Process a single offline payment within a Serializable transaction.
-     * 
-     * @complexity O(1) - Single transaction with atomic read-modify-write
-     * @guarantee ACID - Serializable isolation prevents phantom payments
-     * @implements TDD Section 1.2 - Serializable Transaction for Payment
-     * 
-     * FIX P0-003: Replaces separate CREATE + READ + UPDATE with atomic
-     * transaction. Prevents race condition where concurrent payments
-     * calculate incorrect totals.
-     * 
-     * Invariant: ∑Payments ≤ Order.total (validated before commit)
+     * Procesa un pago offline individual dentro de una transaccion Serializable.
+     *
+     * @complexity O(1) - Una sola transaccion con lectura-modificacion-escritura atomica
+     * @guarantee ACID - Aislamiento Serializable previene pagos fantasma
+     * @implements TDD Seccion 1.2 - Transaccion Serializable para Pagos
+     *
+     * FIX P0-003: Reemplaza operaciones separadas CREATE + READ + UPDATE con una
+     * transaccion atomica. Previene condiciones de carrera donde pagos concurrentes
+     * calculan totales incorrectos.
+     *
+     * Invariante: SumaPagos <= Order.total (validado antes del commit)
      */
     private async processOfflinePayment(
         pendingPayment: PendingPayment,
@@ -259,7 +281,7 @@ export class SyncService {
 
         await withSerializableTransaction(
             async (tx: TransactionClient) => {
-                // Step 1: Get active shift (read-only, can be outside tx but included for atomicity)
+                // Paso 1: Obtener turno activo (lectura incluida en tx para atomicidad)
                 const activeShift = await tx.cashShift.findFirst({
                     where: { tenantId, endTime: null },
                     orderBy: { startTime: 'desc' }
@@ -269,8 +291,8 @@ export class SyncService {
                     throw new ValidationError('No active cash shift for payment sync');
                 }
 
-                // Step 2: Get order with existing payments INSIDE transaction
-                // Serializable isolation ensures no phantom payments appear
+                // Paso 2: Obtener orden con pagos existentes DENTRO de la transaccion.
+                // El aislamiento Serializable garantiza que no aparezcan pagos fantasma.
                 const order = await tx.order.findFirst({
                     where: { id: realOrderId, tenantId },
                     include: { payments: true }
@@ -280,17 +302,17 @@ export class SyncService {
                     throw new ValidationError(`Order ${realOrderId} not found`);
                 }
 
-                // Step 3: Calculate current total paid BEFORE adding new payment
+                // Paso 3: Calcular total pagado actual ANTES de agregar el nuevo pago
                 const currentTotalPaid = order.payments.reduce(
                     (sum, p) => sum + Number(p.amount),
                     0
                 );
                 const orderTotal = Number(order.total);
 
-                // Step 4: Invariant check - prevent overpayment
-                // Per TDD: ∑Payments ≤ Order.total
+                // Paso 4: Verificacion del invariante - prevenir sobrepago
+                // Segun TDD: SumaPagos <= Order.total
                 const proposedTotalPaid = currentTotalPaid + pendingPayment.amount;
-                const overpaymentMargin = 0.01; // Allow 1 cent tolerance
+                const overpaymentMargin = 0.01; // Tolerancia de 1 centavo
 
                 if (proposedTotalPaid > orderTotal + overpaymentMargin) {
                     logger.warn('Overpayment detected in offline sync', {
@@ -300,19 +322,19 @@ export class SyncService {
                         proposedPayment: pendingPayment.amount,
                         proposedTotal: proposedTotalPaid,
                     });
-                    // Don't throw - cap the payment to remaining amount
+                    // No lanzar error: ajustar el pago al monto restante
                     const remainingAmount = Math.max(0, orderTotal - currentTotalPaid);
                     if (remainingAmount <= 0) {
                         logger.info('Order already fully paid, skipping payment', {
                             orderId: realOrderId,
                         });
-                        return; // Skip this payment
+                        return; // Omitir este pago
                     }
-                    // Adjust payment amount to remaining
+                    // Ajustar monto del pago al restante
                     pendingPayment.amount = remainingAmount;
                 }
 
-                // Step 5: Create payment INSIDE transaction
+                // Paso 5: Crear pago DENTRO de la transaccion
                 await tx.payment.create({
                     data: {
                         tenantId,
@@ -323,7 +345,7 @@ export class SyncService {
                     }
                 });
 
-                // Step 6: Calculate new total and update status ATOMICALLY
+                // Paso 6: Calcular nuevo total y actualizar estado ATOMICAMENTE
                 const newTotalPaid = currentTotalPaid + pendingPayment.amount;
                 const newStatus = newTotalPaid >= orderTotal ? 'PAID' : 'PARTIAL';
 
@@ -347,13 +369,13 @@ export class SyncService {
     }
 
     // =========================================================================
-    // DB-010: PAYMENT RECONCILIATION
+    // DB-010: RECONCILIACION DE PAGOS
     // =========================================================================
 
     /**
-     * Reconcile order payment status after sync.
-     * Ensures paymentStatus matches actual sum of payments.
-     * Handles partial failure where some payments succeeded but others didn't.
+     * Reconcilia el estado de pago de una orden despues de la sincronizacion.
+     * Asegura que el paymentStatus refleje la suma real de los pagos registrados.
+     * Maneja el caso de fallo parcial donde algunos pagos se procesaron y otros no.
      */
     private async reconcileOrderPaymentStatus(orderId: number, tenantId: number): Promise<void> {
         const order = await prisma.order.findFirst({
@@ -377,6 +399,7 @@ export class SyncService {
             expectedStatus = PaymentStatus.PARTIAL;
         }
 
+        // Solo actualizar si el estado actual no coincide con el esperado
         if (order.paymentStatus !== expectedStatus) {
             logger.warn('Payment status inconsistency detected, reconciling', {
                 orderId,
@@ -393,12 +416,13 @@ export class SyncService {
     }
 
     // =========================================================================
-    // BIZ-009: CONFLICT DETECTION
+    // BIZ-009: DETECCION DE CONFLICTOS
     // =========================================================================
 
     /**
-     * Validate sync token to detect conflicts from concurrent offline clients.
-     * If server data changed since client's last pull, warn about potential conflicts.
+     * Valida el token de sincronizacion para detectar conflictos entre clientes offline concurrentes.
+     * Si los datos del servidor cambiaron desde el ultimo pull del cliente,
+     * emite advertencias sobre posibles conflictos.
      */
     async validateSyncToken(
         syncToken: string | undefined,
@@ -415,7 +439,7 @@ export class SyncService {
             return warnings;
         }
 
-        // Extract timestamp from sync token (format: sync_<timestamp>_<random>)
+        // Extraer timestamp del token de sync (formato: sync_<timestamp>_<random>)
         const tokenParts = syncToken.split('_');
         if (tokenParts.length < 2) return warnings;
 
@@ -424,7 +448,7 @@ export class SyncService {
 
         const lastSyncDate = new Date(lastSyncTime);
 
-        // PERF-019: Parallelize conflict detection queries
+        // PERF-019: Paralelizar consultas de deteccion de conflictos
         const [recentOrders, recentProductChanges] = await Promise.all([
             prisma.order.count({
                 where: { tenantId, createdAt: { gt: lastSyncDate } },
@@ -454,9 +478,13 @@ export class SyncService {
     }
 
     // =========================================================================
-    // HELPER METHODS
+    // METODOS AUXILIARES
     // =========================================================================
 
+    /**
+     * Obtiene productos formateados para sincronizacion offline.
+     * Incluye solo productos activos con sus categorias y modificadores.
+     */
     private async getProductsForSync(tenantId: number): Promise<SyncProduct[]> {
         const products = await prisma.product.findMany({
             where: { isActive: true, tenantId },
@@ -495,6 +523,9 @@ export class SyncService {
         }));
     }
 
+    /**
+     * Obtiene categorias formateadas para sincronizacion offline.
+     */
     private async getCategoriesForSync(tenantId: number): Promise<SyncCategory[]> {
         const categories = await prisma.category.findMany({
             where: { tenantId },
@@ -507,6 +538,10 @@ export class SyncService {
         }));
     }
 
+    /**
+     * Obtiene las rutas de impresion (categoria -> impresora) para sincronizacion offline.
+     * Solo incluye categorias que tienen impresora asignada.
+     */
     private async getPrinterRoutingForSync(tenantId: number): Promise<SyncPrinterRouting[]> {
         const categories = await prisma.category.findMany({
             where: { tenantId, printerId: { not: null } },
@@ -525,6 +560,10 @@ export class SyncService {
             }));
     }
 
+    /**
+     * Genera un token de sincronizacion que incluye el timestamp actual.
+     * Formato: sync_<timestamp>_<random> para deteccion de conflictos posterior.
+     */
     private generateSyncToken(): string {
         return `sync_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }

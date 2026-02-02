@@ -1,12 +1,25 @@
+/**
+ * @fileoverview Servicio de clientes del restaurante.
+ *
+ * Gestiona la búsqueda y creación/actualización de clientes. Implementa un patrón
+ * "upsert por teléfono" para conveniencia del POS: si ya existe un cliente con ese
+ * teléfono en el tenant, actualiza sus datos en vez de crear un duplicado.
+ *
+ * Soporta paginación para manejar grandes bases de clientes de forma eficiente.
+ *
+ * @module services/client.service
+ */
+
 import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 
 export class ClientService {
   /**
-   * Search clients by name or phone, or return recent clients.
+   * Busca clientes por nombre o teléfono, o retorna los más recientes si no hay query.
+   * PERF-008: Soporta paginación (default 50, máximo 200 por página).
    */
   async search(tenantId: number, query?: string, page = 1, limit = 50) {
-    // PERF-008: Support pagination (default 50, max 200)
+    // PERF-008: Limitar tamaño de página para evitar consultas excesivas
     const take = Math.min(Math.max(1, limit), 200);
     const skip = (Math.max(1, page) - 1) * take;
 
@@ -32,15 +45,16 @@ export class ClientService {
   }
 
   /**
-   * Create a new client. If a client with the same phone exists,
-   * update their name/address instead (POS convenience).
-   * Returns { client, created } to indicate if a new record was made.
+   * Crea un nuevo cliente o actualiza uno existente si ya hay un cliente con el mismo teléfono.
+   * Este patrón "upsert por teléfono" es una conveniencia del POS para evitar duplicados
+   * cuando el cajero ingresa un cliente recurrente.
+   * Retorna { client, created } para indicar si se creó un registro nuevo o se actualizó.
    */
   async createOrUpdate(
     tenantId: number,
     data: { name: string; phone?: string | undefined; email?: string | undefined; address?: string | undefined; taxId?: string | undefined }
   ) {
-    // Check if phone exists (scoped to tenant)
+    // Verificar si ya existe un cliente con ese teléfono (aislado por tenant)
     if (data.phone) {
       const existing = await prisma.client.findFirst({
         where: { phone: data.phone, tenantId }

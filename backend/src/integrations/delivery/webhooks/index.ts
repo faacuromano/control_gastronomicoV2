@@ -1,6 +1,10 @@
 /**
- * @fileoverview Webhook Module Exports
- * 
+ * @fileoverview Indice del Modulo de Webhooks de Delivery
+ *
+ * Exporta el controlador de webhooks, las rutas Express y los middlewares
+ * de validacion HMAC necesarios para recibir notificaciones de las
+ * plataformas de delivery de forma segura.
+ *
  * @module integrations/delivery/webhooks
  */
 

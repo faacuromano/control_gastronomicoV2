@@ -1,3 +1,23 @@
+/**
+ * @fileoverview Servicio de Grupos de Modificadores y Opciones
+ *
+ * Gestiona los grupos de modificadores (ej: "Punto de coccion", "Extras") y sus
+ * opciones individuales (ej: "Bien cocido", "Queso extra"). Los modificadores
+ * permiten personalizar productos en el punto de venta.
+ *
+ * Cada grupo define minSelection y maxSelection para controlar cuantas opciones
+ * puede elegir el cliente (ej: min=1, max=1 para seleccion unica obligatoria).
+ *
+ * Las opciones pueden tener un precio adicional (priceOverlay) y opcionalmente
+ * estar vinculadas a un ingrediente para descontar stock automaticamente.
+ *
+ * SEGURIDAD: Todas las operaciones verifican propiedad del tenant antes de modificar.
+ * Se usa updateMany/deleteMany como defensa en profundidad para garantizar
+ * que tenantId siempre este en la clausula WHERE.
+ *
+ * @module services/modifier.service
+ */
+
 import { prisma } from '../lib/prisma';
 import { ModifierGroup, ModifierOption } from '@prisma/client';
 import { NotFoundError, ConflictError, ValidationError } from '../utils/errors';
@@ -30,6 +50,10 @@ export interface UpdateOptionInput {
 }
 
 export const modifierService = {
+  /**
+   * Obtiene todos los grupos de modificadores del tenant con paginacion.
+   * Incluye las opciones de cada grupo y los productos asociados.
+   */
   getAllGroups: async (tenantId: number, page: number = 1, limit: number = 50) => {
     const skip = (page - 1) * limit;
 
@@ -59,6 +83,10 @@ export const modifierService = {
     };
   },
 
+  /**
+   * Obtiene un grupo de modificadores por ID, verificando que pertenezca al tenant.
+   * Incluye opciones con sus ingredientes vinculados.
+   */
   getGroupById: async (id: number, tenantId: number) => {
     return prisma.modifierGroup.findFirst({
       where: { id, tenantId },
@@ -72,6 +100,10 @@ export const modifierService = {
     });
   },
 
+  /**
+   * Crea un nuevo grupo de modificadores.
+   * minSelection por defecto es 0 (opcional) y maxSelection es 1 (seleccion unica).
+   */
   createGroup: async (data: CreateGroupInput) => {
     return prisma.modifierGroup.create({
       data: {
@@ -83,13 +115,18 @@ export const modifierService = {
     });
   },
 
+  /**
+   * Actualiza un grupo de modificadores existente.
+   * Verifica propiedad del tenant antes de actualizar.
+   * Construye el objeto de actualizacion explicitamente para satisfacer exactOptionalPropertyTypes.
+   */
   updateGroup: async (id: number, tenantId: number, data: UpdateGroupInput) => {
-    // Verify ownership
+    // Verificar propiedad del recurso
     const group = await prisma.modifierGroup.findFirst({ where: { id, tenantId } });
     if (!group) throw new NotFoundError('Modifier Group');
 
-    // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
-    // Build update data explicitly to satisfy exactOptionalPropertyTypes
+    // Defensa en profundidad: updateMany garantiza tenantId en la clausula WHERE.
+    // Se construye el objeto explicitamente para satisfacer exactOptionalPropertyTypes de TypeScript.
     const updateData: Record<string, unknown> = {};
     if (data.name !== undefined) updateData.name = data.name;
     if (data.minSelection !== undefined) updateData.minSelection = data.minSelection;
@@ -101,12 +138,17 @@ export const modifierService = {
     });
   },
 
+  /**
+   * Elimina un grupo de modificadores y todas sus opciones.
+   * Verifica que no este siendo utilizado por ningun producto antes de eliminar.
+   * Elimina opciones primero de forma explicita para evitar huerfanos si falta cascade.
+   */
   deleteGroup: async (id: number, tenantId: number) => {
-    // Verify ownership
+    // Verificar propiedad del recurso
     const group = await prisma.modifierGroup.findFirst({ where: { id, tenantId } });
     if (!group) throw new NotFoundError('Modifier Group');
 
-    // Check if used by products
+    // Verificar si esta siendo utilizado por algun producto
     const usage = await prisma.productModifierGroup.count({
         where: { modifierGroupId: id, tenantId }
     });
@@ -114,20 +156,28 @@ export const modifierService = {
         throw new ConflictError('Cannot delete group used by products');
     }
 
-    // Delete options first (cascade usually handles this but explicit is safer to avoid orphans if cascade missing)
+    // Eliminar opciones primero (el cascade normalmente maneja esto, pero hacerlo explicito
+    // es mas seguro para evitar opciones huerfanas si falta la configuracion de cascade)
     await prisma.modifierOption.deleteMany({
         where: { modifierGroupId: id, tenantId }
     });
 
-    // defense-in-depth: deleteMany ensures tenantId is in the WHERE clause
+    // Defensa en profundidad: deleteMany garantiza tenantId en la clausula WHERE
     return prisma.modifierGroup.deleteMany({
       where: { id, tenantId }
     });
   },
 
-  // Options Management
+  // ============================================================================
+  // GESTION DE OPCIONES
+  // ============================================================================
+
+  /**
+   * Agrega una nueva opcion a un grupo de modificadores.
+   * Verifica que el grupo pertenezca al tenant y valida que el precio no sea negativo.
+   */
   addOption: async (groupId: number, tenantId: number, data: CreateOptionInput) => {
-    // Verify Group Ownership
+    // Verificar propiedad del grupo
     const group = await prisma.modifierGroup.findFirst({ where: { id: groupId, tenantId } });
     if (!group) throw new NotFoundError('Modifier Group');
 
@@ -147,8 +197,13 @@ export const modifierService = {
     });
   },
 
+  /**
+   * Actualiza una opcion de modificador existente.
+   * Verifica propiedad via tenantId directamente en ModifierOption.
+   * Usa updateMany como defensa en profundidad.
+   */
   updateOption: async (optionId: number, tenantId: number, data: UpdateOptionInput) => {
-    // Verify Option Ownership via tenantId on ModifierOption
+    // Verificar propiedad de la opcion via tenantId en ModifierOption
     const option = await prisma.modifierOption.findFirst({
         where: { id: optionId, tenantId },
         include: { group: true }
@@ -162,7 +217,7 @@ export const modifierService = {
       throw new ValidationError('Modifier price cannot be negative');
     }
 
-    // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+    // Defensa en profundidad: updateMany garantiza tenantId en la clausula WHERE
     return prisma.modifierOption.updateMany({
       where: { id: optionId, tenantId },
       data: {
@@ -174,8 +229,13 @@ export const modifierService = {
     });
   },
 
+  /**
+   * Elimina una opcion de modificador.
+   * Verifica propiedad via tenantId directamente en ModifierOption.
+   * Usa deleteMany como defensa en profundidad.
+   */
   deleteOption: async (optionId: number, tenantId: number) => {
-    // Verify Option Ownership via tenantId on ModifierOption
+    // Verificar propiedad de la opcion via tenantId en ModifierOption
     const option = await prisma.modifierOption.findFirst({
         where: { id: optionId, tenantId },
         include: { group: true }
@@ -185,7 +245,7 @@ export const modifierService = {
         throw new NotFoundError('Modifier Option');
     }
 
-    // defense-in-depth: deleteMany ensures tenantId is in the WHERE clause
+    // Defensa en profundidad: deleteMany garantiza tenantId en la clausula WHERE
     return prisma.modifierOption.deleteMany({
       where: { id: optionId, tenantId }
     });

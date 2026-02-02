@@ -1,3 +1,15 @@
+/**
+ * @fileoverview Controlador de Proveedores
+ *
+ * CRUD para los proveedores de ingredientes del restaurante.
+ * Los proveedores se vinculan a las órdenes de compra para trackear
+ * de dónde se adquieren los insumos y mantener un directorio de contactos.
+ *
+ * Todas las operaciones se auditan para trazabilidad.
+ *
+ * @module controllers/supplier.controller
+ */
+
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { AuditAction } from '@prisma/client';
@@ -7,9 +19,9 @@ import { auditService } from '../services/audit.service';
 import { sendSuccess } from '../utils/response';
 
 /**
- * Zod schema for supplier creation/update
+ * Esquema de validación para crear/actualizar un proveedor.
+ * SEC-023: Límites de longitud en campos de texto para prevenir abuso.
  */
-// SEC-023: Max length validation on all text fields
 const supplierSchema = z.object({
   name: z.string().min(2).max(100),
   phone: z.string().max(30).optional(),
@@ -18,9 +30,7 @@ const supplierSchema = z.object({
   taxId: z.string().max(30).optional()
 });
 
-/**
- * Get all suppliers
- */
+/** Obtiene todos los proveedores del tenant con paginación */
 export const getSuppliers = asyncHandler(async (req: Request, res: Response) => {
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const limit = Math.max(1, parseInt(req.query.limit as string) || 200);
@@ -33,23 +43,19 @@ export const getSuppliers = asyncHandler(async (req: Request, res: Response) => 
   });
 });
 
-/**
- * Get supplier by ID
- */
+/** Obtiene un proveedor por ID verificando pertenencia al tenant */
 export const getSupplierById = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   const supplier = await supplierService.getById(id, req.user!.tenantId!);
   sendSuccess(res, supplier);
 });
 
-/**
- * Create new supplier
- */
+/** Crea un nuevo proveedor con registro de auditoría */
 export const createSupplier = asyncHandler(async (req: Request, res: Response) => {
   const parsed = supplierSchema.parse(req.body);
   const supplier = await supplierService.create(req.user!.tenantId!, parsed);
 
-  // Audit log - after successful creation
+  // Auditoría: registrar creación del proveedor
   auditService.log(
     AuditAction.SUPPLIER_CREATED,
     'Supplier',
@@ -66,15 +72,13 @@ export const createSupplier = asyncHandler(async (req: Request, res: Response) =
   sendSuccess(res, supplier, undefined, 201);
 });
 
-/**
- * Update supplier
- */
+/** Actualiza un proveedor existente con registro de auditoría */
 export const updateSupplier = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   const parsed = supplierSchema.partial().parse(req.body);
   const supplier = await supplierService.update(id, req.user!.tenantId!, parsed);
 
-  // Audit log - after successful update
+  // Auditoría: registrar modificación del proveedor
   auditService.log(
     AuditAction.SUPPLIER_UPDATED,
     'Supplier',
@@ -91,18 +95,16 @@ export const updateSupplier = asyncHandler(async (req: Request, res: Response) =
   sendSuccess(res, supplier);
 });
 
-/**
- * Delete supplier (soft delete)
- */
+/** Elimina un proveedor (soft-delete) con registro de auditoría previo a la eliminación */
 export const deleteSupplier = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
 
-  // Get supplier details before deletion for audit log
+  // Obtener datos del proveedor antes de eliminar para el registro de auditoría
   const supplier = await supplierService.getById(id, req.user!.tenantId!);
 
   await supplierService.delete(id, req.user!.tenantId!);
 
-  // Audit log - after successful deletion
+  // Auditoría: registrar eliminación con los datos previos
   auditService.log(
     AuditAction.SUPPLIER_DELETED,
     'Supplier',

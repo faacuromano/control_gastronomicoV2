@@ -1,13 +1,37 @@
+/**
+ * @fileoverview Inicializacion y gestion de Socket.IO para comunicacion en tiempo real
+ *
+ * Este modulo configura Socket.IO sobre el servidor HTTP existente para habilitar
+ * comunicacion bidireccional en tiempo real. Se usa para:
+ * - KDS (Kitchen Display System): notificar a cocina cuando llegan nuevos pedidos
+ * - Mozos: alertar cuando un plato esta listo para servir
+ * - Mesas: actualizar el estado en tiempo real (libre, ocupada, reservada)
+ * - Stock: alertas de stock bajo al panel de administracion
+ *
+ * Toda la comunicacion esta aislada por tenant usando rooms con prefijo
+ * `tenant:{id}:` para garantizar que los datos de un restaurante nunca
+ * se filtren a otro.
+ *
+ * @module lib/socket
+ */
+
 import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { DefaultEventsMap } from 'socket.io/dist/typed-events';
 import jwt from 'jsonwebtoken';
 import { logger } from '../utils/logger';
 
+// Instancia singleton de Socket.IO, undefined hasta que se llame initSocket()
 let io: Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any> | undefined;
 
+/**
+ * Inicializa el servidor Socket.IO sobre el servidor HTTP existente.
+ * Configura CORS, autenticacion JWT, adaptador Redis (si disponible),
+ * y los handlers de rooms por tenant.
+ */
 export const initSocket = (httpServer: HttpServer) => {
-  // FIX: Socket.io CORS Lockdown - Use environment-configured origins
+  // FIX: Lockdown CORS de Socket.IO - Usar origenes configurados por entorno,
+  // igual que el CORS de Express, para mantener consistencia de seguridad
   const allowedOrigins = process.env.CORS_ORIGINS?.split(',').map(o => o.trim()) ||
     (process.env.NODE_ENV === 'production' ? [] : ['http://localhost:5173', 'http://localhost:5174']);
 
@@ -19,7 +43,10 @@ export const initSocket = (httpServer: HttpServer) => {
     }
   });
 
-  // P1-15: Redis adapter for horizontal scaling (multi-pod)
+  // P1-15: Adaptador Redis para escalado horizontal (multi-pod).
+  // Sin Redis, Socket.IO solo funciona en una instancia. Con el adaptador,
+  // los eventos se comparten entre todos los pods via pub/sub de Redis,
+  // permitiendo que un usuario conectado al pod A reciba eventos emitidos desde el pod B.
   if (process.env.REDIS_HOST) {
     import('@socket.io/redis-adapter').then(({ createAdapter }) => {
       const { Redis } = require('ioredis');
@@ -33,7 +60,9 @@ export const initSocket = (httpServer: HttpServer) => {
     });
   }
 
-  // --- JWT Authentication Middleware ---
+  // --- Middleware de autenticacion JWT ---
+  // Cada conexion WebSocket debe presentar un token JWT valido.
+  // Se intenta obtener de: 1) handshake auth, 2) cookie HttpOnly.
   io.use((socket, next) => {
     try {
       const JWT_SECRET = process.env.JWT_SECRET;
@@ -42,10 +71,11 @@ export const initSocket = (httpServer: HttpServer) => {
         return next(new Error('Server misconfiguration'));
       }
 
-      // 1. Try explicit auth token from handshake (for clients that pass it)
+      // 1. Intentar obtener el token del handshake (para clientes que lo pasan explicitamente)
       let token: string | undefined = socket.handshake.auth?.token;
 
-      // 2. Fallback: extract from HttpOnly cookie
+      // 2. Fallback: extraer de la cookie HttpOnly `auth_token`.
+      // El navegador envia las cookies automaticamente con la peticion de upgrade a WS.
       if (!token) {
         const cookieHeader = socket.handshake.headers.cookie;
         if (cookieHeader) {
@@ -63,6 +93,7 @@ export const initSocket = (httpServer: HttpServer) => {
         return next(new Error('Authentication required'));
       }
 
+      // Verificar y decodificar el JWT
       const decoded = jwt.verify(token, JWT_SECRET) as {
         id: number;
         role: string;
@@ -71,11 +102,13 @@ export const initSocket = (httpServer: HttpServer) => {
         permissions?: unknown;
       };
 
+      // Validar que el token incluya tenantId (requerido para aislamiento multi-tenant)
       if (!decoded.tenantId) {
         logger.warn('WebSocket connection rejected: token missing tenantId', { socketId: socket.id, userId: decoded.id });
         return next(new Error('Invalid token: missing tenantId'));
       }
 
+      // Guardar los datos del usuario en el socket para uso posterior
       socket.data.user = decoded;
       next();
     } catch (err: unknown) {
@@ -85,6 +118,7 @@ export const initSocket = (httpServer: HttpServer) => {
     }
   });
 
+  // Handler de conexiones autenticadas
   io.on('connection', (socket: Socket) => {
     const user = socket.data.user;
     const tenantId = user.tenantId;
@@ -94,17 +128,19 @@ export const initSocket = (httpServer: HttpServer) => {
       logger.debug('WebSocket client disconnected', { socketId: socket.id, userId: user.id, tenantId });
     });
 
-    // --- Room Management (all rooms scoped to tenant) ---
+    // --- Gestion de Rooms (todas las rooms estan aisladas por tenant) ---
 
-    // SEC-031: Helper to validate and join tenant-scoped rooms only.
-    // Prevents any attempt to join rooms outside the authenticated tenant's namespace.
+    // SEC-031: Helper para validar y unir rooms con scope de tenant.
+    // Previene cualquier intento de unirse a rooms fuera del namespace del tenant autenticado.
+    // Todas las rooms siguen el formato `tenant:{tenantId}:{sufijo}`.
     const joinTenantRoom = (roomSuffix: string) => {
         const room = `tenant:${tenantId}:${roomSuffix}`;
         socket.join(room);
         logger.debug(`Socket joined room: ${room}`, { socketId: socket.id, tenantId });
     };
 
-    // SEC-031: Reject any raw room join attempts that bypass tenant scoping
+    // SEC-031: Rechazar cualquier intento de join directo que no respete el scope de tenant.
+    // Esto protege contra un cliente malicioso que intente escuchar eventos de otro restaurante.
     socket.on('join', (room: string) => {
         if (typeof room === 'string' && !room.startsWith(`tenant:${tenantId}:`)) {
             logger.warn('Rejected cross-tenant room join attempt', {
@@ -117,31 +153,31 @@ export const initSocket = (httpServer: HttpServer) => {
         }
     });
 
-    // Kitchen (General)
+    // Room de cocina general - recibe todos los eventos de ordenes nuevas y cambios de items
     socket.on('join:kitchen', () => {
         joinTenantRoom('kitchen');
     });
 
-    // Kitchen Stations (e.g., 'tenant:1:kitchen:station:hot')
+    // Estaciones de cocina especificas (ej: 'tenant:1:kitchen:station:hot' para cocina caliente)
     socket.on('join:kitchen:station', (station: string) => {
-        // Sanitize station name to prevent room injection
+        // Sanitizar el nombre de estacion para prevenir inyeccion de room
         const safeStation = String(station).replace(/[^a-zA-Z0-9_-]/g, '');
         joinTenantRoom(`kitchen:station:${safeStation}`);
     });
 
-    // Waiters (for ready alerts)
+    // Room de mozos - reciben alertas cuando un plato esta listo para servir
     socket.on('join:waiters', () => {
         joinTenantRoom('waiters');
     });
 
-    // Specific Table (for customer updates in future)
+    // Room de mesa especifica - para futuras actualizaciones al cliente sentado en esa mesa
     socket.on('join:table', (tableId: number) => {
         const safeTableId = parseInt(String(tableId), 10);
         if (isNaN(safeTableId) || safeTableId <= 0) return;
         joinTenantRoom(`table:${safeTableId}`);
     });
 
-    // Admin stock alerts room (already tenant-scoped in stockAlert.service.ts)
+    // Room de alertas de stock para administradores
     socket.on('join:admin:stock', () => {
         joinTenantRoom('admin:stock');
     });
@@ -150,6 +186,11 @@ export const initSocket = (httpServer: HttpServer) => {
   return io;
 };
 
+/**
+ * Obtiene la instancia de Socket.IO para emitir eventos desde los servicios.
+ * Retorna null si Socket.IO no fue inicializado (ej: en tests unitarios).
+ * Los servicios deben manejar el caso null sin lanzar error.
+ */
 export const getIO = (): Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any> | null => {
   if (!io) {
     logger.warn('Socket.IO not initialized, real-time updates disabled');

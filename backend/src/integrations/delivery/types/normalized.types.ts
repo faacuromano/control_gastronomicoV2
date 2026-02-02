@@ -1,23 +1,25 @@
 /**
  * @fileoverview Tipos Normalizados para Integraciones de Delivery
- * 
- * Define estructuras de datos comunes que todas las plataformas
- * (Rappi, Glovo, PedidosYa) mapean a un formato interno unificado.
- * 
- * RATIONALE:
- * Cada plataforma tiene su propio schema de pedidos. Este módulo
- * normaliza todos a un formato común para que el resto del sistema
- * solo trabaje con un tipo de dato.
- * 
+ *
+ * Define las estructuras de datos comunes a las que todas las plataformas
+ * (Rappi, Glovo, PedidosYa, UberEats) deben mapear sus datos propietarios.
+ *
+ * JUSTIFICACION:
+ * Cada plataforma tiene su propio esquema de datos para pedidos, clientes,
+ * items, direcciones, etc. Este modulo normaliza todos esos formatos dispares
+ * en una interfaz comun, de modo que el resto del sistema (servicios, jobs,
+ * controladores) solo trabaje con un unico tipo de datos sin importar la
+ * plataforma de origen.
+ *
  * @module integrations/delivery/types/normalized
  */
 
 // ============================================================================
-// ENUMS
+// ENUMERACIONES
 // ============================================================================
 
 /**
- * Plataformas de delivery soportadas.
+ * Plataformas de delivery soportadas por el sistema.
  */
 export enum DeliveryPlatformCode {
   RAPPI = 'RAPPI',
@@ -27,23 +29,24 @@ export enum DeliveryPlatformCode {
 }
 
 /**
- * Estados de pedido normalizados.
- * Mapean a los estados internos de OrderStatus.
+ * Estados normalizados de pedido.
+ * Cada plataforma mapea sus estados propietarios a estos valores comunes,
+ * que a su vez se mapean a los OrderStatus internos del sistema POS.
  */
 export enum NormalizedOrderStatus {
-  NEW = 'NEW',                      // Recién recibido
-  ACCEPTED = 'ACCEPTED',            // Aceptado por restaurante
-  IN_PREPARATION = 'IN_PREPARATION',// En cocina
-  READY = 'READY',                  // Listo para recoger
-  PICKED_UP = 'PICKED_UP',          // Driver recogió
-  ON_ROUTE = 'ON_ROUTE',            // En camino
-  DELIVERED = 'DELIVERED',          // Entregado
-  CANCELLED = 'CANCELLED',          // Cancelado
-  REJECTED = 'REJECTED',            // Rechazado por restaurante
+  NEW = 'NEW',                      // Recien recibido de la plataforma
+  ACCEPTED = 'ACCEPTED',            // Aceptado por el restaurante
+  IN_PREPARATION = 'IN_PREPARATION',// En cocina, siendo preparado
+  READY = 'READY',                  // Listo para ser retirado por el repartidor
+  PICKED_UP = 'PICKED_UP',          // El repartidor retiro el pedido
+  ON_ROUTE = 'ON_ROUTE',            // En camino hacia el cliente
+  DELIVERED = 'DELIVERED',          // Entregado al cliente
+  CANCELLED = 'CANCELLED',          // Cancelado (por plataforma o restaurante)
+  REJECTED = 'REJECTED',            // Rechazado por el restaurante
 }
 
 /**
- * Tipos de evento de webhook.
+ * Tipos de eventos que llegan por webhook desde las plataformas.
  */
 export enum WebhookEventType {
   ORDER_NEW = 'ORDER_NEW',
@@ -55,156 +58,159 @@ export enum WebhookEventType {
 }
 
 // ============================================================================
-// TIPOS DE PEDIDO NORMALIZADO
+// TIPOS DEL PEDIDO NORMALIZADO
 // ============================================================================
 
 /**
  * Item de pedido normalizado.
+ * Representa un producto del pedido con sus modificadores, independiente
+ * de como lo envie cada plataforma.
  */
 export interface NormalizedOrderItem {
-  /** SKU/PLU del producto en la plataforma */
+  /** SKU/PLU del producto en la plataforma externa */
   externalSku: string;
-  /** Nombre del producto (para logging/display) */
+  /** Nombre del producto (para logging y visualizacion) */
   name: string;
   /** Cantidad pedida */
   quantity: number;
-  /** Precio unitario (puede diferir del precio local) */
+  /** Precio unitario (puede diferir del precio local del restaurante) */
   unitPrice: number;
-  /** Notas especiales del cliente */
+  /** Notas especiales del cliente para este item */
   notes?: string | undefined;
-  /** Modificadores/extras aplicados */
+  /** Modificadores/extras aplicados al item */
   modifiers: NormalizedModifier[];
-  /** Ingredientes removidos */
+  /** Ingredientes que el cliente pidio remover */
   removedIngredients: string[];
 }
 
 /**
- * Modificador normalizado.
+ * Modificador normalizado (extras, toppings, opciones).
  */
 export interface NormalizedModifier {
-  /** SKU/ID del modificador en la plataforma */
+  /** SKU/ID del modificador en la plataforma externa */
   externalSku: string;
   /** Nombre del modificador */
   name: string;
-  /** Precio adicional */
+  /** Precio adicional que cobra este modificador */
   price: number;
-  /** Cantidad */
+  /** Cantidad de este modificador */
   quantity: number;
 }
 
 /**
- * Cliente normalizado.
+ * Cliente normalizado del pedido.
  */
 export interface NormalizedCustomer {
-  /** ID del cliente en la plataforma */
+  /** ID del cliente en la plataforma externa */
   externalId: string;
-  /** Nombre del cliente */
+  /** Nombre completo del cliente */
   name: string;
-  /** Teléfono (puede estar enmascarado) */
+  /** Telefono (puede estar enmascarado por la plataforma por privacidad) */
   phone?: string | undefined;
-  /** Email */
+  /** Correo electronico */
   email?: string | undefined;
 }
 
 /**
- * Dirección de entrega normalizada.
+ * Direccion de entrega normalizada.
  */
 export interface NormalizedAddress {
-  /** Dirección completa formateada */
+  /** Direccion completa formateada */
   fullAddress: string;
-  /** Calle y número */
+  /** Calle y numero */
   street?: string | undefined;
   /** Ciudad */
   city?: string | undefined;
-  /** Código postal */
+  /** Codigo postal */
   zipCode?: string | undefined;
-  /** Latitud */
+  /** Latitud para geolocalizacion */
   latitude?: number | undefined;
-  /** Longitud */
+  /** Longitud para geolocalizacion */
   longitude?: number | undefined;
-  /** Instrucciones adicionales */
+  /** Instrucciones adicionales de entrega */
   instructions?: string | undefined;
 }
 
 /**
- * Driver normalizado (para PLATFORM_DELIVERY).
+ * Repartidor normalizado (para pedidos con PLATFORM_DELIVERY).
  */
 export interface NormalizedDriver {
-  /** ID del driver en la plataforma */
+  /** ID del repartidor en la plataforma externa */
   externalId: string;
-  /** Nombre del driver */
+  /** Nombre del repartidor */
   name: string;
-  /** Teléfono */
+  /** Telefono de contacto */
   phone?: string;
-  /** Tipo de vehículo */
+  /** Tipo de vehiculo */
   vehicleType?: 'MOTORCYCLE' | 'BICYCLE' | 'CAR' | 'WALKING';
-  /** Matrícula del vehículo */
+  /** Patente del vehiculo */
   licensePlate?: string;
-  /** URL de foto del driver */
+  /** URL de la foto del repartidor */
   photoUrl?: string;
 }
 
 /**
  * Estructura de pedido normalizada.
- * Todos los adapters deben convertir su payload a este formato.
+ * Todos los adaptadores DEBEN convertir el payload de su plataforma a este formato.
+ * Es el contrato principal que conecta las integraciones externas con el sistema interno.
  */
 export interface NormalizedOrder {
-  /** ID único del pedido en la plataforma */
+  /** ID unico del pedido en la plataforma externa */
   externalId: string;
-  /** Código de la plataforma */
+  /** Codigo de la plataforma de origen */
   platform: DeliveryPlatformCode;
-  /** Número de orden mostrado al cliente */
+  /** Numero de pedido visible para el cliente en la plataforma */
   displayNumber: string;
-  /** Estado del pedido */
+  /** Estado actual del pedido */
   status: NormalizedOrderStatus;
-  /** Timestamp de creación en la plataforma */
+  /** Fecha y hora de creacion en la plataforma */
   createdAt: Date;
-  /** Tipo de fulfillment */
+  /** Tipo de fulfillment: entrega por plataforma, entrega propia, o retiro */
   fulfillmentType: 'PLATFORM_DELIVERY' | 'SELF_DELIVERY' | 'TAKEAWAY';
-  
-  // Cliente y entrega
+
+  // Datos del cliente y la entrega
   customer: NormalizedCustomer;
   deliveryAddress?: NormalizedAddress | undefined;
   driver?: NormalizedDriver | undefined;
-  
-  // Items
+
+  // Items del pedido
   items: NormalizedOrderItem[];
-  
-  // Montos
+
+  // Montos del pedido
   subtotal: number;
   deliveryFee: number;
   discount: number;
   tip: number;
   total: number;
-  
-  /** Comisión de la plataforma (si está disponible) */
+
+  /** Comision de la plataforma (si esta disponible en el payload) */
   platformCommission?: number | undefined;
-  
+
   /** Hora estimada de entrega */
   estimatedDeliveryAt?: Date | undefined;
-  
+
   /** Notas generales del pedido */
   notes?: string | undefined;
-  
-  /** Método de pago */
+
+  /** Metodo de pago utilizado */
   paymentMethod: 'ONLINE' | 'CASH' | 'CARD';
-  
-  /** Ya pagado en la plataforma? */
+
+  /** Indica si el pedido ya fue pagado online en la plataforma */
   isPrepaid: boolean;
-  
-  /** Payload raw original para debugging */
+
+  /** Payload crudo original para debugging y auditoria */
   rawPayload: unknown;
 
-  /** Store ID from the external platform (for tenant resolution) */
+  /** ID de la tienda en la plataforma externa (usado para resolver el tenant) */
   storeId?: string;
 }
 
 // ============================================================================
-// TIPOS DE SINCRONIZACIÓN
+// TIPOS DE SINCRONIZACION
 // ============================================================================
 
 /**
- * Resultado de sincronización de menú.
+ * Resultado de una sincronizacion de menu con una plataforma.
  */
 export interface MenuSyncResult {
   success: boolean;
@@ -215,7 +221,7 @@ export interface MenuSyncResult {
 }
 
 /**
- * Actualización de disponibilidad de producto.
+ * Actualizacion de disponibilidad de un producto en plataformas externas.
  */
 export interface AvailabilityUpdate {
   externalSku: string;
@@ -224,7 +230,7 @@ export interface AvailabilityUpdate {
 }
 
 /**
- * Resultado de actualización de estado.
+ * Resultado de enviar una actualizacion de estado a una plataforma.
  */
 export interface StatusUpdateResult {
   success: boolean;
@@ -238,25 +244,25 @@ export interface StatusUpdateResult {
 // ============================================================================
 
 /**
- * Payload de webhook procesado.
+ * Webhook procesado tras el parseo y normalizacion del payload.
  */
 export interface ProcessedWebhook {
-  /** Tipo de evento */
+  /** Tipo de evento del webhook */
   eventType: WebhookEventType;
   /** Plataforma de origen */
   platform: DeliveryPlatformCode;
-  /** ID del pedido externo */
+  /** ID del pedido en la plataforma externa */
   externalOrderId: string;
-  /** Pedido normalizado (si aplica) */
+  /** Pedido normalizado (si el evento incluye datos de pedido) */
   order?: NormalizedOrder;
-  /** Timestamp de recepción */
+  /** Timestamp de recepcion del webhook */
   receivedAt: Date;
-  /** Payload raw para auditoría */
+  /** Payload crudo para auditoria */
   rawPayload: unknown;
 }
 
 /**
- * Resultado de validación HMAC.
+ * Resultado de la validacion HMAC de un webhook.
  */
 export interface HmacValidationResult {
   isValid: boolean;

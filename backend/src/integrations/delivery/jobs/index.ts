@@ -1,8 +1,10 @@
 /**
- * @fileoverview Jobs Module Index
- * 
- * Exporta todos los job processors y función de inicialización.
- * 
+ * @fileoverview Indice del Modulo de Jobs de Delivery
+ *
+ * Exporta los procesadores de jobs y la funcion de inicializacion
+ * del worker de webhooks. Estos jobs se ejecutan de forma asincrona
+ * mediante BullMQ + Redis para garantizar resiliencia y reintentos.
+ *
  * @module integrations/delivery/jobs
  */
 

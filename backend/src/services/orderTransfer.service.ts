@@ -1,9 +1,11 @@
 /**
- * @fileoverview Order item transfer service.
- * Handles moving items between tables with audit logging.
- * 
+ * @fileoverview Servicio de transferencia de items entre mesas.
+ * Permite mover items de una orden a otra (en otra mesa), creando una nueva
+ * orden en la mesa destino si no existe una abierta. Incluye registro de auditoria
+ * y recalculo automatico de totales en ambas ordenes.
+ *
  * @module services/orderTransfer.service
- * @phase2 Operational Features
+ * @phase2 Funcionalidades Operativas
  */
 
 import { prisma } from '../lib/prisma';
@@ -22,20 +24,32 @@ export interface TransferResult {
 }
 
 /**
- * Service for transferring order items between tables.
+ * Servicio para transferir items de ordenes entre mesas.
+ * Caso de uso tipico: un grupo de comensales se divide y parte de ellos
+ * se mueve a otra mesa, llevandose sus platos consigo.
  */
 export class OrderTransferService {
-    
+
     /**
-     * Transfer items from one table to another.
-     * 
-     * If target table has an open order, items are added to it.
-     * If not, a new order is created for the target table.
-     * 
-     * @param itemIds - IDs of items to transfer
-     * @param fromTableId - Source table ID
-     * @param toTableId - Target table ID
-     * @param context - Audit context
+     * Transfiere items de una mesa a otra.
+     *
+     * Si la mesa destino tiene una orden abierta, los items se agregan a ella.
+     * Si no, se crea una nueva orden en la mesa destino.
+     *
+     * Flujo detallado:
+     * 1. Bloquea ambas mesas en orden ascendente de ID para prevenir deadlocks
+     * 2. Valida que la mesa origen tenga una orden abierta con los items indicados
+     * 3. Busca o crea una orden en la mesa destino
+     * 4. Mueve los items a la orden destino
+     * 5. Recalcula totales de ambas ordenes
+     * 6. Si la orden origen queda sin items, la cancela y libera la mesa
+     * 7. Registra la operacion en el log de auditoria
+     *
+     * @param itemIds - IDs de los items a transferir
+     * @param fromTableId - ID de la mesa origen
+     * @param toTableId - ID de la mesa destino
+     * @param tenantId - ID del tenant para aislamiento multi-tenant
+     * @param context - Contexto de auditoria (usuario, IP)
      */
     async transferItems(
         itemIds: number[],
@@ -47,11 +61,11 @@ export class OrderTransferService {
         if (fromTableId === toTableId) {
             throw new ValidationError('Cannot transfer items to the same table');
         }
-        
+
         const result = await prisma.$transaction(async (tx) => {
-            // FIX DB-003: Lock tables in ascending ID order to prevent deadlocks
-            // If two concurrent transfers (A->B and B->A) both lock in the same order,
-            // they serialize instead of deadlocking.
+            // FIX DB-003: Bloquear mesas en orden ascendente de ID para prevenir deadlocks.
+            // Si dos transferencias concurrentes (A->B y B->A) bloquean en el mismo orden,
+            // se serializan en lugar de generar un deadlock.
             const [firstLockId, secondLockId] = fromTableId < toTableId
                 ? [fromTableId, toTableId]
                 : [toTableId, fromTableId];
@@ -64,6 +78,7 @@ export class OrderTransferService {
                 }
             };
 
+            // Obtener ambas mesas con sus ordenes activas, en orden de bloqueo
             const firstTable = await tx.table.findFirst({
                 where: { id: firstLockId, tenantId },
                 include: tableInclude
@@ -73,11 +88,11 @@ export class OrderTransferService {
                 include: tableInclude
             });
 
-            // Map back to source/target
+            // Reasignar a origen/destino segun corresponda
             const fromTable = fromTableId === firstLockId ? firstTable : secondTable;
             const toTable = fromTableId === firstLockId ? secondTable : firstTable;
 
-            // 1. Validate source table
+            // 1. Validar mesa origen
             if (!fromTable) {
                 throw new NotFoundError('Source table');
             }
@@ -87,7 +102,7 @@ export class OrderTransferService {
                 throw new ValidationError('Source table has no open order');
             }
 
-            // 2. Validate items belong to source order
+            // 2. Validar que los items pertenezcan a la orden origen
             const items = await tx.orderItem.findMany({
                 where: {
                     id: { in: itemIds },
@@ -100,21 +115,21 @@ export class OrderTransferService {
             if (items.length !== itemIds.length) {
                 throw new ValidationError('Some items do not belong to the source order');
             }
-            
+
             if (!toTable) {
                 throw new NotFoundError('Target table');
             }
-            
+
             const targetOrder = toTable.orders[0];
-            
+
             let targetOrderId: number;
             let newOrderCreated = false;
-            
+
             if (targetOrder) {
-                // Add to existing order
+                // Agregar a la orden existente en la mesa destino
                 targetOrderId = targetOrder.id;
             } else {
-                // Create new order for target table
+                // Crear nueva orden para la mesa destino (no tiene orden abierta)
                 const { orderNumberService } = await import('./orderNumber.service');
                 const businessDate = getBusinessDate();
                 const { orderNumber } = await orderNumberService.getNextOrderNumber(tx, tenantId, businessDate);
@@ -135,8 +150,8 @@ export class OrderTransferService {
                 });
                 targetOrderId = newOrder.id;
                 newOrderCreated = true;
-                
-                // Update target table
+
+                // Actualizar la mesa destino: marcarla como ocupada con la nueva orden
                 const tableUpdateResult = await tx.table.updateMany({
                     where: { id: toTableId, tenantId },
                     data: {
@@ -148,19 +163,19 @@ export class OrderTransferService {
                     throw new NotFoundError('Target table');
                 }
             }
-            
-            // 4. Move items to target order
+
+            // 4. Mover los items a la orden destino
             await tx.orderItem.updateMany({
                 where: { id: { in: itemIds }, tenantId },
                 data: { orderId: targetOrderId }
             });
 
-            // 5. Recalculate source order totals
+            // 5. Recalcular totales de la orden origen (sin los items transferidos)
             const remainingSourceItems = await tx.orderItem.findMany({
                 where: { orderId: sourceOrder.id, tenantId },
                 include: { modifiers: true }
             });
-            
+
             let sourceSubtotal = 0;
             for (const item of remainingSourceItems) {
                 sourceSubtotal += Number(item.unitPrice) * item.quantity;
@@ -168,8 +183,8 @@ export class OrderTransferService {
                     sourceSubtotal += Number(mod.priceCharged) * item.quantity;
                 }
             }
-            
-            // SAFE: tx.table.findFirst at L53 verifies tenant ownership of source order
+
+            // SEGURO: tx.table.findFirst en L53 verifica propiedad del tenant sobre la orden origen
             await tx.order.update({
                 where: { id: sourceOrder.id },
                 data: {
@@ -177,10 +192,10 @@ export class OrderTransferService {
                     total: sourceSubtotal - Number(sourceOrder.discount)
                 }
             });
-            
-            // If source order has no items left, close it
+
+            // Si la orden origen quedo sin items, cancelarla y liberar la mesa
             if (remainingSourceItems.length === 0) {
-                // SAFE: sourceOrder verified via tx.table.findFirst at L53
+                // SEGURO: sourceOrder verificado via tx.table.findFirst en L53
                 await tx.order.update({
                     where: { id: sourceOrder.id },
                     data: { status: 'CANCELLED' }
@@ -190,13 +205,13 @@ export class OrderTransferService {
                     data: { status: 'FREE', currentOrderId: null }
                 });
             }
-            
-            // 6. Recalculate target order totals
+
+            // 6. Recalcular totales de la orden destino (con los items recibidos)
             const targetItems = await tx.orderItem.findMany({
                 where: { orderId: targetOrderId, tenantId },
                 include: { modifiers: true }
             });
-            
+
             let targetSubtotal = 0;
             for (const item of targetItems) {
                 targetSubtotal += Number(item.unitPrice) * item.quantity;
@@ -204,8 +219,8 @@ export class OrderTransferService {
                     targetSubtotal += Number(mod.priceCharged) * item.quantity;
                 }
             }
-            
-            // SAFE: targetOrderId is either from tx.table.findFirst at L88 or newly created at L117
+
+            // SEGURO: targetOrderId proviene de tx.table.findFirst en L88 o fue creado en L117
             await tx.order.update({
                 where: { id: targetOrderId },
                 data: {
@@ -213,7 +228,7 @@ export class OrderTransferService {
                     total: targetSubtotal
                 }
             });
-            
+
             return {
                 fromOrderId: sourceOrder.id,
                 toOrderId: targetOrderId,
@@ -226,12 +241,12 @@ export class OrderTransferService {
                 }))
             };
         });
-        
-        // 7. Log to audit trail
+
+        // 7. Registrar en el log de auditoria (fuera de la transaccion para seguridad)
         await auditService.log(
             AuditAction.ITEM_TRANSFERRED,
             'OrderItem',
-            null, // Multiple items
+            null, // Multiples items transferidos
             context,
             {
                 itemIds,
@@ -243,14 +258,14 @@ export class OrderTransferService {
                 itemCount: result.itemCount
             }
         );
-        
+
         logger.info('Items transferred between tables', {
             itemIds,
             fromTableId,
             toTableId,
             itemCount: result.itemCount
         });
-        
+
         return {
             success: true,
             itemsTransferred: result.itemCount,

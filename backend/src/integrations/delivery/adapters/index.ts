@@ -1,17 +1,19 @@
 /**
- * @fileoverview Delivery Adapters Module Exports
- * 
- * Punto de entrada para el sistema de adapters de delivery.
- * 
+ * @fileoverview Exportaciones del Modulo de Adaptadores de Delivery
+ *
+ * Punto de entrada centralizado para el sistema de adaptadores.
+ * Exporta la clase base abstracta, la factory y los tipos necesarios
+ * para que el resto del sistema interactue con las plataformas de delivery.
+ *
  * @module integrations/delivery/adapters
  */
 
-// Abstract base
+// Clase base abstracta que define el contrato de todos los adaptadores
 export { AbstractDeliveryAdapter } from './AbstractDeliveryAdapter';
 export type { AdapterConfig, RequestContext } from './AbstractDeliveryAdapter';
 
-// Factory
+// Factory para obtener el adaptador correcto segun la plataforma
 export { AdapterFactory, RappiAdapter } from './AdapterFactory';
 
-// Re-export types
+// Re-exportar todos los tipos normalizados compartidos
 export * from '../types/normalized.types';

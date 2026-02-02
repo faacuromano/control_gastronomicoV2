@@ -1,14 +1,19 @@
 /**
- * @fileoverview Prisma Transaction Extensions for P0 Remediation
- * 
- * Implements the "Bounded Wait" axiom from TDD Section 1.2:
- * - Enforces lock timeout to prevent indefinite waits
- * - Provides Serializable isolation level wrapper
- * - Centralizes transaction error handling
- * 
+ * @fileoverview Extensiones de transacciones Prisma para remediacion P0
+ *
+ * Implementa el axioma de "Espera Acotada" de la Seccion 1.2 del TDD:
+ * - Aplica timeout de lock para prevenir esperas indefinidas
+ * - Provee un wrapper de nivel de aislamiento Serializable
+ * - Centraliza el manejo de errores de transacciones
+ *
+ * En un sistema POS de gastronomia, multiples terminales pueden intentar
+ * modificar la misma orden simultaneamente (ej: un mozo agrega items mientras
+ * otro cobra). Estas extensiones garantizan que las operaciones concurrentes
+ * no corrompan los datos mediante bloqueos pesimistas y transacciones serializables.
+ *
  * @module lib/prisma-extensions
- * @implements TDD Section 1.2 - Pessimistic Locking Strategy
- * @implements TDD Section 1.4 - ACID Compliance
+ * @implements TDD Seccion 1.2 - Estrategia de Bloqueo Pesimista
+ * @implements TDD Seccion 1.4 - Cumplimiento ACID
  */
 
 import { Prisma, PrismaClient } from '@prisma/client';
@@ -16,24 +21,26 @@ import { prisma } from './prisma';
 import { logger } from '../utils/logger';
 
 // ============================================================================
-// CONFIGURATION CONSTANTS
+// CONSTANTES DE CONFIGURACION
 // ============================================================================
 
 /**
- * Maximum time to wait for lock acquisition (milliseconds).
- * Per TDD "Bounded Wait" axiom: No SELECT FOR UPDATE shall wait indefinitely.
- * 
- * @constant
+ * Tiempo maximo de espera para adquirir un lock (milisegundos).
+ * Segun el axioma de "Espera Acotada" del TDD: ningun SELECT FOR UPDATE
+ * debe esperar indefinidamente. Si un recurso esta bloqueado por mas de
+ * este tiempo, se asume que hay un problema y se lanza error.
+ *
+ * CFG-007: Se validan los rangos del timeout para prevenir mala configuracion.
+ * Minimo 1 segundo, maximo 30 segundos.
  */
-// CFG-007: Validate timeout ranges to prevent misconfiguration
 const LOCK_TIMEOUT_MS = Math.max(1000, Math.min(30000, parseInt(process.env.LOCK_TIMEOUT_MS || '5000', 10) || 5000));
 
 /**
- * Maximum transaction duration before timeout.
- * Prevents runaway transactions from holding locks.
- * Must be larger than lock timeout.
+ * Duracion maxima de una transaccion antes de que expire.
+ * Previene que transacciones desbocadas mantengan locks indefinidamente.
+ * Siempre debe ser mayor que el timeout de lock (se le suman 2 segundos minimo).
  *
- * @constant
+ * Ejemplo: si el lock timeout es 5s, la transaccion tiene al menos 7s para completar.
  */
 const TRANSACTION_TIMEOUT_MS = Math.max(
   LOCK_TIMEOUT_MS + 2000,
@@ -41,12 +48,13 @@ const TRANSACTION_TIMEOUT_MS = Math.max(
 );
 
 // ============================================================================
-// ERROR TYPES
+// TIPOS DE ERROR ESPECIFICOS
 // ============================================================================
 
 /**
- * Error thrown when lock acquisition times out.
- * Maps to HTTP 409 Conflict for API responses.
+ * Error lanzado cuando la adquisicion del lock expira.
+ * Se mapea a HTTP 409 Conflict en las respuestas de la API, ya que indica
+ * que otro proceso esta modificando el mismo recurso.
  */
 export class LockTimeoutError extends Error {
   public readonly code = 'LOCK_TIMEOUT';
@@ -59,8 +67,10 @@ export class LockTimeoutError extends Error {
 }
 
 /**
- * Error thrown when state machine transition is invalid.
- * E.g., attempting to modify a CANCELLED order.
+ * Error lanzado cuando una transicion de estado es invalida.
+ * Ejemplo: intentar modificar una orden CANCELADA o pasar de DELIVERED a OPEN.
+ * La maquina de estados define las transiciones validas y este error
+ * protege la integridad del flujo de negocio.
  */
 export class InvalidStateTransitionError extends Error {
   public readonly code = 'INVALID_STATE_TRANSITION';
@@ -73,12 +83,14 @@ export class InvalidStateTransitionError extends Error {
 }
 
 // ============================================================================
-// TRANSACTION CONTEXT TYPE
+// TIPO DE CONTEXTO DE TRANSACCION
 // ============================================================================
 
 /**
- * Transaction client type for use in nested operations.
- * This is the type of `tx` parameter in transaction callbacks.
+ * Tipo del cliente de transaccion para uso en operaciones anidadas.
+ * Es el tipo del parametro `tx` que reciben los callbacks de transacciones.
+ * Se excluyen los metodos de conexion y extension porque no tienen sentido
+ * dentro de una transaccion activa.
  */
 export type TransactionClient = Omit<
   PrismaClient,
@@ -86,27 +98,30 @@ export type TransactionClient = Omit<
 >;
 
 // ============================================================================
-// TRANSACTION HELPERS
+// HELPERS DE TRANSACCIONES
 // ============================================================================
 
 /**
- * Execute a function within a Serializable transaction with bounded lock wait.
- * 
- * This is the primary transaction wrapper for P0-003 fixes.
- * It enforces:
- * 1. SERIALIZABLE isolation level (prevents phantom reads)
- * 2. Bounded lock timeout (prevents indefinite waits)
- * 3. Transaction timeout (prevents runaway transactions)
- * 
- * @complexity O(1) - Transaction overhead only
- * @guarantee ACID - Serializable isolation level
- * @implements TDD Section 1.2 - Serializable Transaction Design
- * 
- * @param fn - The function to execute within the transaction
- * @param options - Optional configuration overrides
- * @returns Result of the transaction function
- * @throws {LockTimeoutError} If lock cannot be acquired within timeout
- * 
+ * Ejecuta una funcion dentro de una transaccion Serializable con espera de lock acotada.
+ *
+ * Este es el wrapper principal para los fixes P0-003. Garantiza:
+ * 1. Nivel de aislamiento SERIALIZABLE (previene lecturas fantasma)
+ * 2. Timeout acotado de lock (previene esperas indefinidas)
+ * 3. Timeout de transaccion (previene transacciones desbocadas)
+ *
+ * Caso de uso tipico: procesar un pago donde se necesita leer el total actual
+ * de la orden, verificar que no esta pagada, y crear el registro de pago,
+ * todo de forma atomica y sin que otro proceso pueda interferir.
+ *
+ * @complexity O(1) - Solo overhead de transaccion
+ * @guarantee ACID - Nivel de aislamiento Serializable
+ * @implements TDD Seccion 1.2 - Diseno de Transaccion Serializable
+ *
+ * @param fn - La funcion a ejecutar dentro de la transaccion
+ * @param options - Configuracion opcional para sobreescribir los valores por defecto
+ * @returns Resultado de la funcion de transaccion
+ * @throws {LockTimeoutError} Si el lock no puede adquirirse dentro del timeout
+ *
  * @example
  * ```typescript
  * const result = await withSerializableTransaction(async (tx) => {
@@ -131,15 +146,16 @@ export async function withSerializableTransaction<T>(
   } = options;
 
   const startTime = Date.now();
-  
+
   try {
     const result = await prisma.$transaction(
       async (tx) => {
-        // Set session-level lock timeout (MySQL/InnoDB specific)
-        // This ensures SELECT FOR UPDATE doesn't wait indefinitely
+        // Configurar el timeout de lock a nivel de sesion MySQL/InnoDB.
+        // Esto asegura que un SELECT FOR UPDATE no quede esperando indefinidamente
+        // si otra transaccion tiene el lock sobre las mismas filas.
         await tx.$executeRaw`SET innodb_lock_wait_timeout = ${Math.floor(lockTimeoutMs / 1000)}`;
-        
-        // Execute the actual transaction logic
+
+        // Ejecutar la logica real de la transaccion
         return await fn(tx);
       },
       {
@@ -158,8 +174,8 @@ export async function withSerializableTransaction<T>(
     return result;
   } catch (error) {
     const duration = Date.now() - startTime;
-    
-    // Handle lock timeout errors (MySQL error codes)
+
+    // Manejar errores de timeout de lock (codigos de error MySQL)
     if (isLockTimeoutError(error)) {
       logger.warn('Lock timeout in serializable transaction', {
         resource: resourceName,
@@ -170,17 +186,17 @@ export async function withSerializableTransaction<T>(
       throw new LockTimeoutError(resourceName, lockTimeoutMs);
     }
 
-    // Handle deadlock errors (retry at caller level)
+    // Manejar errores de deadlock (el reintento lo maneja el caller)
     if (isDeadlockError(error)) {
       logger.warn('Deadlock detected in serializable transaction', {
         resource: resourceName,
         durationMs: duration
       });
-      // Re-throw with specific error for caller retry logic
+      // Re-lanzar con error especifico para que el caller pueda reintentar
       throw error;
     }
 
-    // Log and re-throw other errors
+    // Loguear y re-lanzar otros errores no esperados
     logger.error('Serializable transaction failed', {
       resource: resourceName,
       durationMs: duration,
@@ -191,24 +207,32 @@ export async function withSerializableTransaction<T>(
 }
 
 /**
- * Execute a function with pessimistic row-level locking.
- * 
- * This is the primary wrapper for P0-001 fixes.
- * Uses SELECT FOR UPDATE to acquire exclusive lock on specific rows.
- * 
- * @complexity O(1) - Single row lock
- * @guarantee Exclusive access to locked rows during transaction
- * @implements TDD Section 1.2 - Pessimistic Locking
- * 
- * @param fn - The function to execute (receives transaction client)
- * @param options - Configuration for lock behavior
- * @returns Result of the transaction function
- * @throws {LockTimeoutError} If lock cannot be acquired
- * 
+ * Ejecuta una funcion con bloqueo pesimista a nivel de fila.
+ *
+ * Este es el wrapper principal para los fixes P0-001.
+ * Usa SELECT FOR UPDATE para adquirir un lock exclusivo sobre filas especificas.
+ *
+ * Caso de uso tipico: actualizar el estado de una orden. Se bloquea la fila
+ * de la orden, se lee su estado actual, se valida la transicion, y se actualiza.
+ * Ningun otro proceso puede leer o modificar la orden mientras tanto.
+ *
+ * A diferencia de withSerializableTransaction, este wrapper usa Read Committed
+ * como nivel de aislamiento porque el lock explicito (FOR UPDATE) ya provee
+ * la proteccion necesaria sin el overhead de Serializable.
+ *
+ * @complexity O(1) - Lock de una sola fila
+ * @guarantee Acceso exclusivo a las filas bloqueadas durante la transaccion
+ * @implements TDD Seccion 1.2 - Bloqueo Pesimista
+ *
+ * @param fn - La funcion a ejecutar (recibe el cliente de transaccion)
+ * @param options - Configuracion del comportamiento del lock
+ * @returns Resultado de la funcion de transaccion
+ * @throws {LockTimeoutError} Si el lock no puede adquirirse
+ *
  * @example
  * ```typescript
  * const order = await withPessimisticLock(async (tx) => {
- *   // Lock acquired - safe to read and modify
+ *   // Lock adquirido - seguro leer y modificar
  *   const order = await tx.$queryRaw`
  *     SELECT * FROM Order WHERE id = ${orderId} FOR UPDATE
  *   `;
@@ -236,15 +260,15 @@ export async function withPessimisticLock<T>(
   try {
     const result = await prisma.$transaction(
       async (tx) => {
-        // Set session-level lock timeout
+        // Configurar timeout de lock a nivel de sesion
         await tx.$executeRaw`SET innodb_lock_wait_timeout = ${Math.floor(lockTimeoutMs / 1000)}`;
-        
-        // Execute the transaction with pessimistic locking
+
+        // Ejecutar la transaccion con bloqueo pesimista
         return await fn(tx);
       },
       {
-        // Use Read Committed for pessimistic locking (not Serializable)
-        // The lock itself provides the isolation
+        // Usar Read Committed para bloqueo pesimista (no Serializable).
+        // El lock explicito (FOR UPDATE) ya provee el aislamiento necesario.
         timeout: transactionTimeoutMs,
       }
     );
@@ -278,17 +302,18 @@ export async function withPessimisticLock<T>(
 }
 
 // ============================================================================
-// ERROR DETECTION HELPERS
+// HELPERS DE DETECCION DE ERRORES
 // ============================================================================
 
 /**
- * Check if error is a lock timeout error.
- * MySQL error code 1205 = Lock wait timeout exceeded.
+ * Verifica si el error es un timeout de lock.
+ * Codigo de error MySQL 1205 = Lock wait timeout exceeded.
+ * Prisma lo envuelve en el codigo P2034.
  */
 function isLockTimeoutError(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    // P2034 = Transaction failed due to lock timeout or deadlock
-    return error.code === 'P2034' || 
+    // P2034 = La transaccion fallo por timeout de lock o deadlock
+    return error.code === 'P2034' ||
            (error.meta?.code === '1205') ||
            (typeof error.message === 'string' && error.message.includes('Lock wait timeout'));
   }
@@ -296,12 +321,13 @@ function isLockTimeoutError(error: unknown): boolean {
 }
 
 /**
- * Check if error is a deadlock error.
- * MySQL error code 1213 = Deadlock found.
+ * Verifica si el error es un deadlock.
+ * Codigo de error MySQL 1213 = Deadlock found.
+ * Un deadlock ocurre cuando dos transacciones se bloquean mutuamente.
  */
 function isDeadlockError(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    return error.code === 'P2034' && 
+    return error.code === 'P2034' &&
            (error.meta?.code === '1213' ||
             (typeof error.message === 'string' && error.message.includes('Deadlock')));
   }
@@ -309,12 +335,14 @@ function isDeadlockError(error: unknown): boolean {
 }
 
 // ============================================================================
-// STATE MACHINE VALIDATION
+// VALIDACION DE MAQUINA DE ESTADOS
 // ============================================================================
 
 /**
- * Valid order status transitions.
- * Per TDD: CANCELLED is a terminal state - no transitions allowed.
+ * Transiciones validas del estado de una orden.
+ * Segun el TDD: CANCELLED y DELIVERED son estados terminales - no se permiten
+ * transiciones desde ellos. Esto protege la integridad del flujo de negocio:
+ * una vez que una orden se entrego o cancelo, no se puede revertir.
  */
 const ORDER_STATUS_TRANSITIONS: Record<string, string[]> = {
   'PENDING': ['CONFIRMED', 'CANCELLED'],
@@ -322,18 +350,18 @@ const ORDER_STATUS_TRANSITIONS: Record<string, string[]> = {
   'PREPARING': ['READY', 'CANCELLED'],
   'READY': ['ON_ROUTE', 'DELIVERED', 'CANCELLED'],
   'ON_ROUTE': ['DELIVERED', 'CANCELLED'],
-  'DELIVERED': [], // Terminal state
-  'CANCELLED': [], // Terminal state - NO transitions allowed
+  'DELIVERED': [], // Estado terminal
+  'CANCELLED': [], // Estado terminal - NO se permiten transiciones
 };
 
 /**
- * Validate if a status transition is allowed.
- * 
- * @implements TDD Section 1.2 - State Machine Validation
- * 
- * @param currentStatus - Current order status
- * @param newStatus - Desired new status
- * @returns true if transition is valid
+ * Valida si una transicion de estado es permitida.
+ *
+ * @implements TDD Seccion 1.2 - Validacion de Maquina de Estados
+ *
+ * @param currentStatus - Estado actual de la orden
+ * @param newStatus - Nuevo estado deseado
+ * @returns true si la transicion es valida
  */
 export function isValidStatusTransition(currentStatus: string, newStatus: string): boolean {
   const allowedTransitions = ORDER_STATUS_TRANSITIONS[currentStatus];
@@ -344,11 +372,12 @@ export function isValidStatusTransition(currentStatus: string, newStatus: string
 }
 
 /**
- * Assert that a status transition is valid, throwing if not.
- * 
- * @param currentStatus - Current order status
- * @param newStatus - Desired new status
- * @throws {InvalidStateTransitionError} If transition is not allowed
+ * Afirma que una transicion de estado es valida, lanzando error si no lo es.
+ * Usado como guard clause antes de actualizar el estado de una orden.
+ *
+ * @param currentStatus - Estado actual de la orden
+ * @param newStatus - Nuevo estado deseado
+ * @throws {InvalidStateTransitionError} Si la transicion no esta permitida
  */
 export function assertValidStatusTransition(currentStatus: string, newStatus: string): void {
   if (!isValidStatusTransition(currentStatus, newStatus)) {

@@ -1,7 +1,19 @@
 /**
- * @fileoverview Order controller.
- * Handles HTTP requests for order operations.
- * 
+ * @fileoverview Controlador de Órdenes
+ *
+ * Maneja todas las operaciones HTTP relacionadas con órdenes: creación,
+ * consulta, cambios de estado, pagos, anulación de ítems y transferencia
+ * entre mesas. Es el controlador más complejo del sistema ya que una orden
+ * involucra múltiples entidades (items, modificadores, pagos, mesa, cliente).
+ *
+ * Flujo principal de una orden:
+ * 1. Creación (createOrder) -> estado OPEN
+ * 2. Confirmación -> estado CONFIRMED
+ * 3. Preparación (KDS) -> estado IN_PREPARATION
+ * 4. Preparado -> estado PREPARED
+ * 5. Servido -> items en estado SERVED
+ * 6. Pago (addPayments) -> estado PAID cuando se cubre el total
+ *
  * @module controllers/order.controller
  */
 
@@ -17,9 +29,9 @@ import { sendSuccess } from '../utils/response';
 const orderService = new OrderService();
 
 /**
- * Zod schema for order creation validation.
+ * Esquema Zod para validar la creación de una orden.
+ * SEC-023: Límites de longitud en campos de texto para prevenir abuso.
  */
-// SEC-023: Max length validation on all text fields
 const createOrderSchema = z.object({
   items: z.array(z.object({
     productId: z.number().int().positive(),
@@ -27,7 +39,7 @@ const createOrderSchema = z.object({
     notes: z.string().max(500).optional(),
     modifiers: z.array(z.object({
       id: z.number().int().positive(),
-      price: z.coerce.number()  // Accept string from Prisma Decimal
+      price: z.coerce.number()  // Acepta strings de Prisma Decimal y los convierte a number
     })).optional(),
     removedIngredientIds: z.array(z.number().int().positive()).optional()
   })).min(1, "Order must have at least one item"),
@@ -50,7 +62,8 @@ const createOrderSchema = z.object({
 });
 
 /**
- * Zod schema for adding items to an existing order.
+ * Esquema Zod para agregar ítems a una orden existente.
+ * Reutiliza la misma estructura de items que la creación.
  */
 const addItemsSchema = z.object({
     items: z.array(z.object({
@@ -59,35 +72,31 @@ const addItemsSchema = z.object({
         notes: z.string().optional(),
         modifiers: z.array(z.object({
             id: z.number().int().positive(),
-            price: z.coerce.number()  // Accept string from Prisma Decimal
+            price: z.coerce.number()  // Acepta strings de Prisma Decimal
         })).optional(),
         removedIngredientIds: z.array(z.number().int().positive()).optional()
     })).min(1, "Must add at least one item")
 });
 
-/**
- * Zod schema for order status update.
- */
+/** Esquema para actualizar el estado general de la orden */
 const updateStatusSchema = z.object({
     status: z.nativeEnum(OrderStatus)
 });
 
-/**
- * Zod schema for item status update.
- */
+/** Esquema para actualizar el estado de un ítem individual (flujo KDS) */
 const updateItemStatusSchema = z.object({
     status: z.enum(['PENDING', 'COOKING', 'READY', 'SERVED'])
 });
 
 /**
- * Zod schema for adding payments to an existing order.
- * Validates payment method codes and amounts with defensive constraints.
+ * Esquema para agregar pagos a una orden existente.
+ * Soporta pagos divididos (split) con múltiples métodos.
  *
- * @validation
- * - payments: Array of at least 1 payment
- * - method: Non-empty string (supports dynamic codes: CASH, CARD, DEBIT, etc.)
- * - amount: Positive number greater than 0
- * - closeOrder: Optional boolean to auto-close order when fully paid
+ * Validaciones defensivas:
+ * - payments: Array de al menos 1 pago, máximo 10
+ * - method: Código de método de pago dinámico (CASH, CARD, DEBIT, etc.)
+ * - amount: Monto positivo mayor a 0.01
+ * - closeOrder: Opcional, cierra la orden automáticamente si está completamente pagada
  */
 const addPaymentsSchema = z.object({
     payments: z.array(z.object({
@@ -103,52 +112,47 @@ const addPaymentsSchema = z.object({
     closeOrder: z.boolean().optional().default(false)
 });
 
-/**
- * Update order status.
- */
+/** Actualiza el estado general de una orden (ej: OPEN -> CONFIRMED -> IN_PREPARATION) */
 export const updateStatus = asyncHandler(async (req: Request, res: Response) => {
     const { status } = updateStatusSchema.parse(req.body);
     const order = await orderService.updateStatus(Number(req.params.id as string), status, req.user!.tenantId!);
     sendSuccess(res, order);
 });
 
-/**
- * Update individual order item status.
- */
+/** Actualiza el estado de un ítem individual (flujo de cocina: PENDING -> COOKING -> READY -> SERVED) */
 export const updateItemStatus = asyncHandler(async (req: Request, res: Response) => {
     const { status } = updateItemStatusSchema.parse(req.body);
     const item = await orderService.updateItemStatus(Number(req.params.itemId as string), status, req.user!.tenantId!);
     sendSuccess(res, item);
 });
 
-/**
- * Get active orders for KDS.
- */
+/** Obtiene las órdenes activas (no cerradas/canceladas) para la pantalla de KDS (Kitchen Display System) */
 export const getActiveOrders = asyncHandler(async (req: Request, res: Response) => {
     const orders = await orderService.getActiveOrders(req.user!.tenantId!);
     sendSuccess(res, orders);
 });
 
 /**
- * Create a new order.
+ * Crea una nueva orden completa con ítems, modificadores y opcionalmente pagos.
+ * Requiere usuario autenticado (serverId) y contexto de tenant.
  */
 export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     const data = createOrderSchema.parse(req.body);
-    
-    // Get serverId from authenticated user (typed via express.d.ts)
+
+    // Obtener serverId del usuario autenticado (tipado via express.d.ts)
     const serverId = req.user?.id;
 
     if (!serverId) {
         throw new UnauthorizedError('User ID required');
     }
 
-    // P0-03 FIX: tenantId must ALWAYS be present — never conditional
+    // P0-03 FIX: tenantId SIEMPRE debe estar presente — nunca condicional
     const tenantId = req.user?.tenantId;
     if (!tenantId) {
         throw new UnauthorizedError('Tenant context required');
     }
 
-    // Build properly typed order input - map items explicitly to match CreateOrderInput
+    // Construir input de orden con tipado correcto, mapeando items explícitamente
     const orderInput: CreateOrderInput = {
       tenantId,
       userId: serverId,
@@ -179,17 +183,13 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     sendSuccess(res, order, undefined, 201);
 });
 
-/**
- * Get recent orders.
- */
+/** Obtiene las órdenes recientes del tenant para el listado del POS */
 export const getOrders = asyncHandler(async (req: Request, res: Response) => {
     const orders = await orderService.getRecentOrders(req.user!.tenantId!);
     sendSuccess(res, orders);
 });
 
-/**
- * Get order by table ID.
- */
+/** Obtiene la orden activa asociada a una mesa específica */
 export const getOrderByTable = asyncHandler(async (req: Request, res: Response) => {
     const tableId = Number(req.params.tableId as string);
     if (isNaN(tableId)) {
@@ -199,9 +199,7 @@ export const getOrderByTable = asyncHandler(async (req: Request, res: Response) 
     sendSuccess(res, order);
 });
 
-/**
- * Add items to an existing order.
- */
+/** Agrega ítems adicionales a una orden existente (ej: cliente pide más platos) */
 export const addItemsToOrder = asyncHandler(async (req: Request, res: Response) => {
     const orderId = Number(req.params.orderId as string);
     if (isNaN(orderId)) {
@@ -214,7 +212,7 @@ export const addItemsToOrder = asyncHandler(async (req: Request, res: Response) 
         throw new UnauthorizedError();
     }
 
-    // Map Zod parsed items to OrderItemInput - types are compatible
+    // Mapear ítems parseados por Zod al tipo OrderItemInput
     const items: OrderItemInput[] = data.items.map(item => ({
         productId: item.productId,
         quantity: item.quantity,
@@ -228,35 +226,27 @@ export const addItemsToOrder = asyncHandler(async (req: Request, res: Response) 
 });
 
 /**
- * Add payments to an existing order.
+ * Agrega uno o más pagos a una orden existente.
  *
  * POST /api/v1/orders/:id/payments
  *
- * @route POST /api/v1/orders/:id/payments
- * @access Private - Requires authentication and orders:update permission
+ * Soporta pagos divididos y códigos de método de pago dinámicos.
+ * Opcionalmente cierra la orden cuando está completamente pagada.
  *
- * @description
- * Adds one or more payments to an existing order. Supports split payments
- * and dynamic payment method codes. Optionally closes the order when fully paid.
- *
- * STEP 4: EDGE CASES HANDLED
- * --------------------------
- * 1. Invalid order ID (NaN, negative, non-integer) - Returns 400
- * 2. Order not found - Returns 404
- * 3. Order belongs to different tenant - Returns 404 (security: no info leak)
- * 4. Order already cancelled - Returns 409 Conflict
- * 5. Order already fully paid - Returns 409 Conflict
- * 6. Zero or negative payment amounts - Returns 400 Validation Error
- * 7. Excessive overpayment (>10% of total) - Returns 400 Validation Error
- * 8. Empty payments array - Returns 400 Validation Error
- * 9. Missing authentication - Returns 401 Unauthorized
- * 10. Concurrent payment attempts - Handled via transaction isolation
- *
- * @requestBody {AddPaymentsRequest}
- * @responseBody {AddPaymentsResult}
+ * Casos límite manejados:
+ * 1. ID de orden inválido (NaN, negativo, no entero) -> 400
+ * 2. Orden no encontrada -> 404
+ * 3. Orden de otro tenant -> 404 (seguridad: sin fuga de información)
+ * 4. Orden ya cancelada -> 409 Conflict
+ * 5. Orden ya completamente pagada -> 409 Conflict
+ * 6. Montos de pago cero o negativos -> 400
+ * 7. Sobrepago excesivo (>10% del total) -> 400
+ * 8. Array de pagos vacío -> 400
+ * 9. Sin autenticación -> 401
+ * 10. Pagos concurrentes -> manejado por aislamiento de transacción
  */
 export const addPayments = asyncHandler(async (req: Request, res: Response) => {
-    // 1. Parse and validate order ID from URL params
+    // 1. Parsear y validar ID de orden desde parámetros URL
     const orderId = Number(req.params.id);
     if (isNaN(orderId) || orderId <= 0 || !Number.isInteger(orderId)) {
         return res.status(400).json({
@@ -266,7 +256,7 @@ export const addPayments = asyncHandler(async (req: Request, res: Response) => {
         });
     }
 
-    // 2. Validate request body with Zod schema
+    // 2. Validar cuerpo de la solicitud con esquema Zod
     const validationResult = addPaymentsSchema.safeParse(req.body);
     if (!validationResult.success) {
         return res.status(400).json({
@@ -278,7 +268,7 @@ export const addPayments = asyncHandler(async (req: Request, res: Response) => {
     }
     const data = validationResult.data;
 
-    // 3. Extract authenticated user context
+    // 3. Extraer contexto del usuario autenticado
     const userId = req.user?.id;
     const tenantId = req.user?.tenantId;
 
@@ -289,14 +279,14 @@ export const addPayments = asyncHandler(async (req: Request, res: Response) => {
         throw new UnauthorizedError('Tenant ID required');
     }
 
-    // 4. Build audit context from request (filter out undefined to satisfy exactOptionalPropertyTypes)
+    // 4. Construir contexto de auditoría (filtrar undefined para exactOptionalPropertyTypes)
     const ipAddress = req.ip || req.socket?.remoteAddress;
     const userAgent = req.headers['user-agent'];
     const auditContext: { ipAddress?: string; userAgent?: string } = {};
     if (ipAddress) auditContext.ipAddress = ipAddress;
     if (userAgent) auditContext.userAgent = userAgent;
 
-    // 5. Call service layer
+    // 5. Delegar al servicio de órdenes
     const result = await orderService.addPayments(
         orderId,
         {
@@ -305,17 +295,15 @@ export const addPayments = asyncHandler(async (req: Request, res: Response) => {
         },
         tenantId,
         userId,
-        undefined, // shiftId will be resolved by service
+        undefined, // shiftId se resuelve en el servicio
         Object.keys(auditContext).length > 0 ? auditContext : undefined
     );
 
-    // 6. Return success response with comprehensive data
+    // 6. Respuesta exitosa con datos completos del resultado
     sendSuccess(res, result);
 });
 
-/**
- * Get active delivery orders.
- */
+/** Obtiene órdenes de delivery activas para la pantalla de gestión de delivery */
 export const getDeliveryOrders = asyncHandler(async (req: Request, res: Response) => {
     logger.debug('getDeliveryOrders requested', { userId: req.user?.id });
     const orders = await orderService.getDeliveryOrders(req.user!.tenantId!);
@@ -323,9 +311,7 @@ export const getDeliveryOrders = asyncHandler(async (req: Request, res: Response
     sendSuccess(res, orders);
 });
 
-/**
- * Assign driver to order.
- */
+/** Asigna un repartidor a una orden de delivery */
 export const assignDriver = asyncHandler(async (req: Request, res: Response) => {
     const orderId = Number(req.params.id as string);
     const { driverId } = req.body;
@@ -338,12 +324,12 @@ export const assignDriver = asyncHandler(async (req: Request, res: Response) => 
 });
 
 /**
- * Mark all items in an order as SERVED.
- * Used by kitchen when table order is ready for pickup by waiter.
+ * Marca todos los ítems de una orden como SERVED.
+ * Usado por cocina cuando la orden completa está lista para retirar por el mozo.
  */
 export const markAllItemsServed = asyncHandler(async (req: Request, res: Response) => {
     const orderId = Number(req.params.orderId as string);
-    
+
     if (isNaN(orderId)) {
         return res.status(400).json({ success: false, error: 'Invalid order ID' });
     }
@@ -353,32 +339,31 @@ export const markAllItemsServed = asyncHandler(async (req: Request, res: Respons
 });
 
 // =============================================================================
-// PHASE 2: VOID & TRANSFER OPERATIONS
+// FASE 2: OPERACIONES DE ANULACION Y TRANSFERENCIA
 // =============================================================================
 
 import { orderVoidService, VoidReason, VOID_REASONS } from '../services/orderVoid.service';
 import { orderTransferService } from '../services/orderTransfer.service';
 
-/**
- * Zod schema for void item validation.
- */
+/** Esquema de validación para anulación de ítems con motivo obligatorio */
 const voidItemSchema = z.object({
     reason: z.enum(VOID_REASONS as unknown as [string, ...string[]]),
     notes: z.string().optional()
 });
 
 /**
- * Void (cancel) an order item.
- * Requires orders:delete permission (manager action).
+ * Anula (cancela) un ítem de orden.
+ * Requiere permiso orders:delete (acción de gerente/administrador).
+ * Registra auditoría con el motivo de anulación y contexto del usuario.
  */
 export const voidItem = asyncHandler(async (req: Request, res: Response) => {
     const itemId = Number(req.params.itemId as string);
     if (isNaN(itemId)) {
         return res.status(400).json({ success: false, error: 'Invalid item ID' });
     }
-    
+
     const data = voidItemSchema.parse(req.body);
-    
+
     const tenantId = req.user!.tenantId!;
     const result = await orderVoidService.voidItem(
         {
@@ -394,21 +379,17 @@ export const voidItem = asyncHandler(async (req: Request, res: Response) => {
             userAgent: req.headers['user-agent']
         }
     );
-    
+
     sendSuccess(res, result);
 });
 
-/**
- * Get available void reasons for UI dropdown.
- */
+/** Obtiene los motivos de anulación disponibles para poblar el dropdown en la UI */
 export const getVoidReasons = asyncHandler(async (_req: Request, res: Response) => {
     const reasons = orderVoidService.getVoidReasons();
     sendSuccess(res, reasons);
 });
 
-/**
- * Zod schema for transfer items validation.
- */
+/** Esquema de validación para transferencia de ítems entre mesas */
 const transferItemsSchema = z.object({
     itemIds: z.array(z.number().int().positive()).min(1),
     fromTableId: z.number().int().positive(),
@@ -416,11 +397,13 @@ const transferItemsSchema = z.object({
 });
 
 /**
- * Transfer items between tables.
+ * Transfiere ítems de una mesa a otra.
+ * Útil cuando un cliente cambia de mesa o se fusionan/dividen cuentas.
+ * Registra auditoría con las mesas de origen y destino.
  */
 export const transferItems = asyncHandler(async (req: Request, res: Response) => {
     const data = transferItemsSchema.parse(req.body);
-    
+
     const tenantId = req.user!.tenantId!;
     const result = await orderTransferService.transferItems(
         data.itemIds,
@@ -434,7 +417,6 @@ export const transferItems = asyncHandler(async (req: Request, res: Response) =>
             userAgent: req.headers['user-agent']
         }
     );
-    
+
     sendSuccess(res, result);
 });
-

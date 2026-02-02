@@ -1,14 +1,18 @@
 /**
- * @fileoverview User Management Controller
- * Handles CRUD operations for system users.
- * 
+ * @fileoverview Controlador de Gestión de Usuarios
+ *
+ * Maneja las operaciones CRUD para los usuarios del sistema.
+ * Cada usuario pertenece a un tenant y tiene un rol asignado que
+ * determina sus permisos. Soporta dos métodos de autenticación:
+ * PIN (6 dígitos, para acceso rápido en POS) y email+contraseña.
+ *
+ * Reglas de negocio:
+ * - La gestión de usuarios está restringida al rol ADMIN (excepto listado)
+ * - Un usuario no puede eliminarse a sí mismo para evitar bloqueo del sistema
+ * - Email y PIN deben ser únicos dentro del tenant
+ * - La eliminación es lógica (soft-delete via isActive=false)
+ *
  * @module controllers/user.controller
- * @adheres Single Responsibility - User entity operations only
- * 
- * @business_rule
- * User management is restricted to ADMIN role only (except listing).
- * Users cannot delete themselves to prevent system lockout.
- * Email and PIN must remain unique across the system.
  */
 
 import { Request, Response } from 'express';
@@ -22,9 +26,7 @@ import { BCRYPT_SALT_ROUNDS, generatePinLookup } from '../services/auth.service'
 import { auditService } from '../services/audit.service';
 import { sendSuccess } from '../utils/response';
 
-/**
- * Schema for creating a new user
- */
+/** Esquema de validación para crear un nuevo usuario */
 const CreateUserSchema = z.object({
     name: z.string().min(1, 'Name is required'),
     email: z.union([z.string().email('Invalid email'), z.literal('')]).optional().transform(v => v || undefined),
@@ -33,9 +35,7 @@ const CreateUserSchema = z.object({
     roleId: z.number().int().positive('Invalid Role ID')
 });
 
-/**
- * Schema for updating an existing user
- */
+/** Esquema de validación para actualizar un usuario existente (todos los campos opcionales) */
 const UpdateUserSchema = z.object({
     name: z.string().min(1).optional(),
     email: z.string().email().optional(),
@@ -46,28 +46,28 @@ const UpdateUserSchema = z.object({
 });
 
 /**
- * List all active users with optional role filter.
+ * Lista todos los usuarios activos del tenant con filtro opcional por rol.
+ * Usado en dropdowns de asignación (ej: asignar mozo a mesa, cajero a turno).
  *
  * @route GET /api/v1/users
- * @access Authenticated users (for assignment dropdowns)
- *
- * @example
- * GET /api/v1/users?role=MESERO&page=1&limit=50
+ * @query role - Filtrar por nombre de rol (ej: WAITER, CASHIER)
+ * @query includeInactive - Si es 'true', incluye usuarios desactivados
+ * @query page, limit - Paginación
  */
 export const listUsers = asyncHandler(async (req: Request, res: Response) => {
     const { role, includeInactive, page: pageStr, limit: limitStr } = req.query;
 
-    // Parse pagination params
+    // Parsear parámetros de paginación
     const page = Math.max(1, parseInt(pageStr as string) || 1);
     const limit = Math.max(1, parseInt(limitStr as string) || 50);
     const skip = (page - 1) * limit;
 
-    // Build where clause with proper Prisma typing
+    // Construir cláusula WHERE con tipado Prisma correcto
     const where: Prisma.UserWhereInput = {
         tenantId: req.user!.tenantId!
     };
 
-    // Only show active users unless explicitly requested
+    // Solo mostrar usuarios activos a menos que se pida explícitamente lo contrario
     if (includeInactive !== 'true') {
         where.isActive = true;
     }
@@ -76,7 +76,7 @@ export const listUsers = asyncHandler(async (req: Request, res: Response) => {
         where.role = { name: role };
     }
 
-    // Get total count for pagination
+    // Obtener total para metadatos de paginación
     const total = await prisma.user.count({ where });
 
     const users = await prisma.user.findMany({
@@ -100,20 +100,21 @@ export const listUsers = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * Get users with a specific capability (flexible role matching).
- * 
+ * Obtiene usuarios con una capacidad específica basada en keywords del nombre de rol.
+ * Permite búsqueda flexible por tipo de rol (delivery, kitchen, cashier, waiter)
+ * sin depender de nombres de rol exactos (soporta español e inglés).
+ *
  * @route GET /api/v1/users/with-capability
- * @query type - Capability type: 'delivery', 'kitchen', 'cashier'
- * @access Authenticated users
+ * @query type - Tipo de capacidad: 'delivery', 'kitchen', 'cashier', 'waiter'
  */
 export const getUsersWithCapability = asyncHandler(async (req: Request, res: Response) => {
     const { type } = req.query;
-    
+
     if (!type || typeof type !== 'string') {
         throw new ValidationError('Capability type is required');
     }
 
-    // Define keywords for each capability type
+    // Keywords para cada tipo de capacidad (soporta español e inglés)
     const capabilityKeywords: Record<string, string[]> = {
         delivery: ['DRIVER', 'REPARTIDOR', 'DELIVERY', 'ENVIO', 'CADETE'],
         kitchen: ['KITCHEN', 'COCINA', 'COCINERO', 'CHEF'],
@@ -126,14 +127,14 @@ export const getUsersWithCapability = asyncHandler(async (req: Request, res: Res
         throw new ValidationError(`Invalid capability type: ${type}`);
     }
 
-    // Search for users whose role name matches any of the keywords (case-insensitive)
+    // Buscar usuarios cuyo nombre de rol coincida con algún keyword (case-insensitive)
     const users = await prisma.user.findMany({
         where: {
             tenantId: req.user!.tenantId!,
             isActive: true,
             role: {
                 OR: keywords.map(keyword => ({
-                    name: { contains: keyword } 
+                    name: { contains: keyword }
                 }))
             }
         },
@@ -152,24 +153,24 @@ export const getUsersWithCapability = asyncHandler(async (req: Request, res: Res
 });
 
 /**
- * Get a single user by ID.
- * 
+ * Obtiene un usuario por ID (solo ADMIN).
+ * SEGURIDAD: Nunca expone pinHash en la respuesta de la API.
+ *
  * @route GET /api/v1/users/:id
- * @access ADMIN only
  */
 export const getUserById = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
         throw new ValidationError('Invalid ID');
     }
-    
+
     const user = await prisma.user.findFirst({
         where: { id, tenantId: req.user!.tenantId! },
         select: {
             id: true,
             name: true,
             email: true,
-            // SECURITY: Never expose pinHash to API
+            // SEGURIDAD: Nunca exponer pinHash en la API
             pinHash: false,
             isActive: true,
             createdAt: true,
@@ -188,37 +189,36 @@ export const getUserById = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * Create a new user.
- * 
+ * Crea un nuevo usuario (solo ADMIN).
+ * Valida unicidad de email y PIN dentro del tenant.
+ * Verifica que el roleId pertenezca al mismo tenant (previene asignación cross-tenant).
+ *
  * @route POST /api/v1/users
- * @access ADMIN only
  */
 export const createUser = asyncHandler(async (req: Request, res: Response) => {
     const data = CreateUserSchema.parse(req.body);
 
     const { name, email, pinCode, password, roleId } = data;
 
-    // Verify at least one auth method
+    // Verificar que al menos un método de autenticación esté presente
     if (!email && !pinCode) {
         throw new ValidationError('Email or PIN required for authentication');
     }
 
-    // Check for existing user with same email
-    // Check for existing user with same email
+    // Verificar unicidad de email dentro del tenant (FIX: usar findFirst en vez de findUnique)
     if (email) {
-        // FIX: Email is scoped to Tenant. Use findFirst.
-        const existingEmail = await prisma.user.findFirst({ 
-            where: { 
-                email, 
-                tenantId: req.user!.tenantId! 
-            } 
+        const existingEmail = await prisma.user.findFirst({
+            where: {
+                email,
+                tenantId: req.user!.tenantId!
+            }
         });
         if (existingEmail) {
             throw new ConflictError('A user with that email already exists');
         }
     }
 
-    // Verify roleId belongs to same tenant (prevents cross-tenant role assignment)
+    // Verificar que el roleId pertenezca al mismo tenant (previene asignación cross-tenant)
     const role = await prisma.role.findFirst({
         where: { id: roleId, tenantId: req.user!.tenantId! }
     });
@@ -226,7 +226,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
         throw new NotFoundError('Role');
     }
 
-    // Check PIN uniqueness — O(1) via pinLookup index
+    // Verificar unicidad del PIN via pinLookup (búsqueda O(1) por índice)
     let pinHash: string | null = null;
     let pinLookup: string | null = null;
     if (pinCode) {
@@ -243,7 +243,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
         pinHash = await bcrypt.hash(pinCode, BCRYPT_SALT_ROUNDS);
     }
 
-    // Hash password if provided
+    // Hashear contraseña si se proporcionó
     const passwordHash = password ? await bcrypt.hash(password, BCRYPT_SALT_ROUNDS) : null;
 
     const user = await prisma.user.create({
@@ -265,7 +265,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
         }
     });
 
-    // Audit log - after successful creation
+    // Auditoría: registrar creación del usuario
     auditService.log(
         'USER_CREATED',
         'User',
@@ -283,10 +283,11 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * Update an existing user.
- * 
+ * Actualiza un usuario existente (solo ADMIN).
+ * Valida unicidad de email y PIN, verifica que el rol pertenezca al tenant.
+ * Usa updateMany con tenantId como defensa en profundidad.
+ *
  * @route PUT /api/v1/users/:id
- * @access ADMIN only
  */
 export const updateUser = asyncHandler(async (req: Request, res: Response) => {
     const userId = parseInt(req.params.id as string, 10);
@@ -297,19 +298,19 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
     const data = UpdateUserSchema.parse(req.body);
     const { name, email, pinCode, password, roleId, isActive } = data;
 
-    // Check if user exists
-    const existingUser = await prisma.user.findFirst({ 
-        where: { id: userId, tenantId: req.user!.tenantId! } 
+    // Verificar que el usuario exista y pertenezca al tenant
+    const existingUser = await prisma.user.findFirst({
+        where: { id: userId, tenantId: req.user!.tenantId! }
     });
     if (!existingUser) {
         throw new NotFoundError('User');
     }
 
-    // Check for email conflict
+    // Verificar conflicto de email con otros usuarios del mismo tenant
     if (email) {
         const emailConflict = await prisma.user.findFirst({
-            where: { 
-                email, 
+            where: {
+                email,
                 id: { not: userId },
                 tenantId: req.user!.tenantId!
             }
@@ -319,7 +320,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
         }
     }
 
-    // Verify roleId belongs to same tenant (prevents cross-tenant role assignment)
+    // Verificar que el roleId pertenezca al mismo tenant (previene asignación cross-tenant)
     if (roleId !== undefined) {
         const roleExists = await prisma.role.findFirst({
             where: { id: roleId, tenantId: req.user!.tenantId! }
@@ -329,7 +330,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
         }
     }
 
-    // Build update data with proper typing
+    // Construir datos de actualización con tipado correcto de Prisma
     const updateData: Prisma.UserUpdateInput = {};
     if (name !== undefined) updateData.name = name;
     if (email !== undefined) updateData.email = email;
@@ -337,7 +338,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
     if (isActive !== undefined) updateData.isActive = isActive;
     if (password) updateData.passwordHash = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
 
-    // Check PIN uniqueness — O(1) via pinLookup index
+    // Verificar unicidad del PIN via pinLookup (búsqueda O(1) por índice)
     if (pinCode !== undefined) {
         const pinLookup = generatePinLookup(pinCode);
         const existing = await prisma.user.findFirst({
@@ -354,7 +355,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
         updateData.pinLookup = pinLookup;
     }
 
-    // SAFE: Defense-in-depth — include tenantId in WHERE
+    // Defensa en profundidad: incluir tenantId en WHERE para prevenir acceso cross-tenant
     const result = await prisma.user.updateMany({
         where: { id: userId, tenantId: req.user!.tenantId! },
         data: updateData
@@ -364,7 +365,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
         throw new NotFoundError('User');
     }
 
-    // Fetch updated user for response
+    // Obtener usuario actualizado para la respuesta
     const user = await prisma.user.findFirst({
         where: { id: userId, tenantId: req.user!.tenantId! },
         select: {
@@ -376,7 +377,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
         }
     });
 
-    // Audit log - after successful update
+    // Auditoría: registrar actualización del usuario
     auditService.log(
         AuditAction.USER_UPDATED,
         'User',
@@ -394,10 +395,12 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
 });
 
 /**
- * Soft-delete a user (set isActive = false).
- * 
+ * Desactiva un usuario (soft-delete, isActive = false).
+ * No se elimina físicamente para mantener integridad con órdenes y auditoría.
+ *
+ * Protección: un usuario no puede desactivarse a sí mismo.
+ *
  * @route DELETE /api/v1/users/:id
- * @access ADMIN only
  */
 export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
     const userId = parseInt(req.params.id as string, 10);
@@ -405,25 +408,25 @@ export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
         throw new ValidationError('Invalid ID');
     }
 
-    // Prevent self-deletion
+    // Prevenir auto-eliminación para evitar bloqueo del sistema
     if (req.user?.id === userId) {
         throw new ApiError('SELF_DELETE', 'Cannot delete your own user account', 400);
     }
 
-    const user = await prisma.user.findFirst({ 
-        where: { id: userId, tenantId: req.user!.tenantId! } 
+    const user = await prisma.user.findFirst({
+        where: { id: userId, tenantId: req.user!.tenantId! }
     });
     if (!user) {
         throw new NotFoundError('User');
     }
 
-    // SAFE: Defense-in-depth — soft delete with tenantId in WHERE
+    // Defensa en profundidad: soft-delete con tenantId en WHERE
     await prisma.user.updateMany({
         where: { id: userId, tenantId: req.user!.tenantId! },
         data: { isActive: false }
     });
 
-    // Audit log - after successful deletion
+    // Auditoría: registrar desactivación del usuario
     auditService.log(
         'USER_DELETED',
         'User',

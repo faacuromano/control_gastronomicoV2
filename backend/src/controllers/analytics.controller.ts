@@ -1,3 +1,14 @@
+/**
+ * @fileoverview Controlador de Analíticas y Reportes de Ventas
+ *
+ * Provee endpoints para obtener métricas clave del negocio gastronómico:
+ * resumen de ventas, productos más vendidos, desglose por método de pago,
+ * ventas por canal y alertas de stock bajo. Todos los datos se filtran
+ * por tenant (multi-tenant) y opcionalmente por rango de fechas.
+ *
+ * @module controllers/analytics.controller
+ */
+
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/asyncHandler';
@@ -5,13 +16,18 @@ import { analyticsService } from '../services/analytics.service';
 import { sendSuccess } from '../utils/response';
 
 /**
- * Parse date range from query params with strict validation (P2-005 fix)
+ * Esquema Zod para parsear y validar el rango de fechas desde query params.
+ * Se exige formato estricto YYYY-MM-DD para evitar inyección o formatos ambiguos (fix P2-005).
  */
 const dateRangeSchema = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD format').optional(),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD format').optional()
 });
 
+/**
+ * Convierte los strings de fecha del query en objetos Date con hora inicio (00:00:00) y fin (23:59:59).
+ * Retorna undefined si no se proporcionan ambas fechas o si las fechas parseadas son inválidas.
+ */
 function parseDateRange(query: Record<string, unknown>): { startDate: Date; endDate: Date } | undefined {
   const { startDate, endDate } = dateRangeSchema.parse(query);
 
@@ -25,7 +41,7 @@ function parseDateRange(query: Record<string, unknown>): { startDate: Date; endD
   const endParts = endDate.split('-').map(Number);
   const end = new Date(endParts[0]!, endParts[1]! - 1, endParts[2]!, 23, 59, 59, 999);
 
-  // Validate parsed dates are real dates
+  // Validar que las fechas parseadas sean reales (ej: 2024-02-30 daría NaN)
   if (isNaN(start.getTime()) || isNaN(end.getTime())) {
     return undefined;
   }
@@ -37,7 +53,8 @@ function parseDateRange(query: Record<string, unknown>): { startDate: Date; endD
 }
 
 /**
- * Get today's date range
+ * Genera el rango de fechas del día actual (desde las 00:00 hasta las 23:59).
+ * Se usa como fallback cuando el cliente no envía un rango explícito.
  */
 function getTodayRange(): { startDate: Date; endDate: Date } {
   const now = new Date();
@@ -47,7 +64,8 @@ function getTodayRange(): { startDate: Date; endDate: Date } {
 }
 
 /**
- * Get sales summary
+ * Obtiene el resumen de ventas (total vendido, cantidad de órdenes, ticket promedio, etc.).
+ * Si no se envía rango de fechas, usa el día actual por defecto.
  */
 export const getSalesSummary = asyncHandler(async (req: Request, res: Response) => {
   const range = parseDateRange(req.query) || getTodayRange();
@@ -56,7 +74,8 @@ export const getSalesSummary = asyncHandler(async (req: Request, res: Response) 
 });
 
 /**
- * Get top products
+ * Obtiene los productos más vendidos ordenados por cantidad.
+ * El parámetro `limit` controla cuántos productos devolver (máx. 100, por defecto 10).
  */
 export const getTopProducts = asyncHandler(async (req: Request, res: Response) => {
   const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 10, 1), 100);
@@ -66,7 +85,8 @@ export const getTopProducts = asyncHandler(async (req: Request, res: Response) =
 });
 
 /**
- * Get payment method breakdown
+ * Obtiene el desglose de ventas por método de pago (efectivo, tarjeta, transferencia, etc.).
+ * Útil para el dashboard de caja y reportes contables.
  */
 export const getPaymentBreakdown = asyncHandler(async (req: Request, res: Response) => {
   const range = parseDateRange(req.query);
@@ -75,7 +95,8 @@ export const getPaymentBreakdown = asyncHandler(async (req: Request, res: Respon
 });
 
 /**
- * Get sales by channel
+ * Obtiene las ventas agrupadas por canal (POS, delivery, QR, app de mozo).
+ * Permite al negocio entender de dónde provienen sus ingresos.
  */
 export const getSalesByChannel = asyncHandler(async (req: Request, res: Response) => {
   const range = parseDateRange(req.query);
@@ -84,7 +105,8 @@ export const getSalesByChannel = asyncHandler(async (req: Request, res: Response
 });
 
 /**
- * Get low stock items
+ * Obtiene los ingredientes con stock por debajo del mínimo configurado.
+ * No requiere rango de fechas porque refleja el estado actual del inventario.
  */
 export const getLowStockItems = asyncHandler(async (req: Request, res: Response) => {
   const items = await analyticsService.getLowStockItems(req.user!.tenantId!);
@@ -92,10 +114,11 @@ export const getLowStockItems = asyncHandler(async (req: Request, res: Response)
 });
 
 /**
- * Get daily sales for charts
+ * Obtiene las ventas diarias para gráficos de tendencia.
+ * Si no se envía rango, usa los últimos 30 días por defecto.
  */
 export const getDailySales = asyncHandler(async (req: Request, res: Response) => {
-  // Default to last 30 days if no range provided
+  // Por defecto últimos 30 días si no se proporciona rango
   const now = new Date();
   const defaultStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const range = parseDateRange(req.query) || { startDate: defaultStart, endDate: now };

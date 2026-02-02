@@ -1,14 +1,20 @@
-    
+
 /**
- * @fileoverview Order management service (Facade).
- * Handles order creation, updates, and lifecycle management.
- * 
+ * @fileoverview Servicio de gestion de ordenes (Fachada / Facade).
+ * Orquesta la creacion, actualizacion y ciclo de vida completo de las ordenes.
+ *
+ * PATRON: Facade — Delega a servicios especializados para respetar el
+ * Principio de Responsabilidad Unica (SRP):
+ * - orderItem.service.ts     -> Validacion de items y calculo de precios
+ * - orderKitchen.service.ts  -> Operaciones del KDS (Kitchen Display System)
+ * - orderDelivery.service.ts -> Operaciones de delivery
+ * - orderStatus.service.ts   -> Maquina de estados de la orden
+ *
  * @module services/order.service
- * @pattern Facade - Delegates to specialized services for better SRP
- * @see orderItem.service.ts - Item validation and calculation
- * @see orderKitchen.service.ts - KDS operations
- * @see orderDelivery.service.ts - Delivery operations  
- * @see orderStatus.service.ts - Status transitions
+ * @see orderItem.service.ts - Validacion de items y calculo de precios
+ * @see orderKitchen.service.ts - Operaciones KDS
+ * @see orderDelivery.service.ts - Operaciones de delivery
+ * @see orderStatus.service.ts - Transiciones de estado
  */
 
 import { prisma } from '../lib/prisma';
@@ -30,13 +36,13 @@ import {
     BadRequestError
 } from '../utils/errors';
 
-// Extracted specialized services
+// Servicios especializados extraidos del monolito original
 import { orderKitchenService } from './orderKitchen.service';
 import { orderDeliveryService } from './orderDelivery.service';
 import { orderStatusService } from './orderStatus.service';
 import { orderItemService } from './orderItem.service';
 
-// Types from centralized definitions
+// Tipos centralizados en archivo dedicado
 import type {
     OrderItemInput,
     DeliveryData,
@@ -48,16 +54,17 @@ import type {
     AddPaymentsResult
 } from '../types/order.types';
 
-// Re-export types for backwards compatibility
+// Re-exportar tipos para mantener compatibilidad hacia atras con importadores existentes
 export type { OrderItemInput, DeliveryData, CreateOrderInput, AddPaymentsRequest, AddPaymentsResult };
 
 const stockService = new StockMovementService();
 const loyaltyService = new LoyaltyService();
 
 export class OrderService {
-  
+
   /**
-   * Get order by ID with full relations
+   * Obtiene una orden por ID con todas sus relaciones (items, pagos, cliente, repartidor).
+   * Verifica que la orden pertenezca al tenant.
    */
   async getById(id: number, tenantId: number) {
       return await prisma.order.findFirst({
@@ -77,18 +84,30 @@ export class OrderService {
   }
 
   /**
-   * Create a new order with items and optional payments.
+   * Crea una nueva orden con items y pagos opcionales.
+   *
+   * Flujo completo dentro de una transaccion:
+   * 1. Validar productos y calcular totales (con stock si esta habilitado)
+   * 2. Determinar fecha de negocio robusta (del turno o del sistema)
+   * 3. Generar numero de orden atomico (por tenant + fecha)
+   * 4. Validar turno activo (opcional, permite ordenes sin turno)
+   * 5. Procesar pagos
+   * 6. Construir y crear la orden con items y modificadores anidados
+   * 7. Descontar stock de ingredientes
+   * 8. Actualizar estado de mesa a OCCUPIED
+   * 9. Otorgar puntos de fidelizacion si corresponde
+   * 10. Transmitir al KDS via WebSocket (fuera de la transaccion)
    */
   async createOrder(data: CreateOrderInput) {
-    // Resolve Tenant ID first (needed for feature flag check)
+    // Resolver Tenant ID primero (necesario para verificar feature flags)
     const tenantId = data.tenantId;
     if (!tenantId) throw new ValidationError('Tenant ID required');
 
-    // Check if stock validation is enabled BEFORE transaction
+    // Verificar si la validacion de stock esta habilitada ANTES de la transaccion
     const stockEnabled = await isFeatureEnabled('enableStock', tenantId);
 
     const txResult = await prisma.$transaction(async (tx) => {
-      // 1. Validate Products & Calculate Totals (stock validation if enabled)
+      // 1. Validar productos y calcular totales (incluye validacion de stock si esta habilitado)
       const { itemDataList, stockUpdates, subtotal } = await this.validateAndCalculateItems(
         tx,
         data.items,
@@ -96,19 +115,20 @@ export class OrderService {
         stockEnabled
       );
 
-      // Apply discount if provided (from POS checkout)
+      // Aplicar descuento si se proporciona (desde el checkout del POS)
       const discountAmount = Math.min(Math.max(data.discount || 0, 0), subtotal);
       const total = subtotal - discountAmount;
 
-      // 2. Determine Robust Business Date (Shift or System)
-      // FIX: Use new service that handles "No Shift" scenarios gracefully
+      // 2. Determinar fecha de negocio robusta (del turno o del sistema)
+      // FIX: Usar servicio dedicado que maneja graciosamente el escenario "Sin Turno"
       const businessDate = await import('../services/businessDate.service')
         .then(m => m.businessDateService.determineBusinessDate(tenantId, data.serverId));
 
-      // 3. Generate Atomic Order Number scoped to Tenant + Date
+      // 3. Generar numero de orden atomico, aislado por Tenant + Fecha
       const { orderNumber } = await orderNumberService.getNextOrderNumber(tx, tenantId, businessDate);
 
-      // 4. Validate active shift (Optional - BusinessDateService handles fallback, but we might want to attach shiftId)
+      // 4. Validar turno activo (opcional — BusinessDateService maneja el fallback,
+      // pero queremos vincular el shiftId si existe)
       let shiftId: number | undefined;
       if (data.serverId) {
         const activeShift = await tx.cashShift.findFirst({
@@ -117,29 +137,25 @@ export class OrderService {
         if (activeShift) {
             shiftId = activeShift.id;
         } else {
-             // Non-blocking: We allow orders without shift (e.g. Early Waiter / Delivery)
-             // But we log it
+             // No bloqueante: permitimos ordenes sin turno (ej: mesero temprano / delivery)
+             // Pero lo registramos para visibilidad operativa
              logger.warn('ORDER_CREATED_WITHOUT_SHIFT', { serverId: data.serverId, businessDate });
         }
       }
 
-      // 5. Process payments
-      const singlePaymentMethod = data.paymentMethod === 'SPLIT' ? undefined : 
+      // 5. Procesar pagos (determinar metodo y calcular estado de pago)
+      const singlePaymentMethod = data.paymentMethod === 'SPLIT' ? undefined :
           (data.paymentMethod ? mapToPaymentMethod(data.paymentMethod) : undefined);
-      
+
       const splitPayments = data.payments?.map(p => ({
         ...p,
         method: mapToPaymentMethod(p.method)
       }));
 
-      // NOTE: Payment processing needs active shift to link payment? 
-      // If no shift, payment is orphan? Or linked to "System Shift"?
-      // For now, allow orphan payments if shiftId is undefined, but PaymentService might require it.
-      // We pass shiftId ?? 0 or handle inside PaymentService.
-      // Logic Update: If no shift, we can't register Cash Movement linked to a shift.
-      
-      // Note: shiftId may be undefined if no active shift exists.
-      // Payments are only persisted when shiftId is valid (see guard at line ~204).
+      // NOTA: El procesamiento de pagos necesita turno activo para vincular el pago.
+      // Si no hay turno, el pago queda "huerfano". Algunos establecimientos no usan turnos.
+      // Nota: shiftId puede ser undefined si no existe turno activo.
+      // Los pagos solo se persisten cuando shiftId es valido (ver guardia en linea ~204).
       const paymentResult = paymentService.processPayments(
         total,
         shiftId ?? null,
@@ -147,8 +163,8 @@ export class OrderService {
         splitPayments
       );
 
-      // 6. Build order create data (using unchecked create with scalar FKs)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Dynamic object built conditionally, validated by Prisma at runtime
+      // 6. Construir datos de creacion de orden (usando create sin check con FKs escalares)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Objeto dinamico construido condicionalmente, validado por Prisma en runtime
       const orderData: Prisma.OrderUncheckedCreateInput & Record<string, any> = {
         tenantId,
         orderNumber,
@@ -183,7 +199,7 @@ export class OrderService {
         }
       };
 
-      // P1-01: Validate FK ownership before assigning to order
+      // P1-01: Validar propiedad de FK antes de asignar a la orden (previene referencias cruzadas entre tenants)
       if (data.tableId) orderData.tableId = data.tableId;
       if (data.clientId) {
         const client = await tx.client.findFirst({ where: { id: data.clientId, tenantId } });
@@ -205,36 +221,36 @@ export class OrderService {
           if (data.deliveryData.driverId) orderData.driverId = data.deliveryData.driverId;
       }
 
-      // Add payments if any (Only if shift exists or we modify logic)
+      // Agregar pagos si existen (solo si hay turno activo para vincular)
       if (paymentResult.paymentsToCreate.length > 0 && shiftId) {
         orderData.payments = { create: paymentResult.paymentsToCreate.map(p => ({ ...p, tenantId })) };
       }
 
-      // 7. Create order
+      // 7. Crear la orden en la base de datos
       const order = await tx.order.create({
         data: orderData,
         include: { items: true }
       });
 
-      // 8. Update Stock
+      // 8. Descontar stock de ingredientes
       await this.processStockUpdates(tx, tenantId, stockUpdates, orderNumber);
 
-      // 9. Update Table Status
+      // 9. Actualizar estado de mesa a OCCUPIED y vincular la orden
       if (data.tableId) {
         const table = await tx.table.findFirst({ where: { id: data.tableId, tenantId } });
         if (!table) throw new NotFoundError(`Table ${data.tableId}`);
-        
+
         if (table.status !== 'FREE') {
            throw new ConflictError('Table is currently occupied');
         }
-        // SAFE: tx.table.findFirst at L211 verifies tenant ownership
+        // SEGURO: tx.table.findFirst en L211 verifica propiedad del tenant
         await tx.table.updateMany({
           where: { id: data.tableId, tenantId },
           data: { status: 'OCCUPIED', currentOrderId: order.id }
         });
       }
 
-      // 10. Loyalty
+      // 10. Otorgar puntos de fidelizacion si la orden esta pagada y tiene cliente
       let pointsAwarded = 0;
       if (data.clientId && paymentResult.isFullyPaid) {
           pointsAwarded = await loyaltyService.awardPoints(data.clientId, Number(total), tx, tenantId);
@@ -244,16 +260,16 @@ export class OrderService {
     });
 
     if (txResult.pointsAwarded > 0) {
-        logger.info('Loyalty points awarded', { 
-            clientId: data.clientId, 
-            points: txResult.pointsAwarded, 
-            orderId: txResult.order.id 
+        logger.info('Loyalty points awarded', {
+            clientId: data.clientId,
+            points: txResult.pointsAwarded,
+            orderId: txResult.order.id
         });
     }
 
     const order = txResult.order;
 
-    // 11. Broadcast to KDS
+    // 11. Transmitir al KDS via WebSocket (fuera de la transaccion para no bloquear)
     if (order.status === 'CONFIRMED' || order.status === 'OPEN') {
         const fullOrder = await this.getById(order.id, tenantId);
         if (fullOrder) {
@@ -265,7 +281,7 @@ export class OrderService {
   }
 
   /**
-   * Assign a driver to an order.
+   * Asigna un repartidor a una orden.
    * @delegates orderDeliveryService.assignDriver
    */
   async assignDriver(orderId: number, driverId: number, tenantId: number) {
@@ -273,7 +289,7 @@ export class OrderService {
   }
 
   /**
-   * Get active delivery orders.
+   * Obtiene ordenes de delivery activas.
    * @delegates orderDeliveryService.getDeliveryOrders
    */
   async getDeliveryOrders(tenantId: number) {
@@ -281,7 +297,7 @@ export class OrderService {
   }
 
   /**
-   * Update individual order item status.
+   * Actualiza el estado de un item individual de la orden.
    * @delegates orderKitchenService.updateItemStatus
    */
   async updateItemStatus(itemId: number, status: 'PENDING' | 'COOKING' | 'READY' | 'SERVED', tenantId: number) {
@@ -289,7 +305,7 @@ export class OrderService {
   }
 
   /**
-   * Mark all items in an order as SERVED.
+   * Marca todos los items de una orden como SERVED (servidos).
    * @delegates orderKitchenService.markAllItemsServed
    */
   async markAllItemsServed(orderId: number, tenantId: number) {
@@ -297,7 +313,7 @@ export class OrderService {
   }
 
   /**
-   * Validate products and calculate order totals.
+   * Valida productos y calcula totales de la orden.
    * @delegates orderItemService.validateAndCalculateItems
    */
   private async validateAndCalculateItems(
@@ -310,12 +326,13 @@ export class OrderService {
   }
 
   /**
-   * Process stock deductions for order items.
+   * Procesa las deducciones de stock para los items de la orden.
    * @private
-   * 
-   * @business_rule
-   * Prevents stock corruption coverage if the "Stock Management" module is disabled via TenantConfig (enableStock).
-   * If disabled, this function exits gracefully without modifying database state.
+   *
+   * @regla_negocio
+   * Si el modulo de "Gestion de Stock" esta deshabilitado via TenantConfig (enableStock),
+   * esta funcion sale graciosamente sin modificar el estado de la base de datos.
+   * Esto previene corrupcion de stock cuando el modulo no esta activo.
    */
   private async processStockUpdates(
     tx: Prisma.TransactionClient,
@@ -323,9 +340,9 @@ export class OrderService {
     stockUpdates: StockUpdate[],
     orderNumber: number
   ): Promise<void> {
-    // Only execute if Stock Module is enabled
+    // Solo ejecutar si el modulo de Stock esta habilitado
     await executeIfEnabled('enableStock', async () => {
-        // P1-05: Use batch method to reduce N+1 queries
+        // P1-05: Usar metodo batch para reducir queries N+1
         await stockService.registerBatch(
             stockUpdates,
             tenantId,
@@ -338,36 +355,36 @@ export class OrderService {
 
 
   /**
-   * Add payments to an existing order.
+   * Agrega pagos a una orden existente.
    *
-   * STEP 2: INTERFACE CONTRACT
-   * --------------------------
-   * @param {number} orderId - Order ID (must be positive integer > 0)
-   * @param {AddPaymentsRequest} request - Payment data with optional closeOrder flag
-   * @param {number} tenantId - Tenant ID for multi-tenant isolation (CRITICAL)
-   * @param {number} userId - Authenticated user ID for audit trail
-   * @param {number} [shiftId] - Active cash shift ID (optional, will attempt to resolve)
-   * @param {object} [auditContext] - Additional audit context (IP, User-Agent)
+   * PASO 2: CONTRATO DE INTERFAZ
+   * -----------------------------
+   * @param {number} orderId - ID de la orden (debe ser entero positivo > 0)
+   * @param {AddPaymentsRequest} request - Datos del pago con flag opcional closeOrder
+   * @param {number} tenantId - ID del tenant para aislamiento multi-tenant (CRITICO)
+   * @param {number} userId - ID del usuario autenticado para registro de auditoria
+   * @param {number} [shiftId] - ID del turno de caja activo (opcional, se intenta resolver)
+   * @param {object} [auditContext] - Contexto adicional de auditoria (IP, User-Agent)
    *
-   * @returns {Promise<AddPaymentsResult>} Result containing payment details and status
+   * @returns {Promise<AddPaymentsResult>} Resultado con detalles de pago y estado
    *
-   * @throws {NotFoundError} - Order not found or belongs to different tenant
-   * @throws {ValidationError} - Invalid payment amounts (zero, negative, or excessive overpayment)
-   * @throws {ConflictError} - Order already fully paid or cancelled
-   * @throws {BadRequestError} - No active shift when required for cash payments
+   * @throws {NotFoundError} - Orden no encontrada o pertenece a otro tenant
+   * @throws {ValidationError} - Montos invalidos (cero, negativo, o sobrepago excesivo)
+   * @throws {ConflictError} - Orden ya pagada completamente o cancelada
+   * @throws {BadRequestError} - Sin turno activo cuando se requiere para pagos en efectivo
    *
-   * @side_effects
-   * - Creates Payment records in database
-   * - Updates Order.paymentStatus
-   * - Optionally updates Order.status to CONFIRMED and sets closedAt
-   * - Optionally frees associated Table
-   * - Creates AuditLog entries for PAYMENT_RECEIVED
-   * - Broadcasts order update via KDS WebSocket
+   * @efectos_secundarios
+   * - Crea registros de Payment en la base de datos
+   * - Actualiza Order.paymentStatus
+   * - Opcionalmente actualiza Order.status a CONFIRMED y establece closedAt
+   * - Opcionalmente libera la mesa asociada
+   * - Crea entradas en AuditLog para PAYMENT_RECEIVED
+   * - Transmite actualizacion de orden via KDS WebSocket
    *
-   * STEP 1: COMPLEXITY ANALYSIS
-   * ---------------------------
-   * Time: O(n + m) where n = new payments, m = existing payments
-   * Space: O(n) for payment records to create
+   * PASO 1: ANALISIS DE COMPLEJIDAD
+   * --------------------------------
+   * Tiempo: O(n + m) donde n = pagos nuevos, m = pagos existentes
+   * Espacio: O(n) para registros de pago a crear
    *
    * @example
    * const result = await orderService.addPayments(
@@ -387,10 +404,10 @@ export class OrderService {
     auditContext?: { ipAddress?: string; userAgent?: string }
   ): Promise<AddPaymentsResult> {
     // =================================================================
-    // STEP 3: IMPLEMENTATION
+    // PASO 3: IMPLEMENTACION
     // =================================================================
 
-    // ---- Input Validation (Defensive Programming) ----
+    // ---- Validacion de entrada (Programacion Defensiva) ----
     if (!orderId || orderId <= 0 || !Number.isInteger(orderId)) {
       throw new ValidationError('Order ID must be a positive integer');
     }
@@ -401,7 +418,7 @@ export class OrderService {
       throw new ValidationError('At least one payment is required');
     }
 
-    // Validate individual payments - O(n)
+    // Validar cada pago individualmente - O(n)
     for (const payment of request.payments) {
       if (typeof payment.amount !== 'number' || !Number.isFinite(payment.amount)) {
         throw new ValidationError(`Invalid payment amount: ${payment.amount}`);
@@ -414,14 +431,14 @@ export class OrderService {
       }
     }
 
-    // Calculate total amount to add - O(n)
+    // Calcular monto total a agregar - O(n)
     const amountToAdd = request.payments.reduce((sum, p) => sum + p.amount, 0);
 
-    // ---- Execute within Transaction for ACID compliance ----
+    // ---- Ejecutar dentro de transaccion para cumplir con ACID ----
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Acquire exclusive row lock to prevent concurrent payment race condition
-      // Two concurrent addPayments calls could both read the same previouslyPaid value,
-      // leading to overpayment. SELECT FOR UPDATE serializes access to this row.
+      // 1. Adquirir lock exclusivo de fila para prevenir condicion de carrera en pagos concurrentes.
+      // Dos llamadas concurrentes a addPayments podrian leer el mismo valor de previouslyPaid,
+      // causando sobrepago. SELECT FOR UPDATE serializa el acceso a esta fila.
       await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} AND tenantId = ${tenantId} FOR UPDATE`;
 
       const order = await tx.order.findFirst({
@@ -432,22 +449,22 @@ export class OrderService {
         }
       });
 
-      // ---- Edge Case: Order not found or tenant mismatch ----
+      // ---- Caso borde: Orden no encontrada o no pertenece al tenant ----
       if (!order) {
         throw new NotFoundError('Order');
       }
 
-      // ---- Edge Case: Order already cancelled ----
+      // ---- Caso borde: Orden ya cancelada ----
       if (order.status === OrderStatus.CANCELLED) {
         throw new ConflictError('Cannot add payments to a cancelled order');
       }
 
-      // ---- Edge Case: Order already fully paid ----
+      // ---- Caso borde: Orden ya completamente pagada ----
       if (order.paymentStatus === PaymentStatus.PAID) {
         throw new ConflictError('Order is already fully paid');
       }
 
-      // 2. Calculate existing payments - O(m)
+      // 2. Calcular pagos existentes - O(m)
       const previouslyPaid = order.payments.reduce(
         (sum, p) => sum + Number(p.amount),
         0
@@ -455,38 +472,38 @@ export class OrderService {
       const orderTotal = Number(order.total);
       const projectedTotal = previouslyPaid + amountToAdd;
 
-      // ---- Edge Case: Excessive overpayment (>10% tolerance) ----
-      const maxAllowed = orderTotal * 1.10; // 10% tolerance for rounding
+      // ---- Caso borde: Sobrepago excesivo (tolerancia del 10% para redondeos) ----
+      const maxAllowed = orderTotal * 1.10; // 10% de tolerancia para redondeos
       if (projectedTotal > maxAllowed && orderTotal > 0) {
         throw new ValidationError(
           `Payment total (${projectedTotal.toFixed(2)}) exceeds order total (${orderTotal.toFixed(2)}) by more than 10%`
         );
       }
 
-      // 3. Resolve shift ID if not provided
+      // 3. Resolver ID de turno si no se proporciono
       let resolvedShiftId = shiftId;
       if (!resolvedShiftId) {
-        // Attempt to find active shift for user
+        // Intentar encontrar turno activo para el usuario
         const activeShift = await tx.cashShift.findFirst({
           where: { userId, tenantId, endTime: null }
         });
         if (activeShift) {
           resolvedShiftId = activeShift.id;
         } else {
-          // Check if any payment requires shift (CASH typically does)
+          // Verificar si algun pago requiere turno (CASH tipicamente lo requiere)
           const requiresShift = request.payments.some(p => {
             const method = mapToPaymentMethod(p.method);
             return method === PaymentMethod.CASH;
           });
           if (requiresShift) {
             logger.warn('Payment added without active shift', { orderId, userId });
-            // Don't throw - allow orphan payments for flexibility
-            // Business rule: Some establishments may not use shifts
+            // No lanzar error — permitir pagos huerfanos para flexibilidad.
+            // Regla de negocio: algunos establecimientos no usan turnos de caja.
           }
         }
       }
 
-      // 4. Create payment records - O(n)
+      // 4. Crear registros de pago - O(n)
       const paymentIds: number[] = [];
       for (const payment of request.payments) {
         const createdPayment = await tx.payment.create({
@@ -500,7 +517,7 @@ export class OrderService {
         });
         paymentIds.push(createdPayment.id);
 
-        // Audit log each payment (non-blocking)
+        // Registrar auditoria de cada pago (no bloqueante para no demorar la transaccion)
         auditService.logPayment('PAYMENT_RECEIVED', createdPayment.id, {
           tenantId,
           userId,
@@ -516,7 +533,7 @@ export class OrderService {
         }).catch(err => logger.error('Audit log failed', { err }));
       }
 
-      // 5. Calculate new payment status
+      // 5. Calcular nuevo estado de pago
       const totalPaid = projectedTotal;
       const remainingBalance = orderTotal - totalPaid;
       let newPaymentStatus: PaymentStatus;
@@ -529,10 +546,10 @@ export class OrderService {
         newPaymentStatus = PaymentStatus.PENDING;
       }
 
-      // 6. Determine if order should be closed
+      // 6. Determinar si la orden debe cerrarse
       const shouldCloseOrder = request.closeOrder === true && newPaymentStatus === PaymentStatus.PAID;
 
-      // 7. Update order
+      // 7. Actualizar la orden con el nuevo estado de pago
       const updateData: Prisma.OrderUpdateInput = {
         paymentStatus: newPaymentStatus
       };
@@ -542,13 +559,13 @@ export class OrderService {
         updateData.closedAt = new Date();
       }
 
-      // SAFE: tx.order.findFirst at L415 verifies tenant ownership
+      // SEGURO: tx.order.findFirst en L415 verifica propiedad del tenant
       await tx.order.update({
         where: { id: orderId },
         data: updateData
       });
 
-      // 8. Free table if order closed and has associated table
+      // 8. Liberar mesa si la orden se cerro y tiene mesa asociada
       if (shouldCloseOrder && order.tableId) {
         await tx.table.updateMany({
           where: { id: order.tableId, tenantId },
@@ -572,14 +589,14 @@ export class OrderService {
         paymentIds
       };
     }, {
-      // Use READ COMMITTED to prevent dirty reads while allowing concurrent reads
-      // For stronger consistency, use SERIALIZABLE but at cost of performance
+      // Usar READ COMMITTED para prevenir lecturas sucias permitiendo lecturas concurrentes.
+      // Para consistencia mas fuerte, usar SERIALIZABLE pero a costa de rendimiento.
       isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
-      // Timeout after 10 seconds to prevent long-running transactions
+      // Timeout de 10 segundos para prevenir transacciones de larga duracion
       timeout: 10000
     });
 
-    // 9. Broadcast update to KDS (outside transaction)
+    // 9. Transmitir actualizacion al KDS (fuera de la transaccion para no bloquear)
     const fullOrder = await this.getById(orderId, tenantId);
     if (fullOrder) {
       kdsService.broadcastOrderUpdate(fullOrder);
@@ -596,6 +613,10 @@ export class OrderService {
     return result;
   }
 
+  /**
+   * Obtiene la orden activa (no pagada) de una mesa especifica.
+   * Busca ordenes con estado de pago PENDING o PARTIAL, ordenadas por la mas reciente.
+   */
   async getOrderByTable(tableId: number, tenantId: number) {
     return await prisma.order.findFirst({
       where: {
@@ -616,12 +637,24 @@ export class OrderService {
     });
   }
 
+  /**
+   * Agrega items adicionales a una orden existente.
+   *
+   * Flujo:
+   * 1. Verificar que la orden existe y no esta pagada
+   * 2. Validar y calcular nuevos items
+   * 3. Crear los items con sus modificadores
+   * 4. Recalcular totales de la orden
+   * 5. Reabrir la orden si estaba en estado DELIVERED/PREPARED para visibilidad en KDS
+   * 6. Descontar stock si el modulo esta habilitado
+   * 7. Notificar al KDS de los nuevos items
+   */
   async addItemsToOrder(orderId: number, newItems: OrderItemInput[], serverId: number, tenantId: number) {
-    // Check if stock validation is enabled BEFORE transaction
+    // Verificar si la validacion de stock esta habilitada ANTES de la transaccion
     const stockEnabled = await isFeatureEnabled('enableStock', tenantId);
 
     const result = await prisma.$transaction(async (tx) => {
-      // 1. Get existing order
+      // 1. Obtener la orden existente y verificar que pertenezca al tenant
       const order = await tx.order.findFirst({
         where: { id: orderId, tenantId },
         include: { items: true }
@@ -630,11 +663,11 @@ export class OrderService {
       if (!order) throw new NotFoundError('Order');
       if (order.paymentStatus === 'PAID') throw new ValidationError('Cannot modify paid order');
 
-      // 2. Validate and calculate new items using extracted service
-      const { itemDataList, stockUpdates, subtotal: additionalTotal } = 
+      // 2. Validar y calcular nuevos items usando el servicio especializado
+      const { itemDataList, stockUpdates, subtotal: additionalTotal } =
         await orderItemService.validateAndCalculateItems(tx, newItems, tenantId, stockEnabled);
 
-      // 3. Create new order items
+      // 3. Crear los nuevos items de la orden con sus modificadores
       for (const itemData of itemDataList) {
         await tx.orderItem.create({
           data: {
@@ -658,14 +691,14 @@ export class OrderService {
         });
       }
 
-      // 4. Update order totals and REOPEN if needed (for KDS visibility)
+      // 4. Actualizar totales de la orden y REABRIR si es necesario (para visibilidad en KDS)
       const newSubtotal = Number(order.subtotal) + additionalTotal;
       const newTotal = Number(order.total) + additionalTotal;
 
-      // If order was DELIVERED or PREPARED, reopen it to OPEN so new items appear in KDS
+      // Si la orden estaba DELIVERED o PREPARED, reabrir a OPEN para que los nuevos items aparezcan en KDS
       const shouldReopen = ['DELIVERED', 'PREPARED'].includes(order.status);
 
-      // SAFE: tx.order.findFirst at L612 verifies tenant ownership
+      // SEGURO: tx.order.findFirst en L612 verifica propiedad del tenant
       const updatedOrder = await tx.order.update({
         where: { id: orderId },
         data: {
@@ -676,7 +709,7 @@ export class OrderService {
         include: { items: { include: { product: true } } }
       });
 
-      // 5. Update Stock (if module enabled)
+      // 5. Descontar stock si el modulo esta habilitado
       await executeIfEnabled('enableStock', async () => {
         const stockService = new StockMovementService();
         for (const update of stockUpdates) {
@@ -694,7 +727,7 @@ export class OrderService {
       return updatedOrder;
     });
 
-    // 6. Broadcast to KDS (Outside transaction) - NEW: Notify kitchen of added items
+    // 6. Notificar al KDS de los nuevos items (fuera de la transaccion)
     const fullOrder = await this.getById(orderId, tenantId);
     if (fullOrder) {
         kdsService.broadcastOrderUpdate(fullOrder);
@@ -703,6 +736,10 @@ export class OrderService {
     return result;
   }
 
+  /**
+   * Obtiene las 50 ordenes mas recientes del tenant.
+   * Usado para la vista de historial rapido en el POS.
+   */
   async getRecentOrders(tenantId: number) {
       return await prisma.order.findMany({
           where: { tenantId },
@@ -713,7 +750,7 @@ export class OrderService {
   }
 
   /**
-   * Get active orders for KDS (Kitchen Display System).
+   * Obtiene ordenes activas para el KDS (Kitchen Display System).
    * @delegates orderKitchenService.getActiveOrders
    */
   async getActiveOrders(tenantId: number) {
@@ -721,7 +758,7 @@ export class OrderService {
   }
 
   /**
-   * Update order status with state machine validation.
+   * Actualiza el estado de la orden con validacion de maquina de estados.
    * @delegates orderStatusService.updateStatus
    */
   async updateStatus(orderId: number, status: OrderStatus, tenantId: number) {

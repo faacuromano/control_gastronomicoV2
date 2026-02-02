@@ -1,7 +1,14 @@
 /**
- * @fileoverview Kitchen Display System (KDS) order operations.
- * Handles item status updates and active order queries for kitchen staff.
- * 
+ * @fileoverview Servicio de operaciones KDS (Kitchen Display System) para ordenes.
+ * Gestiona las actualizaciones de estado de items y consultas de ordenes activas
+ * para el personal de cocina.
+ *
+ * Extraido del monolito order.service.ts como parte del refactoring DT-001
+ * para aislar la logica especifica de cocina.
+ *
+ * Cada cambio de estado se transmite en tiempo real via WebSocket al KDS
+ * para que la cocina vea los cambios inmediatamente.
+ *
  * @module services/orderKitchen.service
  * @extracted_from order.service.ts (DT-001 Refactoring)
  */
@@ -12,30 +19,33 @@ import { kdsService } from './kds.service';
 import { NotFoundError } from '../utils/errors';
 
 /**
- * Service for KDS (Kitchen Display System) operations.
- * Manages order item status updates and kitchen order visibility.
+ * Servicio para operaciones del KDS (Kitchen Display System).
+ * Gestiona actualizaciones de estado de items y visibilidad de ordenes en cocina.
  */
 export class OrderKitchenService {
-    
+
     /**
-     * Update individual order item status.
-     * Broadcasts update to KDS clients via WebSocket.
+     * Actualiza el estado de un item individual de la orden.
+     * Transmite la actualizacion a los clientes KDS via WebSocket.
+     *
+     * Flujo: PENDING -> COOKING -> READY -> SERVED
+     * Verifica propiedad del tenant antes de actualizar.
      */
     async updateItemStatus(itemId: number, status: 'PENDING' | 'COOKING' | 'READY' | 'SERVED', tenantId: number) {
-        // Verify item belongs to tenant before updating
+        // Verificar que el item pertenezca al tenant antes de actualizar
         const existing = await prisma.orderItem.findFirst({
             where: { id: itemId, tenantId }
         });
         if (!existing) throw new NotFoundError('Order item');
 
-        // SAFE: findFirst at L25 verifies tenant ownership before update
+        // SEGURO: findFirst en L25 verifica propiedad del tenant antes del update
         const item = await prisma.orderItem.update({
             where: { id: itemId },
             data: { status },
             include: { order: true }
         });
 
-        // Broadcast update via KDS
+        // Transmitir actualizacion al KDS via WebSocket
         const fullOrder = await this.getOrderWithRelations(item.orderId, tenantId);
         if (fullOrder) {
             kdsService.broadcastOrderUpdate(fullOrder);
@@ -45,11 +55,12 @@ export class OrderKitchenService {
     }
 
     /**
-     * Mark all items in an order as SERVED.
-     * Used when kitchen finishes a table order and waiter picks it up.
+     * Marca todos los items de una orden como SERVED (servidos).
+     * Se usa cuando la cocina termina una orden de mesa y el mesero la retira.
+     * Solo actualiza items que aun no estan en estado SERVED.
      */
     async markAllItemsServed(orderId: number, tenantId: number) {
-        // Verify order belongs to tenant
+        // Verificar que la orden pertenezca al tenant
         const order = await prisma.order.findFirst({ where: { id: orderId, tenantId } });
         if (!order) throw new NotFoundError('Order');
 
@@ -62,7 +73,7 @@ export class OrderKitchenService {
             data: { status: 'SERVED' }
         });
 
-        // Fetch and broadcast updated order
+        // Obtener y transmitir la orden actualizada al KDS
         const fullOrder = await this.getOrderWithRelations(orderId, tenantId);
         if (fullOrder) {
             kdsService.broadcastOrderUpdate(fullOrder);
@@ -72,9 +83,12 @@ export class OrderKitchenService {
     }
 
     /**
-     * Get active orders for KDS (Kitchen Display System).
-     * Returns orders that are not CLOSED, CANCELLED or DELIVERED.
-     * Focuses on orders that need kitchen attention.
+     * Obtiene ordenes activas para el KDS (Kitchen Display System).
+     * Retorna ordenes que NO estan CERRADAS, CANCELADAS ni ENTREGADAS.
+     * Se enfoca en ordenes que necesitan atencion de la cocina.
+     *
+     * Solo incluye items que aun no han sido servidos (status != SERVED)
+     * y ordenes creadas desde hoy para no mostrar historial antiguo.
      */
     async getActiveOrders(tenantId: number) {
         return await prisma.order.findMany({
@@ -82,16 +96,16 @@ export class OrderKitchenService {
                 tenantId,
                 status: { in: ['OPEN', 'CONFIRMED', 'IN_PREPARATION', 'PREPARED'] as OrderStatus[] },
                 createdAt: {
-                    gte: new Date(new Date().setHours(0, 0, 0, 0)) // From today
+                    gte: new Date(new Date().setHours(0, 0, 0, 0)) // Desde el inicio del dia
                 }
             },
             include: {
                 items: {
-                    include: { 
+                    include: {
                         product: true,
                         modifiers: { include: { modifierOption: true } }
                     },
-                    where: { status: { not: 'SERVED' } } 
+                    where: { status: { not: 'SERVED' } }
                 },
                 table: true
             },
@@ -100,7 +114,8 @@ export class OrderKitchenService {
     }
 
     /**
-     * Helper to get order with full relations for broadcasting.
+     * Obtiene una orden con todas sus relaciones para transmitir via WebSocket.
+     * Metodo auxiliar usado internamente despues de cada actualizacion.
      * @private
      */
     private async getOrderWithRelations(orderId: number, tenantId: number) {

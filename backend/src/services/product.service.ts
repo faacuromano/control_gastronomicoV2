@@ -1,14 +1,26 @@
+/**
+ * @fileoverview Servicio de gestion de productos del menu.
+ * Maneja el CRUD completo de productos incluyendo sus relaciones con
+ * ingredientes (para control de stock) y grupos de modificadores (para personalizacion).
+ * Incluye validacion de pertenencia al tenant en todas las relaciones.
+ *
+ * @module services/product.service
+ */
+
 import { prisma } from '../lib/prisma';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { NotFoundError, ValidationError } from '../utils/errors';
 
+/**
+ * Schema de validacion para ingredientes asociados a un producto.
+ */
 const IngredientInput = z.object({
   ingredientId: z.number(),
   quantity: z.number().positive()
 });
 
-// SEC-023: Max length validation on text fields
+// SEC-023: Validacion de longitud maxima en campos de texto para prevenir abuso
 const ProductSchema = z.object({
     categoryId: z.number(),
     name: z.string().min(1, "Name is required").max(200, "Name too long (max 200 characters)"),
@@ -22,7 +34,11 @@ const ProductSchema = z.object({
     modifierIds: z.array(z.number()).optional()
 });
 
-// PERF-003: Reduced default limit from 500 to 100
+/**
+ * Obtiene productos con paginacion y filtros opcionales.
+ * PERF-003: Limite por defecto reducido de 500 a 100 para mejorar rendimiento.
+ * Incluye categoria, ingredientes y modificadores en la respuesta.
+ */
 export const getProducts = async (tenantId: number, where: Prisma.ProductWhereInput = {}, page = 1, limit = 100) => {
     const take = Math.min(limit, 500);
     const skip = (page - 1) * take;
@@ -52,25 +68,33 @@ export const getProducts = async (tenantId: number, where: Prisma.ProductWhereIn
     return { data, total, page, limit: take };
 };
 
+/**
+ * Obtiene un producto por ID con todas sus relaciones (categoria, ingredientes, modificadores).
+ */
 export const getProductById = async (id: number, tenantId: number) => {
     const product = await prisma.product.findFirst({
         where: { id, tenantId },
-        include: { 
-            category: true, 
-            ingredients: { include: { ingredient: true } }, 
+        include: {
+            category: true,
+            ingredients: { include: { ingredient: true } },
             modifiers: {
                 include: {
                     modifierGroup: {
                         include: { options: true }
                     }
                 }
-            } 
+            }
         }
     });
     if (!product) throw new NotFoundError('Product');
     return product;
 };
 
+/**
+ * Prepara los datos de creacion de producto en formato Prisma.
+ * Incluye la creacion anidada de ingredientes y modificadores con tenantId
+ * para cumplir con el requisito multi-tenant en todas las tablas.
+ */
 const prepareProductData = (
     data: z.infer<typeof ProductSchema>,
     tenantId: number
@@ -87,6 +111,7 @@ const prepareProductData = (
         isActive: productData.isActive ?? true
     };
 
+    // Crear relaciones de ingredientes con tenantId en cada registro anidado
     if (ingredients && ingredients.length > 0) {
         createData.ingredients = {
             create: ingredients.map(ing => ({
@@ -97,6 +122,7 @@ const prepareProductData = (
         };
     }
 
+    // Crear relaciones de grupos de modificadores con tenantId en cada registro anidado
     if (modifierIds && modifierIds.length > 0) {
         createData.modifiers = {
             create: modifierIds.map(groupId => ({
@@ -109,22 +135,32 @@ const prepareProductData = (
     return createData;
 };
 
+/**
+ * Crea un nuevo producto con sus ingredientes y modificadores.
+ *
+ * Validaciones previas a la creacion:
+ * 1. Schema Zod (tipos, longitudes, formatos)
+ * 2. Categoria pertenece al tenant
+ * 3. Todos los ingredientes pertenecen al tenant
+ * 4. Todos los grupos de modificadores pertenecen al tenant
+ */
 export const createProduct = async (data: Record<string, unknown> & { tenantId?: number }) => {
     const validation = ProductSchema.safeParse(data);
     if (!validation.success) {
         throw new ValidationError('Invalid data', validation.error.issues);
     }
-    
-    // Validate Tenant context (must be passed in data)
+
+    // Validar contexto de tenant (debe venir en los datos)
     const tenantId = data.tenantId;
     if (!tenantId) throw new ValidationError('Tenant ID required');
 
+    // Verificar que la categoria pertenezca al tenant
     const category = await prisma.category.findFirst({ where: { id: validation.data.categoryId, tenantId } });
     if (!category) throw new ValidationError('Invalid Category ID for this tenant');
 
     const { ingredients, modifierIds, ...productData } = validation.data;
 
-    // Validate relationships belong to tenant
+    // Validar que todos los ingredientes referenciados pertenezcan al tenant
     if (ingredients && ingredients.length > 0) {
         const ingIds = ingredients.map(i => i.ingredientId);
         const count = await prisma.ingredient.count({
@@ -133,6 +169,7 @@ export const createProduct = async (data: Record<string, unknown> & { tenantId?:
         if (count !== ingIds.length) throw new ValidationError('One or more ingredients do not belong to this tenant');
     }
 
+    // Validar que todos los grupos de modificadores pertenezcan al tenant
     if (modifierIds && modifierIds.length > 0) {
          const count = await prisma.modifierGroup.count({
             where: { id: { in: modifierIds }, tenantId }
@@ -148,15 +185,23 @@ export const createProduct = async (data: Record<string, unknown> & { tenantId?:
     });
 };
 
+/**
+ * Actualiza un producto existente y sus relaciones.
+ * Para ingredientes y modificadores se usa la estrategia de "reemplazo total":
+ * se eliminan las relaciones existentes y se recrean con los nuevos datos.
+ * Esto simplifica la logica vs actualizaciones parciales.
+ */
 export const updateProduct = async (id: number, tenantId: number, data: Record<string, unknown>) => {
     const validation = ProductSchema.partial().safeParse(data);
     if (!validation.success) {
         throw new ValidationError('Invalid data', validation.error.issues);
     }
 
+    // Verificar que el producto exista y pertenezca al tenant
     const exists = await prisma.product.findFirst({ where: { id, tenantId } });
     if (!exists) throw new NotFoundError('Product');
 
+    // Verificar categoria si se esta cambiando
     if (validation.data.categoryId) {
         const category = await prisma.category.findFirst({ where: { id: validation.data.categoryId, tenantId } });
         if (!category) throw new ValidationError('Invalid Category ID for this tenant');
@@ -164,17 +209,17 @@ export const updateProduct = async (id: number, tenantId: number, data: Record<s
 
     const { ingredients, modifierIds, ...productData } = validation.data;
     const updateData: Record<string, unknown> = { ...productData };
-    if (productData.description === undefined && data.description === null) updateData.description = null; // Explicit null handling
+    if (productData.description === undefined && data.description === null) updateData.description = null; // Manejo explicito de null
     if (productData.image === undefined && data.image === null) updateData.image = null;
 
-    // Transaction to handle ingredients update (delete all & recreate is simplest approach for full replacement)
-    // For partial updates it's harder, so we assume "ingredients" in update replaces the whole list.
-    
+    // Transaccion para manejar la actualizacion de ingredientes (eliminar todo y recrear)
+    // Para actualizaciones parciales seria mas complejo, asi que asumimos reemplazo total.
+
     return await prisma.$transaction(async (tx) => {
         if (ingredients) {
-            // Delete existing
+            // Eliminar ingredientes existentes del producto
             await tx.productIngredient.deleteMany({ where: { productId: id, tenantId } });
-            // Create new
+            // Crear los nuevos ingredientes con tenantId
             await tx.productIngredient.createMany({
                 data: ingredients.map(ing => ({
                     tenantId,
@@ -186,9 +231,9 @@ export const updateProduct = async (id: number, tenantId: number, data: Record<s
         }
 
         if (modifierIds) {
-            // Delete existing modifiers
+            // Eliminar modificadores existentes del producto
             await tx.productModifierGroup.deleteMany({ where: { productId: id, tenantId } });
-            // Create new
+            // Crear los nuevos modificadores con tenantId
             await tx.productModifierGroup.createMany({
                  data: modifierIds.map(groupId => ({
                     tenantId,
@@ -198,7 +243,7 @@ export const updateProduct = async (id: number, tenantId: number, data: Record<s
             });
         }
 
-        // SAFE: findFirst L144 verifies tenant ownership
+        // SEGURO: findFirst en L144 verifica propiedad del tenant
         return await tx.product.update({
             where: { id },
             data: updateData,
@@ -207,6 +252,10 @@ export const updateProduct = async (id: number, tenantId: number, data: Record<s
     });
 };
 
+/**
+ * Alterna el estado activo/inactivo de un producto.
+ * Los productos inactivos no aparecen en el POS ni en el menu QR.
+ */
 export const toggleProductActive = async (id: number, tenantId: number) => {
     const product = await prisma.product.findFirst({ where: { id, tenantId } });
     if (!product) throw new NotFoundError('Product');
@@ -217,8 +266,13 @@ export const toggleProductActive = async (id: number, tenantId: number) => {
     });
 };
 
+/**
+ * "Elimina" un producto (soft delete).
+ * En realidad lo marca como inactivo para preservar referencias historicas
+ * en ordenes pasadas. Los productos nunca se eliminan fisicamente.
+ */
 export const deleteProduct = async (id: number, tenantId: number) => {
-    // Check if exists
+    // Verificar existencia y propiedad
     const product = await prisma.product.findFirst({ where: { id, tenantId } });
     if (!product) throw new NotFoundError('Product');
 

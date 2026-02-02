@@ -1,34 +1,44 @@
 /**
- * Feature Flags Service
- * Manages TenantConfig and provides helpers for conditional feature execution
+ * @fileoverview Servicio de Feature Flags (Banderas de Funcionalidad)
+ *
+ * Gestiona la configuracion del tenant (TenantConfig) y provee helpers para
+ * ejecutar logica condicionalmente segun las funcionalidades habilitadas.
+ *
+ * Cada tenant puede activar/desactivar modulos como stock, delivery, KDS, fiscal, etc.
+ * Este servicio centraliza esa logica y cachea la configuracion para evitar consultas
+ * repetitivas a la base de datos.
+ *
+ * @module services/featureFlags.service
  */
 
 import { TenantConfig } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 
-// Cache for tenant configs keyed by tenantId
+// Cache en memoria indexado por tenantId para evitar lecturas repetidas a la BD.
+// Se usa un Map con TTL por entrada para invalidar automaticamente.
 const MAX_CACHE_SIZE = 500;
 const configCache = new Map<number, { config: TenantConfig; expiry: number }>();
 const CACHE_TTL_MS = parseInt(process.env.FEATURE_FLAGS_CACHE_TTL_MS || '60000', 10);
 
 /**
- * Get the current tenant configuration
- * Creates default config if none exists
+ * Obtiene la configuracion actual del tenant.
+ * Si no existe una configuracion en la BD, crea una con valores por defecto.
+ * Utiliza cache en memoria con TTL configurable para optimizar rendimiento.
  */
 export async function getTenantConfig(tenantId: number): Promise<TenantConfig> {
     const now = Date.now();
 
-    // Check per-tenant cache
+    // Verificar si existe en cache y no ha expirado
     const cached = configCache.get(tenantId);
     if (cached && cached.expiry > now) {
         return cached.config;
     }
 
-    // Fetch from database
+    // Buscar en base de datos
     let config = await prisma.tenantConfig.findFirst({ where: { tenantId } });
 
-    // Create default config if none exists
+    // Crear configuracion por defecto si el tenant aun no tiene una
     if (!config) {
         config = await prisma.tenantConfig.create({
             data: {
@@ -44,20 +54,21 @@ export async function getTenantConfig(tenantId: number): Promise<TenantConfig> {
         });
     }
 
-    // Evict oldest entry if cache is full
+    // Politica de eviccion: si el cache esta lleno, eliminar la entrada mas antigua (FIFO)
     if (configCache.size >= MAX_CACHE_SIZE) {
         const oldestKey = configCache.keys().next().value;
         if (oldestKey !== undefined) configCache.delete(oldestKey);
     }
 
-    // Update cache
+    // Guardar en cache con timestamp de expiracion
     configCache.set(tenantId, { config, expiry: now + CACHE_TTL_MS });
 
     return config;
 }
 
 /**
- * Check if a specific feature is enabled
+ * Verifica si una funcionalidad especifica esta habilitada para un tenant.
+ * Consulta la configuracion (con cache) y retorna el valor booleano del flag.
  */
 export async function isFeatureEnabled(
     flag: keyof Omit<TenantConfig, 'id' | 'businessName' | 'currencySymbol' | 'tenantId'>,
@@ -68,10 +79,14 @@ export async function isFeatureEnabled(
 }
 
 /**
- * Execute a function only if the specified feature is enabled
- * Returns the fallback value if the feature is disabled or throws
+ * Ejecuta una funcion solo si la funcionalidad indicada esta habilitada.
+ * Retorna el valor de fallback si la funcionalidad esta desactivada o si ocurre un error.
  *
- * This pattern allows optional modules to fail gracefully without affecting core functionality.
+ * Este patron permite que modulos opcionales fallen graciosamente sin afectar
+ * la funcionalidad principal del sistema (ej: si KDS falla, la orden igual se crea).
+ *
+ * IMPORTANTE: Los flags criticos (stock, fiscal) NO se silencian — si fallan,
+ * el error se propaga porque podrian causar desincronizacion de inventario o fiscal.
  *
  * @example
  * await executeIfEnabled('enableStock', () => stockService.decrementForOrder(items));
@@ -91,7 +106,8 @@ export async function executeIfEnabled<T>(
     try {
         return await fn();
     } catch (error) {
-        // ERR-011: Log with full context; critical features (stock) should not silently fail
+        // ERR-011: Loggear con contexto completo; funcionalidades criticas (stock, fiscal)
+        // no deben fallar silenciosamente porque causan drift de inventario o inconsistencias fiscales
         const isCritical = flag === 'enableStock' || flag === 'enableFiscal';
         const level = isCritical ? 'error' : 'warn';
         logger[level](`FEATURE_FLAG_EXECUTION_FAILED`, {
@@ -102,15 +118,17 @@ export async function executeIfEnabled<T>(
             stack: error instanceof Error ? error.stack : undefined,
         });
         if (isCritical) {
-            throw error; // Don't swallow stock/fiscal errors — they cause inventory drift
+            throw error; // No silenciar errores de stock/fiscal — causan drift de inventario
         }
         return fallback;
     }
 }
 
 /**
- * Update tenant configuration
- * Accepts either flat fields or a nested { features: {...} } structure from the frontend.
+ * Actualiza la configuracion de un tenant.
+ * Acepta campos planos o una estructura anidada { features: {...} } desde el frontend.
+ * Solo permite actualizar campos conocidos de TenantConfig (whitelist) para evitar
+ * inyeccion de campos no autorizados.
  */
 export async function updateTenantConfig(
     updates: Record<string, unknown>,
@@ -118,7 +136,8 @@ export async function updateTenantConfig(
 ): Promise<TenantConfig> {
     const config = await getTenantConfig(tenantId);
 
-    // Flatten nested "features" object into top-level columns
+    // Aplanar el objeto "features" anidado a columnas de nivel superior,
+    // ya que el frontend puede enviar { features: { enableStock: true } }
     const { features, ...rest } = updates;
     const flatUpdates: Record<string, unknown> = { ...rest };
     if (features && typeof features === 'object') {
@@ -127,7 +146,7 @@ export async function updateTenantConfig(
         }
     }
 
-    // Only allow known TenantConfig fields
+    // Whitelist: solo permitir campos conocidos de TenantConfig para prevenir escrituras no autorizadas
     const allowedFields = new Set([
         'businessName', 'currencySymbol',
         'enableStock', 'enableDelivery', 'enableKDS', 'enableFiscal', 'enableDigital', 'enableBlindCount',
@@ -145,14 +164,15 @@ export async function updateTenantConfig(
         data: safeUpdates
     });
 
-    // Invalidate cache for this tenant
+    // Invalidar cache de este tenant para que la proxima lectura obtenga datos frescos
     configCache.delete(tenantId);
 
     return updated;
 }
 
 /**
- * Clear the config cache (useful for testing)
+ * Limpia el cache de configuracion completo.
+ * Util para testing y para forzar recarga de configuraciones.
  */
 export function clearConfigCache(): void {
     configCache.clear();

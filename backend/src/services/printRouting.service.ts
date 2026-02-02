@@ -1,22 +1,29 @@
 /**
- * @fileoverview Print Routing Service (Toast-style).
- * Determines which printer should receive order items based on:
- * 1. Area-specific overrides (highest priority)
- * 2. Category-assigned printers (default routing)
- * 
+ * @fileoverview Servicio de enrutamiento de impresion (estilo Toast POS).
+ * Determina a que impresora deben enviarse los items de una orden basandose en:
+ * 1. Sobrecargas por area (prioridad mas alta) - ej: terraza usa impresora X
+ * 2. Impresora asignada a la categoria (enrutamiento por defecto) - ej: bebidas van a barra
+ *
+ * Esto permite que en un restaurante, los items de cocina se impriman en la cocina,
+ * las bebidas en la barra, y los postres en la estacion de postres, automaticamente.
+ *
  * @module services/printRouting.service
- * @pattern Strategy - Different routing strategies based on context
- * 
+ * @pattern Strategy - Diferentes estrategias de enrutamiento segun el contexto
+ *
  * @example
- * // Get routing for an order
+ * // Obtener enrutamiento para una orden
  * const routes = await printRoutingService.getRoutingForOrder(orderId);
- * // returns Map<printerId, OrderItem[]>
+ * // retorna Map<printerId, OrderItem[]>
  */
 
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { NotFoundError } from '../utils/errors';
 
+/**
+ * Estructura de un item de orden con los datos necesarios para enrutamiento.
+ * Incluye producto y categoria para determinar a que impresora enviarlo.
+ */
 interface OrderItemForRouting {
     id: number;
     productId: number;
@@ -34,27 +41,37 @@ interface OrderItemForRouting {
     };
 }
 
+/**
+ * Representa una ruta de impresion: una impresora con los items que debe imprimir.
+ */
 interface PrintRoute {
     printerId: number;
     printerName: string;
     items: OrderItemForRouting[];
 }
 
+/**
+ * Resultado del enrutamiento: rutas asignadas y items sin impresora asignada.
+ */
 interface RoutingResult {
     routes: PrintRoute[];
-    unrouted: OrderItemForRouting[];  // Items without assigned printer
+    unrouted: OrderItemForRouting[];  // Items sin impresora asignada
 }
 
 export class PrintRoutingService {
     /**
-     * Get print routing for an order.
-     * Groups order items by destination printer.
-     * 
-     * @param orderId - Order ID to route
-     * @returns RoutingResult with routes and unrouted items
+     * Obtiene el enrutamiento de impresion para una orden.
+     * Agrupa los items por impresora destino segun la jerarquia de prioridades:
+     * 1. Sobrecarga especifica de categoria para el area de la mesa
+     * 2. Sobrecarga general del area (todas las categorias a una impresora)
+     * 3. Impresora por defecto de la categoria del producto
+     *
+     * @param orderId - ID de la orden a enrutar
+     * @param tenantId - ID del tenant para aislamiento multi-tenant
+     * @returns Resultado con rutas de impresion y items sin asignar
      */
     async getRoutingForOrder(orderId: number, tenantId: number): Promise<RoutingResult> {
-        // PERF-006: Select only fields needed for routing instead of full relations
+        // PERF-006: Seleccionar solo los campos necesarios para el enrutamiento en vez de relaciones completas
         const order = await prisma.order.findFirst({
             where: { id: orderId, tenantId },
             select: {
@@ -105,11 +122,11 @@ export class PrintRoutingService {
             throw new NotFoundError(`Order ${orderId}`);
         }
 
-        // 2. Get area overrides (if order has a table)
+        // 2. Obtener sobrecargas del area (si la orden tiene mesa asignada)
         const areaOverrides = order.table?.area?.printerOverrides ?? [];
-        
-        // Build override lookup: categoryId -> printerId
-        // categoryId = null means "all categories" for this area
+
+        // Construir mapa de sobrecargas: categoryId -> printerId
+        // categoryId = null significa "todas las categorias" para esta area
         const overrideMap = new Map<number | null, { printerId: number; printerName: string }>();
         for (const override of areaOverrides) {
             overrideMap.set(override.categoryId, {
@@ -118,10 +135,10 @@ export class PrintRoutingService {
             });
         }
 
-        // Check for area-wide override (categoryId = null)
+        // Verificar si existe una sobrecarga general del area (categoryId = null)
         const areaWideOverride = overrideMap.get(null);
 
-        // 3. Route each item to appropriate printer
+        // 3. Enrutar cada item a la impresora correspondiente segun la jerarquia de prioridades
         const routeMap = new Map<number, PrintRoute>();
         const unrouted: OrderItemForRouting[] = [];
 
@@ -129,15 +146,15 @@ export class PrintRoutingService {
             const categoryId = item.product.categoryId;
             let targetPrinter: { printerId: number; printerName: string } | null = null;
 
-            // Priority 1: Category-specific override for this area
+            // Prioridad 1: Sobrecarga especifica de la categoria para esta area
             if (overrideMap.has(categoryId)) {
                 targetPrinter = overrideMap.get(categoryId)!;
             }
-            // Priority 2: Area-wide override (applies to all categories)
+            // Prioridad 2: Sobrecarga general del area (aplica a todas las categorias)
             else if (areaWideOverride) {
                 targetPrinter = areaWideOverride;
             }
-            // Priority 3: Default category printer
+            // Prioridad 3: Impresora por defecto de la categoria del producto
             else if (item.product.category.printerId && item.product.category.printer) {
                 targetPrinter = {
                     printerId: item.product.category.printerId,
@@ -145,7 +162,7 @@ export class PrintRoutingService {
                 };
             }
 
-            // Add to route or unrouted list
+            // Agregar a la ruta correspondiente o a la lista de no enrutados
             if (targetPrinter) {
                 if (!routeMap.has(targetPrinter.printerId)) {
                     routeMap.set(targetPrinter.printerId, {
@@ -176,17 +193,19 @@ export class PrintRoutingService {
     }
 
     /**
-     * Get routing for specific items (for partial prints like "add items").
-     * 
-     * @param items - Items to route
-     * @param areaId - Optional area ID for override lookup
+     * Obtiene el enrutamiento para items especificos (para impresiones parciales como "agregar items").
+     * Se usa cuando se agregan items a una orden existente y solo necesitan imprimirse los nuevos.
+     *
+     * @param tenantId - ID del tenant
+     * @param items - Items a enrutar con productId y cantidad
+     * @param areaId - ID del area opcional para buscar sobrecargas
      */
     async getRoutingForItems(
         tenantId: number,
         items: Array<{ productId: number; quantity: number; notes?: string }>,
         areaId?: number
     ): Promise<RoutingResult> {
-        // Get products with categories
+        // Obtener productos con sus categorias e impresoras asignadas
         const productIds = items.map(i => i.productId);
         const products = await prisma.product.findMany({
             where: { id: { in: productIds }, tenantId },
@@ -199,12 +218,12 @@ export class PrintRoutingService {
 
         const productMap = new Map(products.map(p => [p.id, p]));
 
-        // Get area overrides if areaId provided
+        // Obtener sobrecargas del area si se proporciono areaId
         let overrideMap = new Map<number | null, { printerId: number; printerName: string }>();
         let areaWideOverride: { printerId: number; printerName: string } | null = null;
 
         if (areaId) {
-            // Verify area ownership
+            // Verificar que el area pertenezca al tenant
             const area = await prisma.area.findFirst({ where: { id: areaId, tenantId } });
             if (!area) throw new NotFoundError('Area');
 
@@ -222,7 +241,7 @@ export class PrintRoutingService {
             areaWideOverride = overrideMap.get(null) ?? null;
         }
 
-        // Route items
+        // Enrutar cada item usando la misma jerarquia de prioridades
         const routeMap = new Map<number, PrintRoute>();
         const unrouted: OrderItemForRouting[] = [];
 
@@ -233,15 +252,15 @@ export class PrintRoutingService {
             const categoryId = product.categoryId;
             let targetPrinter: { printerId: number; printerName: string } | null = null;
 
-            // Priority 1: Category-specific override
+            // Prioridad 1: Sobrecarga especifica de categoria
             if (overrideMap.has(categoryId)) {
                 targetPrinter = overrideMap.get(categoryId)!;
             }
-            // Priority 2: Area-wide override
+            // Prioridad 2: Sobrecarga general del area
             else if (areaWideOverride) {
                 targetPrinter = areaWideOverride;
             }
-            // Priority 3: Category default
+            // Prioridad 3: Impresora por defecto de la categoria
             else if (product.category.printerId && product.category.printer) {
                 targetPrinter = {
                     printerId: product.category.printerId,
@@ -250,7 +269,7 @@ export class PrintRoutingService {
             }
 
             const routingItem: OrderItemForRouting = {
-                id: 0, // Not persisted yet
+                id: 0, // Aun no persistido en base de datos
                 productId: item.productId,
                 quantity: item.quantity,
                 notes: item.notes ?? null,
@@ -287,7 +306,8 @@ export class PrintRoutingService {
     }
 
     /**
-     * Get all printers configured for routing (for admin UI).
+     * Obtiene toda la configuracion de enrutamiento de impresion (para la UI de administracion).
+     * Retorna categorias con sus impresoras, areas con sus sobrecargas, y todas las impresoras.
      */
     async getRoutingConfiguration(tenantId: number) {
         const [categories, areas, printers] = await Promise.all([
@@ -338,20 +358,22 @@ export class PrintRoutingService {
     }
 
     /**
-     * Set category default printer.
+     * Asigna la impresora por defecto a una categoria.
+     * Todos los items de productos en esta categoria se imprimiran en esta impresora
+     * a menos que exista una sobrecarga de area.
      */
     async setCategoryPrinter(tenantId: number, categoryId: number, printerId: number | null) {
-        // Verify ownership
+        // Verificar que la categoria pertenezca al tenant
         const category = await prisma.category.findFirst({ where: { id: categoryId, tenantId } });
         if (!category) throw new NotFoundError('Category');
 
-        // SEC-021: Verify printer belongs to same tenant
+        // SEC-021: Verificar que la impresora pertenezca al mismo tenant
         if (printerId !== null) {
             const printer = await prisma.printer.findFirst({ where: { id: printerId, tenantId } });
             if (!printer) throw new NotFoundError('Printer not found or belongs to another tenant');
         }
 
-        // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+        // Defensa en profundidad: updateMany garantiza que tenantId este en la clausula WHERE
         return prisma.category.updateMany({
             where: { id: categoryId, tenantId },
             data: { printerId }
@@ -359,32 +381,33 @@ export class PrintRoutingService {
     }
 
     /**
-     * Set area printer override.
-     * If categoryId is null, sets an area-wide override (all categories).
+     * Configura una sobrecarga de impresora para un area especifica.
+     * Si categoryId es null, establece una sobrecarga general del area (todas las categorias van a una impresora).
+     * Si categoryId tiene valor, solo esa categoria usa la impresora indicada en esa area.
      */
     async setAreaOverride(tenantId: number, areaId: number, categoryId: number | null, printerId: number) {
-        // Verify ownership of area
+        // Verificar que el area pertenezca al tenant
         const area = await prisma.area.findFirst({ where: { id: areaId, tenantId } });
         if (!area) throw new NotFoundError('Area not found');
 
-        // SEC-021: Verify printer belongs to same tenant
+        // SEC-021: Verificar que la impresora pertenezca al mismo tenant
         const printer = await prisma.printer.findFirst({ where: { id: printerId, tenantId } });
         if (!printer) throw new NotFoundError('Printer not found or belongs to another tenant');
 
-        // SEC-021: Verify category belongs to same tenant (if specified)
+        // SEC-021: Verificar que la categoria pertenezca al mismo tenant (si se especifica)
         if (categoryId !== null) {
             const category = await prisma.category.findFirst({ where: { id: categoryId, tenantId } });
             if (!category) throw new NotFoundError('Category not found or belongs to another tenant');
         }
 
-        // Prisma doesn't generate compound unique for nullable fields correctly
-        // Use upsert with where clause that handles null
+        // Prisma no genera correctamente el unique compuesto para campos nullable.
+        // Usamos findFirst + create/update manual en vez de upsert.
         const existing = await prisma.areaPrinterOverride.findFirst({
             where: { areaId, categoryId, tenantId }
         });
 
         if (existing) {
-            // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+            // Defensa en profundidad: updateMany garantiza que tenantId este en la clausula WHERE
             return prisma.areaPrinterOverride.updateMany({
                 where: { id: existing.id, tenantId },
                 data: { printerId }
@@ -397,20 +420,21 @@ export class PrintRoutingService {
     }
 
     /**
-     * Remove area printer override.
+     * Elimina una sobrecarga de impresora para un area.
+     * Los items de esa area volveran a usar la impresora por defecto de su categoria.
      */
     async removeAreaOverride(tenantId: number, areaId: number, categoryId: number | null) {
-        // Verify ownership
+        // Verificar que el area pertenezca al tenant
         const area = await prisma.area.findFirst({ where: { id: areaId, tenantId } });
         if (!area) throw new NotFoundError('Area not found');
 
-        // Find and delete since compound unique with nullable doesn't work directly
+        // Buscar y eliminar la sobrecarga (unique compuesto con nullable requiere findFirst)
         const existing = await prisma.areaPrinterOverride.findFirst({
             where: { areaId, categoryId, tenantId }
         });
 
         if (existing) {
-            // defense-in-depth: deleteMany ensures tenantId is in the WHERE clause
+            // Defensa en profundidad: deleteMany garantiza que tenantId este en la clausula WHERE
             return prisma.areaPrinterOverride.deleteMany({
                 where: { id: existing.id, tenantId }
             });
@@ -419,14 +443,16 @@ export class PrintRoutingService {
     }
 
     /**
-     * Set area-wide override (all categories go to one printer).
+     * Atajo para configurar una sobrecarga general de area.
+     * Todas las categorias de esa area se imprimen en una unica impresora.
      */
     async setAreaWideOverride(tenantId: number, areaId: number, printerId: number) {
         return this.setAreaOverride(tenantId, areaId, null, printerId);
     }
 
     /**
-     * Remove area-wide override.
+     * Atajo para eliminar la sobrecarga general de area.
+     * Cada categoria volvera a usar su impresora por defecto.
      */
     async removeAreaWideOverride(tenantId: number, areaId: number) {
         return this.removeAreaOverride(tenantId, areaId, null);

@@ -1,10 +1,16 @@
 /**
- * @fileoverview Stock Sync Service
+ * @fileoverview Servicio de Sincronizacion de Stock con Plataformas de Delivery
  *
- * Service to synchronize product availability with delivery platforms.
+ * Servicio encargado de sincronizar la disponibilidad de productos con todas
+ * las plataformas de delivery configuradas. Cuando un producto se agota o
+ * vuelve a estar disponible, este servicio notifica a cada plataforma para
+ * que el catalogo en linea refleje el estado real del inventario.
  *
- * When a product runs out of stock or is marked as unavailable,
- * this service notifies all configured platforms.
+ * CASOS DE USO:
+ * - Un ingrediente se agota: markOutOfStock() deshabilita el producto en todas las plataformas
+ * - Se recibe mercaderia: markInStock() restaura la disponibilidad
+ * - Reconexion con plataforma: fullSyncToPlatform() sincroniza todo el catalogo
+ * - Actualizaciones masivas: enqueueStockUpdate() encola para procesamiento asincrono
  *
  * @module integrations/delivery/sync/stockSync.service
  */
@@ -17,7 +23,7 @@ import { NotFoundError } from '../../../utils/errors';
 import type { AvailabilityUpdate } from '../types/normalized.types';
 
 // ============================================================================
-// TIPOS
+// TIPOS INTERNOS
 // ============================================================================
 
 interface StockSyncJobData {
@@ -29,15 +35,18 @@ interface StockSyncJobData {
 }
 
 // ============================================================================
-// SERVICIO
+// SERVICIO DE SINCRONIZACION DE STOCK
 // ============================================================================
 
 class StockSyncService {
   /**
-   * Actualiza la disponibilidad de un producto en todas las plataformas.
-   * 
-   * @param productId - ID del producto
+   * Actualiza la disponibilidad de un producto en todas las plataformas
+   * donde esta configurado. Recorre cada precio de canal asociado al producto,
+   * actualiza el estado en la BD local y notifica a la plataforma via el adaptador.
+   *
+   * @param productId - ID del producto a actualizar
    * @param isAvailable - Nuevo estado de disponibilidad
+   * @returns Map con platformId como clave y resultado (true/false) como valor
    */
   async updateProductAvailability(
     productId: number,
@@ -47,7 +56,7 @@ class StockSyncService {
 
     const results = new Map<number, boolean>();
 
-    // Get all channel prices for this product
+    // Obtener todos los precios de canal configurados para este producto
     const channelPrices = await prisma.productChannelPrice.findMany({
       where: { productId },
       include: {
@@ -56,18 +65,19 @@ class StockSyncService {
     });
 
     for (const channelPrice of channelPrices) {
+      // Saltar plataformas deshabilitadas
       if (!channelPrice.deliveryPlatform.isEnabled) {
         continue;
       }
 
       try {
-        // Update in DB
+        // Actualizar disponibilidad en la BD local
         await prisma.productChannelPrice.update({
           where: { id: channelPrice.id },
           data: { isAvailable },
         });
 
-        // Notify the platform
+        // Notificar a la plataforma solo si hay SKU externo configurado
         if (channelPrice.externalSku) {
           const adapter = await AdapterFactory.getByPlatformId(
             channelPrice.deliveryPlatformId
@@ -106,8 +116,8 @@ class StockSyncService {
   }
 
   /**
-   * Marks a product as out of stock on all platforms.
-   * Useful when ingredient shortage is detected.
+   * Marca un producto como agotado en todas las plataformas.
+   * Util cuando se detecta escasez de ingredientes o se agota el stock.
    */
   async markOutOfStock(
     productId: number,
@@ -131,7 +141,8 @@ class StockSyncService {
   }
 
   /**
-   * Restores product availability.
+   * Restaura la disponibilidad de un producto en todas las plataformas.
+   * Se usa cuando el producto vuelve a estar en stock.
    */
   async markInStock(productId: number): Promise<void> {
     const product = await prisma.product.findUnique({
@@ -151,8 +162,8 @@ class StockSyncService {
   }
 
   /**
-   * Enqueues a stock update for async processing.
-   * Useful for bulk updates.
+   * Encola una actualizacion de stock para procesamiento asincrono via BullMQ.
+   * Util para actualizaciones masivas donde no se quiere bloquear la respuesta HTTP.
    */
   async enqueueStockUpdate(
     productId: number,
@@ -194,8 +205,9 @@ class StockSyncService {
   }
 
   /**
-   * Syncs availability of all products with a platform.
-   * Useful after reconnecting with a platform.
+   * Sincroniza la disponibilidad de todos los productos con una plataforma.
+   * Util despues de reconectarse con una plataforma o para reconciliar estado.
+   * Recorre todos los precios de canal y envia el estado actual a la plataforma.
    */
   async fullSyncToPlatform(platformId: number): Promise<number> {
     const channelPrices = await prisma.productChannelPrice.findMany({
@@ -207,8 +219,9 @@ class StockSyncService {
 
     for (const cp of channelPrices) {
       try {
+        // La disponibilidad real depende de que el producto este activo Y habilitado en la plataforma
         const isAvailable = cp.product.isActive && cp.isAvailable;
-        
+
         if (cp.externalSku) {
           const adapter = await AdapterFactory.getByPlatformId(platformId);
           await adapter.updateProductAvailability({

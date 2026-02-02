@@ -1,9 +1,27 @@
+/**
+ * @fileoverview Servicio de Fidelizacion (Loyalty)
+ *
+ * Gestiona el sistema de puntos y billetera virtual de los clientes.
+ * Los clientes acumulan puntos por cada compra y pueden canjearlos por descuentos.
+ * Tambien pueden cargar saldo en su billetera virtual para pagos rapidos.
+ *
+ * Las constantes de puntos son configurables via variables de entorno
+ * y en el futuro se podran configurar por tenant.
+ *
+ * SEGURIDAD: Todas las operaciones de puntos y billetera usan updateMany con
+ * tenantId en la clausula WHERE para garantizar aislamiento multi-tenant.
+ * Las operaciones de decremento incluyen condiciones atomicas (gte) para
+ * prevenir saldos negativos incluso en accesos concurrentes.
+ *
+ * @module services/loyalty.service
+ */
+
 import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { NotFoundError, ValidationError } from '../utils/errors';
 
-// BIZ-014: Configurable loyalty constants via environment variables
-// Can be overridden per-deployment; per-tenant config is a future enhancement
+// BIZ-014: Constantes de fidelizacion configurables via variables de entorno.
+// Se pueden sobreescribir por deployment; la configuracion por tenant es una mejora futura.
 const POINTS_PER_DOLLAR = parseInt(process.env.LOYALTY_POINTS_PER_DOLLAR || '10', 10);
 const POINTS_TO_REDEEM_VALUE = parseInt(process.env.LOYALTY_POINTS_REDEEM_VALUE || '100', 10);
 
@@ -11,12 +29,13 @@ export interface LoyaltyBalance {
     clientId: number;
     points: number;
     walletBalance: number;
-    pointsValue: number;  // Monetary value of points
+    pointsValue: number;  // Valor monetario de los puntos acumulados
 }
 
 export class LoyaltyService {
     /**
-     * Get client's loyalty balance
+     * Obtiene el balance de fidelizacion de un cliente: puntos, saldo de billetera
+     * y el valor monetario equivalente de los puntos.
      */
     async getBalance(clientId: number, tenantId: number): Promise<LoyaltyBalance> {
         const client = await prisma.client.findFirst({
@@ -36,12 +55,15 @@ export class LoyaltyService {
     }
 
     /**
-     * Award points based on purchase amount
-     * Called after successful order completion
-     * 
-     * @param clientId - Client to award points to
-     * @param orderTotal - Total order amount for calculating points
-     * @param externalTx - Optional Prisma transaction client for atomic operations
+     * Otorga puntos al cliente basado en el monto de la compra.
+     * Se llama despues de completar exitosamente una orden.
+     *
+     * Soporta transaccion externa (externalTx) para ejecutarse atomicamente
+     * junto con la creacion de la orden.
+     *
+     * @param clientId - ID del cliente a premiar
+     * @param orderTotal - Monto total de la orden para calcular puntos
+     * @param externalTx - Cliente de transaccion Prisma opcional para operaciones atomicas
      */
     async awardPoints(clientId: number, orderTotal: number, externalTx?: Prisma.TransactionClient, tenantId?: number): Promise<number> {
         const pointsEarned = Math.floor(orderTotal * POINTS_PER_DOLLAR);
@@ -54,7 +76,7 @@ export class LoyaltyService {
 
         const db = externalTx || prisma;
 
-        // Verify client belongs to tenant and update atomically
+        // Verificar que el cliente pertenezca al tenant y actualizar atomicamente
         const result = await db.client.updateMany({
             where: { id: clientId, tenantId },
             data: {
@@ -68,8 +90,11 @@ export class LoyaltyService {
     }
 
     /**
-     * Redeem points for discount
-     * Returns the discount amount applied
+     * Canjea puntos del cliente por un descuento monetario.
+     * Retorna el monto del descuento aplicado.
+     *
+     * Usa una operacion atomica: solo decrementa si hay puntos suficientes (gte).
+     * Si falla, diagnostica si el cliente no existe o si tiene puntos insuficientes.
      */
     async redeemPoints(clientId: number, pointsToRedeem: number, tenantId: number): Promise<number> {
         if (pointsToRedeem <= 0) {
@@ -78,7 +103,7 @@ export class LoyaltyService {
 
         const discountAmount = pointsToRedeem / POINTS_TO_REDEEM_VALUE;
 
-        // Atomic: only decrements if sufficient points exist
+        // Operacion atomica: solo decrementa si existen puntos suficientes
         const result = await prisma.client.updateMany({
             where: {
                 id: clientId,
@@ -91,7 +116,7 @@ export class LoyaltyService {
         });
 
         if (result.count === 0) {
-            // Either client doesn't exist or insufficient points
+            // Diagnosticar: el cliente no existe o tiene puntos insuficientes
             const client = await prisma.client.findFirst({
                 where: { id: clientId, tenantId }
             });
@@ -103,7 +128,8 @@ export class LoyaltyService {
     }
 
     /**
-     * Add funds to wallet
+     * Agrega fondos a la billetera virtual del cliente.
+     * Retorna el nuevo saldo despues de la carga.
      */
     async addWalletFunds(clientId: number, amount: number, tenantId: number): Promise<number> {
         if (amount <= 0) {
@@ -119,7 +145,7 @@ export class LoyaltyService {
 
         if (result.count === 0) throw new NotFoundError('Client');
 
-        // Fetch updated balance to return
+        // Obtener saldo actualizado para retornarlo
         const client = await prisma.client.findFirst({
             where: { id: clientId, tenantId },
             select: { walletBalance: true }
@@ -129,13 +155,16 @@ export class LoyaltyService {
     }
 
     /**
-     * Use wallet funds for payment
-     * Returns amount actually used (may be less if insufficient balance)
+     * Usa fondos de la billetera virtual para un pago.
+     * Retorna el monto efectivamente utilizado (puede ser menor si el saldo es insuficiente).
+     *
+     * Usa condicion atomica (gte) para prevenir saldos negativos incluso
+     * con accesos concurrentes al mismo cliente.
      */
     async useWalletFunds(clientId: number, amount: number, tenantId: number): Promise<number> {
         if (amount <= 0) return 0;
 
-        // First get the current balance to calculate amountToUse
+        // Obtener saldo actual para calcular cuanto se puede usar
         const client = await prisma.client.findFirst({
             where: { id: clientId, tenantId }
         });
@@ -147,7 +176,7 @@ export class LoyaltyService {
 
         if (amountToUse <= 0) return 0;
 
-        // Atomic: only decrements if sufficient balance
+        // Operacion atomica: solo decrementa si hay saldo suficiente (previene concurrencia)
         const result = await prisma.client.updateMany({
             where: {
                 id: clientId,
@@ -167,7 +196,8 @@ export class LoyaltyService {
     }
 
     /**
-     * Get points configuration (for frontend display)
+     * Retorna la configuracion de puntos para mostrar en el frontend.
+     * Permite al usuario saber cuantos puntos gana y cuanto valen.
      */
     getConfig() {
         return {

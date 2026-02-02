@@ -6,7 +6,7 @@ const CACHE_TTL_MS = CACHE_TTL_SECONDS * 1000;
 const CACHE_MAX_SIZE = 10_000;
 
 // =============================================================================
-// Cache Interface + Implementations
+// Interfaz de Cache e Implementaciones
 // =============================================================================
 
 interface CachedResponse {
@@ -20,14 +20,18 @@ interface IdempotencyCache {
 }
 
 /**
- * In-memory fallback cache.
- * Used when Redis is not available.
+ * Cache en memoria como respaldo.
+ * Se usa cuando Redis no esta disponible (entorno de desarrollo o fallo de conexion).
+ *
+ * Limitaciones: solo funciona en un unico pod/instancia del servidor.
+ * Los datos se pierden al reiniciar el proceso.
  */
 class MemoryCache implements IdempotencyCache {
     private cache = new Map<string, CachedResponse & { expiry: number }>();
 
     constructor() {
-        // Cleanup expired entries every minute
+        // Limpieza periodica de entradas expiradas cada 60 segundos.
+        // .unref() evita que este intervalo mantenga vivo el proceso de Node.
         setInterval(() => {
             const now = Date.now();
             for (const [key, entry] of this.cache) {
@@ -46,6 +50,7 @@ class MemoryCache implements IdempotencyCache {
     }
 
     async set(key: string, value: CachedResponse): Promise<void> {
+        // Eviccion del elemento mas antiguo si se alcanza el limite maximo
         if (this.cache.size >= CACHE_MAX_SIZE) {
             const oldestKey = this.cache.keys().next().value;
             if (oldestKey) this.cache.delete(oldestKey);
@@ -58,10 +63,11 @@ class MemoryCache implements IdempotencyCache {
 }
 
 /**
- * Redis-backed cache for multi-pod deployments.
- * Uses SETEX for automatic TTL-based expiration.
+ * Cache respaldado por Redis para despliegues multi-pod.
+ * Usa SETEX para expiracion automatica basada en TTL, delegando la
+ * limpieza de entradas expiradas a Redis en lugar de gestionarla manualmente.
  */
-/** Minimal ioredis-compatible interface for idempotency cache */
+/** Interfaz minima compatible con ioredis para el cache de idempotencia */
 interface RedisLike {
     get(key: string): Promise<string | null>;
     setex(key: string, seconds: number, value: string): Promise<string>;
@@ -96,19 +102,24 @@ class RedisCache implements IdempotencyCache {
 }
 
 // =============================================================================
-// Cache Initialization
+// Inicializacion del Cache
 // =============================================================================
 
 let cache: IdempotencyCache;
 
+/**
+ * Obtiene o inicializa la instancia del cache de idempotencia.
+ * Intenta conectar a Redis primero; si no esta disponible o falla la conexion,
+ * cae automaticamente al cache en memoria como respaldo seguro.
+ */
 function getCache(): IdempotencyCache {
     if (cache) return cache;
 
-    // Try to connect to Redis
+    // Intentar conectar a Redis si esta configurado en las variables de entorno
     const redisHost = process.env.REDIS_HOST;
     if (redisHost) {
         try {
-            // Dynamic import to avoid hard dependency
+            // Import dinamico para evitar dependencia dura con ioredis
             const Redis = require('ioredis');
             const redis = new Redis({
                 host: redisHost,
@@ -143,30 +154,37 @@ function getCache(): IdempotencyCache {
 // =============================================================================
 
 /**
- * Idempotency middleware for POST endpoints.
- * Uses X-Idempotency-Key header to detect and deduplicate retried requests.
+ * Middleware de idempotencia para endpoints POST.
+ * Usa el header X-Idempotency-Key para detectar y deduplicar solicitudes reintentadas.
  *
- * If the same key is seen again within the TTL, returns the cached response
- * instead of processing the request again.
+ * Cuando el frontend reintenta una solicitud POST (por timeout o error de red),
+ * este middleware devuelve la respuesta cacheada en lugar de procesar la operacion
+ * de nuevo, evitando duplicados (ej: cobros dobles, ordenes duplicadas).
  *
- * Supports Redis (multi-pod) with automatic fallback to in-memory (single-pod).
+ * Flujo:
+ * 1. Si no hay clave de idempotencia, continuar normalmente (compatibilidad retroactiva)
+ * 2. Generar clave con scope de tenant+usuario para prevenir colisiones entre tenants
+ * 3. Si la clave ya existe en cache, devolver la respuesta cacheada
+ * 4. Si no existe, interceptar res.json() para cachear la respuesta exitosa (2xx)
+ *
+ * Soporta Redis (multi-pod) con respaldo automatico a memoria (single-pod).
  */
 export function idempotency(req: Request, res: Response, next: NextFunction): void {
     const key = req.headers['x-idempotency-key'] as string;
 
-    // If no idempotency key provided, skip (backwards compatible)
+    // Si no se proporciono clave de idempotencia, omitir (compatibilidad retroactiva)
     if (!key) {
         next();
         return;
     }
 
-    // Scope the key to the authenticated user + tenant to prevent cross-tenant collisions
+    // Acotar la clave al usuario + tenant autenticado para prevenir colisiones cross-tenant
     const user = req.user;
     const scopedKey = user ? `${user.tenantId}:${user.id}:${key}` : key;
 
     const store = getCache();
 
-    // Check cache (async)
+    // Verificar cache (asincrono)
     store.get(scopedKey).then(cached => {
         if (cached) {
             logger.debug('Idempotency cache hit', { key: scopedKey });
@@ -174,22 +192,22 @@ export function idempotency(req: Request, res: Response, next: NextFunction): vo
             return;
         }
 
-        // Intercept the response to cache it
+        // Interceptar la respuesta para cachearla antes de enviarla al cliente
         const originalJson = res.json.bind(res);
         res.json = (body: unknown) => {
-            // Only cache successful responses (2xx)
+            // Solo cachear respuestas exitosas (2xx) para evitar cachear errores transitorios
             if (res.statusCode >= 200 && res.statusCode < 300) {
                 store.set(scopedKey, {
                     response: body,
                     status: res.statusCode
-                }).catch(() => { /* fire-and-forget */ });
+                }).catch(() => { /* fire-and-forget: no bloquear la respuesta */ });
             }
             return originalJson(body);
         };
 
         next();
     }).catch(() => {
-        // If cache check fails, proceed without idempotency
+        // Si la verificacion del cache falla, continuar sin idempotencia
         next();
     });
 }

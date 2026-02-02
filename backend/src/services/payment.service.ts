@@ -1,16 +1,18 @@
 /**
- * @fileoverview Payment processing service extracted from OrderService.
- * Handles payment creation, validation, and status calculation.
- * 
+ * @fileoverview Servicio de procesamiento de pagos extraido del OrderService.
+ * Gestiona la creacion, validacion y calculo de estado de pagos.
+ * Soporta tanto pago unico (legacy) como pagos divididos (split payments).
+ *
  * @module services/payment.service
- * @adheres Single Responsibility Principle - Only handles payment operations
+ * @adheres Principio de Responsabilidad Unica - Solo maneja operaciones de pago
  */
 
 import { Prisma, PaymentMethod, PaymentStatus } from '@prisma/client';
 import { ValidationError } from '../utils/errors';
 
 /**
- * Transaction context type for Prisma interactive transactions.
+ * Tipo de contexto transaccional para transacciones interactivas de Prisma.
+ * Excluye metodos de conexion y transaccion que no son validos dentro de una transaccion.
  */
 type TransactionClient = Omit<
     Prisma.TransactionClient,
@@ -18,7 +20,7 @@ type TransactionClient = Omit<
 >;
 
 /**
- * Input for creating a single payment.
+ * Entrada para crear un pago individual dentro de un pago dividido.
  */
 export interface PaymentInput {
     method: PaymentMethod;
@@ -26,44 +28,50 @@ export interface PaymentInput {
 }
 
 /**
- * Result of payment processing with calculated status.
+ * Resultado del procesamiento de pagos con el estado calculado.
+ * Contiene los registros de pago listos para crear junto con la orden
+ * y el estado resultante (PENDING, PARTIAL, PAID).
  */
 export interface PaymentProcessingResult {
-    /** Payment records ready to be created with order */
+    /** Registros de pago listos para crear con la orden */
     paymentsToCreate: {
         amount: number;
         method: PaymentMethod;
         shiftId: number | null;
     }[];
-    /** Calculated payment status based on total paid */
+    /** Estado de pago calculado segun el total pagado vs total de la orden */
     paymentStatus: PaymentStatus;
-    /** Whether order is fully paid */
+    /** Indica si la orden esta completamente pagada */
     isFullyPaid: boolean;
-    /** Total amount paid */
+    /** Monto total pagado sumando todos los pagos */
     totalPaid: number;
 }
 
 /**
- * Service for processing and validating payments.
- * Extracted from OrderService to comply with Single Responsibility Principle.
+ * Servicio para procesar y validar pagos.
+ * Extraido del OrderService para cumplir con el Principio de Responsabilidad Unica.
+ *
+ * Soporta dos modos de pago:
+ * - Pago unico (legacy): un solo metodo de pago por el total
+ * - Pago dividido: multiples metodos de pago que suman el total
  */
 export class PaymentService {
-    
+
     /**
-     * Process payment inputs and calculate final status.
-     * Supports both legacy single payment and split payments.
-     * 
-     * @param orderTotal - The total amount due for the order
-     * @param shiftId - The active cash shift ID for payment attribution
-     * @param singlePaymentMethod - Legacy: single payment method (optional)
-     * @param splitPayments - Array of split payments (optional)
-     * @returns Processed payment data ready for order creation
-     * 
+     * Procesa las entradas de pago y calcula el estado final.
+     * Soporta tanto pago unico legacy como pagos divididos.
+     *
+     * @param orderTotal - El monto total de la orden
+     * @param shiftId - ID del turno de caja activo para atribucion del pago
+     * @param singlePaymentMethod - Legacy: metodo de pago unico (opcional)
+     * @param splitPayments - Array de pagos divididos (opcional)
+     * @returns Datos de pago procesados listos para la creacion de la orden
+     *
      * @example
-     * // Single payment
+     * // Pago unico
      * const result = paymentService.processPayments(100, 1, 'CASH', undefined);
-     * 
-     * // Split payment
+     *
+     * // Pago dividido (50 efectivo + 50 tarjeta)
      * const result = paymentService.processPayments(100, 1, undefined, [
      *   { method: 'CASH', amount: 50 },
      *   { method: 'CARD', amount: 50 }
@@ -77,7 +85,7 @@ export class PaymentService {
     ): PaymentProcessingResult {
         const paymentsToCreate: PaymentProcessingResult['paymentsToCreate'] = [];
 
-        // 1. Handle single payment (legacy support)
+        // 1. Manejar pago unico (compatibilidad con flujo legacy)
         if (singlePaymentMethod && !splitPayments) {
             paymentsToCreate.push({
                 amount: orderTotal,
@@ -86,7 +94,7 @@ export class PaymentService {
             });
         }
 
-        // 2. Handle split payments
+        // 2. Manejar pagos divididos (split payments)
         if (splitPayments && splitPayments.length > 0) {
             this.validatePaymentAmounts(splitPayments, orderTotal);
             for (const payment of splitPayments) {
@@ -101,10 +109,10 @@ export class PaymentService {
             }
         }
 
-        // 3. Calculate totals and status
+        // 3. Calcular totales y determinar estado de pago
         const totalPaid = paymentsToCreate.reduce((sum, p) => sum + p.amount, 0);
         const isFullyPaid = totalPaid >= orderTotal;
-        
+
         let paymentStatus: PaymentStatus = 'PENDING';
         if (isFullyPaid) {
             paymentStatus = 'PAID';
@@ -121,16 +129,18 @@ export class PaymentService {
     }
 
     /**
-     * Validate that payment amounts are reasonable.
-     * 
-     * @param payments - Array of payments to validate
-     * @param orderTotal - The order total to compare against
-     * @throws Error if payments exceed order total significantly
+     * Valida que los montos de pago sean razonables respecto al total de la orden.
+     * Permite hasta un 10% de sobrepago para cubrir redondeos, pero rechaza
+     * montos excesivos que podrian indicar un error.
+     *
+     * @param payments - Array de pagos a validar
+     * @param orderTotal - Total de la orden para comparar
+     * @throws Error si los pagos exceden el total significativamente
      */
     validatePaymentAmounts(payments: PaymentInput[], orderTotal: number): void {
         const totalPayments = payments.reduce((sum, p) => sum + p.amount, 0);
-        
-        // Allow 10% overpayment for rounding, beyond that throw
+
+        // Permitir hasta 10% de sobrepago por redondeo; mas alla de eso, rechazar
         const maxAllowed = orderTotal * 1.1;
         if (totalPayments > maxAllowed) {
             throw new ValidationError(

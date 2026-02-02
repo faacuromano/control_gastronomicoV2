@@ -1,3 +1,13 @@
+/**
+ * @fileoverview Servicio de gestion de mesas y areas del restaurante.
+ * Maneja el CRUD de areas y mesas, operaciones de apertura/cierre de mesas,
+ * y el flujo completo de abrir mesa con orden vacia y cerrar mesa con pago.
+ * Las mesas se organizan en areas (ej: salon, terraza, barra) y tienen
+ * posiciones X/Y para un mapa visual en el frontend.
+ *
+ * @module services/table.service
+ */
+
 import { prisma } from '../lib/prisma';
 import { TableStatus, Prisma } from '@prisma/client';
 import { NotFoundError, ConflictError, ValidationError } from '../utils/errors';
@@ -7,6 +17,10 @@ import { getBusinessDate } from '../utils/businessDate';
 export class TableService {
     // --- AREAS ---
 
+    /**
+     * Obtiene todas las areas del restaurante con sus mesas.
+     * Limitado a 100 areas (suficiente para cualquier restaurante).
+     */
     async getAreas(tenantId: number) {
         return prisma.area.findMany({
             where: { tenantId },
@@ -20,9 +34,12 @@ export class TableService {
         });
     }
 
+    /**
+     * Crea una nueva area en el restaurante (ej: "Terraza", "Salon VIP").
+     */
     async createArea(tenantId: number, data: { name: string }) {
         if (!data.name) throw new ValidationError('Area name is required');
-        return prisma.area.create({ 
+        return prisma.area.create({
             data: {
                 ...data,
                 tenantId
@@ -30,10 +47,12 @@ export class TableService {
         });
     }
 
+    /**
+     * Actualiza el nombre de un area existente.
+     */
     async updateArea(id: number, tenantId: number, data: { name: string }) {
         if (!data.name) throw new ValidationError('Area name is required');
-        // Ownership check implicit in update where clause but update throws if not found
-        // Safer to findFirst
+        // Verificar propiedad: findFirst es mas seguro que depender de que update lance si no encuentra
         const exists = await prisma.area.findFirst({ where: { id, tenantId } });
         if (!exists) throw new NotFoundError('Area not found');
 
@@ -43,25 +62,33 @@ export class TableService {
         });
     }
 
+    /**
+     * Elimina un area y todas sus mesas.
+     * No permite eliminar si alguna mesa esta ocupada (tiene orden activa).
+     */
     async deleteArea(id: number, tenantId: number) {
-        // Check ownership
+        // Verificar propiedad del area
         const area = await prisma.area.findFirst({ where: { id, tenantId } });
         if (!area) throw new NotFoundError('Area not found');
 
-        // Check if any table is occupied
+        // Verificar que no haya mesas ocupadas en el area
         const occupiedCount = await prisma.table.count({
             where: { areaId: id, tenantId, status: 'OCCUPIED' }
         });
         if (occupiedCount > 0) throw new ConflictError('Cannot delete an area with occupied tables');
 
-        // Cascade delete tables
+        // Eliminacion en cascada: primero mesas, luego area
         await prisma.table.deleteMany({ where: { areaId: id, tenantId } });
 
         return prisma.area.deleteMany({ where: { id, tenantId } });
     }
 
-    // --- TABLES ---
+    // --- MESAS ---
 
+    /**
+     * Crea una nueva mesa en un area del restaurante.
+     * Verifica que el area pertenezca al tenant antes de crear.
+     */
     async createTable(tenantId: number, data: { name: string; areaId: number; x?: number; y?: number }) {
         const area = await prisma.area.findFirst({ where: { id: data.areaId, tenantId } });
         if (!area) throw new NotFoundError('Area not found or access denied');
@@ -78,16 +105,22 @@ export class TableService {
         });
     }
 
+    /**
+     * Actualiza datos de una mesa (nombre, posicion).
+     */
     async updateTable(id: number, tenantId: number, data: { name?: string; x?: number; y?: number }) {
         const exists = await prisma.table.findFirst({ where: { id, tenantId } });
         if (!exists) throw new NotFoundError('Table not found');
-        
+
         return prisma.table.updateMany({
             where: { id, tenantId },
             data
         });
     }
 
+    /**
+     * Actualiza la posicion X/Y de una mesa en el mapa visual.
+     */
     async updateTablePosition(id: number, tenantId: number, x: number, y: number) {
         const exists = await prisma.table.findFirst({ where: { id, tenantId } });
         if (!exists) throw new NotFoundError('Table not found');
@@ -98,15 +131,15 @@ export class TableService {
         });
     }
 
+    /**
+     * Actualiza posiciones de multiples mesas en una transaccion.
+     * Se usa cuando el usuario arrastra mesas en el mapa visual y guarda el layout.
+     * updateMany es silencioso si no encuentra la mesa (proteccion contra IDOR en batch).
+     */
     async updatePositions(tenantId: number, updates: { id: number; x: number; y: number }[]) {
-        // Verify all tables belong to tenant
-        // Optimization: For batched updates, we assume frontend is correct but safety requires check
-        // We will loop and update only if tenant matches.
         return prisma.$transaction(async (tx) => {
             for (const u of updates) {
-                // Determine if table belongs to tenant - can check existance or use updateMany
-                // updateMany is silent if not found, distinct from update which throws.
-                // Silent update is fine for batch ops if IDOR is concern.
+                // updateMany con tenantId: silencioso si no pertenece al tenant (seguro para batch)
                 await tx.table.updateMany({
                     where: { id: u.id, tenantId },
                     data: { x: u.x, y: u.y }
@@ -115,13 +148,17 @@ export class TableService {
         });
     }
 
+    /**
+     * Obtiene una mesa con sus ordenes abiertas e items.
+     * Se usa para mostrar el detalle de una mesa en la vista de salon.
+     */
     async getTable(id: number, tenantId: number) {
         const table = await prisma.table.findFirst({
             where: { id, tenantId },
             include: {
                 orders: {
                     where: { status: 'OPEN' },
-                    include: { items: true } // Basic info
+                    include: { items: true } // Informacion basica de items
                 }
             }
         });
@@ -129,17 +166,23 @@ export class TableService {
         return table;
     }
 
+    /**
+     * Elimina una mesa. No permite eliminar si esta ocupada.
+     */
     async deleteTable(id: number, tenantId: number) {
-        // Check if table is currently occupied
+        // Verificar que la mesa exista y no este ocupada
         const table = await prisma.table.findFirst({ where: { id, tenantId } });
         if (!table) throw new NotFoundError('Table not found');
         if (table.status === 'OCCUPIED') throw new ConflictError('Cannot delete occupied table');
-        
+
         return prisma.table.deleteMany({ where: { id, tenantId } });
     }
 
-    // --- OPERATIONS ---
+    // --- OPERACIONES BASICAS ---
 
+    /**
+     * Marca una mesa como ocupada y le asigna una orden.
+     */
     async openTable(id: number, orderId: number, tenantId: number) {
         const exists = await prisma.table.findFirst({ where: { id, tenantId } });
         if (!exists) throw new NotFoundError('Table not found');
@@ -153,6 +196,9 @@ export class TableService {
         });
     }
 
+    /**
+     * Libera una mesa (marca como FREE y desvincula la orden).
+     */
     async closeTable(id: number, tenantId: number) {
         const exists = await prisma.table.findFirst({ where: { id, tenantId } });
         if (!exists) throw new NotFoundError('Table not found');
@@ -166,7 +212,9 @@ export class TableService {
         });
     }
 
-    // Used when an order is created with tableId
+    /**
+     * Asigna una orden existente a una mesa (se usa al crear ordenes con tableId).
+     */
     async assignOrderToTable(tableId: number, orderId: number, tenantId: number) {
         const table = await prisma.table.findFirst({
             where: {
@@ -177,8 +225,8 @@ export class TableService {
         if (!table) throw new NotFoundError('Table not found');
 
         if (table.status !== 'FREE' && table.status !== 'OCCUPIED') {
-             // Maybe allow if occupied adding to same order?
-             // For simplicity, just update currentOrderId
+             // Podria permitirse si esta ocupada y se agrega a la misma orden
+             // Por simplicidad, simplemente actualizamos el currentOrderId
         }
 
         return prisma.table.updateMany({
@@ -190,8 +238,12 @@ export class TableService {
         });
     }
 
+    /**
+     * Libera una mesa de su orden actual.
+     * Se usa cuando una orden se cancela o se cierra sin mesa.
+     */
     async freeTableFromOrder(tableId: number, tenantId: number) {
-        // Verify table belongs to tenant before updating
+        // Verificar que la mesa pertenezca al tenant antes de actualizar
         const table = await prisma.table.findFirst({
             where: {
                 id: tableId,
@@ -209,40 +261,43 @@ export class TableService {
         });
     }
 
-    // --- FULL OPERATIONS (with order management) ---
+    // --- OPERACIONES COMPLETAS (con gestion de ordenes) ---
 
-    // --- FULL OPERATIONS (with order management) ---
+    // --- OPERACIONES COMPLETAS (con gestion de ordenes) ---
 
     /**
-     * Opens a table by creating an empty order and marking table as OCCUPIED
+     * Abre una mesa creando una orden vacia y marcandola como OCCUPIED.
+     *
+     * Flujo dentro de una transaccion atomica:
+     * 1. Verifica que la mesa exista y este FREE
+     * 2. Verifica que el mesero tenga un turno de caja activo
+     * 3. Genera el numero de orden atomicamente usando OrderNumberService
+     * 4. Crea una orden vacia (sin items) para la mesa
+     * 5. Marca la mesa como OCCUPIED con la nueva orden
      */
     async openTableWithOrder(tableId: number, serverId: number, pax: number = 1, tenantId: number) {
-        // Use the new OrderNumberService and OrderService logic directly or replicate robustly
-        // Prefer reusing OrderService.createOrder if possible, but here we need a specific flow.
-        // We will use OrderNumberService for safe ID generation.
-        
         return await prisma.$transaction(async (tx) => {
-            // 1. Verify table exists and is FREE
+            // 1. Verificar que la mesa exista y este libre
             const table = await tx.table.findFirst({ where: { id: tableId, tenantId } });
             if (!table) throw new NotFoundError('Table not found');
             if (table.status !== 'FREE') throw new ConflictError('Table is already occupied');
 
-            // 2. Verify server has active shift
+            // 2. Verificar que el mesero tenga un turno de caja activo
             const shift = await tx.cashShift.findFirst({
                 where: { userId: serverId, tenantId, endTime: null }
             });
-            if (!shift) throw new ConflictError('No hay turno de caja abierto. Abre un turno primero.');
+            if (!shift) throw new ConflictError('No active cash shift. Open a shift first.');
 
-            // 3. Get next order number and atomic businessDate using OrderNumberService
-            // FIX P2002: Use the businessDate returned by getNextOrderNumber for consistency
+            // 3. Obtener siguiente numero de orden y businessDate atomicamente
+            // FIX P2002: Usar el businessDate retornado por getNextOrderNumber para consistencia
             const { orderNumberService } = await import('./orderNumber.service');
             const { businessDateService } = await import('./businessDate.service');
-            
+
             const businessDate = await businessDateService.determineBusinessDate(tenantId, serverId);
-            
+
             const { orderNumber } = await orderNumberService.getNextOrderNumber(tx, tenantId, businessDate);
 
-            // 4. Create an empty order (no items)
+            // 4. Crear orden vacia (sin items, el mesero los agrega despues)
             const order = await tx.order.create({
                 data: {
                     tenantId,
@@ -254,12 +309,12 @@ export class TableService {
                     paymentStatus: 'PENDING',
                     subtotal: 0,
                     total: 0,
-                    businessDate // FIX P2002: Use atomic businessDate from getNextOrderNumber
+                    businessDate // FIX P2002: Usar businessDate atomico de getNextOrderNumber
                 } as Prisma.OrderUncheckedCreateInput
             });
 
-            // 5. Update table to OCCUPIED
-            // SAFE: tx.table.findFirst at L225 verifies tenant ownership
+            // 5. Marcar mesa como ocupada con la nueva orden
+            // SEGURO: tx.table.findFirst en L225 verifica propiedad del tenant
             await tx.table.updateMany({
                 where: { id: tableId, tenantId },
                 data: {
@@ -273,11 +328,19 @@ export class TableService {
     }
 
     /**
-     * Closes a table by processing payment and freeing the table
+     * Cierra una mesa procesando el pago y liberando la mesa si esta completamente pagada.
+     *
+     * Flujo dentro de una transaccion atomica:
+     * 1. Obtiene mesa y su orden activa
+     * 2. Verifica turno de caja del mesero
+     * 3. Procesa los pagos usando PaymentService (validacion y calculo de estado)
+     * 4. Registra los pagos en la base de datos
+     * 5. Actualiza el estado de la orden (CONFIRMED si pagada completa)
+     * 6. Libera la mesa solo si el pago fue total
      */
     async closeTableWithPayment(tableId: number, serverId: number, payments: { method: string; amount: number }[], tenantId: number) {
         return await prisma.$transaction(async (tx) => {
-            // 1. Get table and current order
+            // 1. Obtener mesa y su orden actual
             const table = await tx.table.findFirst({ where: { id: tableId, tenantId } });
             if (!table) throw new NotFoundError('Table not found');
             if (!table.currentOrderId) throw new ConflictError('Table has no active order');
@@ -288,13 +351,13 @@ export class TableService {
             });
             if (!order) throw new NotFoundError('Order not found');
 
-            // 2. Verify shift
+            // 2. Verificar turno de caja activo del mesero
             const shift = await tx.cashShift.findFirst({
                 where: { userId: serverId, tenantId, endTime: null }
             });
-            if (!shift) throw new ConflictError('No hay turno de caja abierto');
+            if (!shift) throw new ConflictError('No active cash shift');
 
-            // 3. Use PaymentService for calculation and validation
+            // 3. Usar PaymentService para calculo y validacion de pagos
             const { paymentService } = await import('./payment.service');
             const { mapToPaymentMethod } = await import('../utils/paymentMethod');
 
@@ -310,11 +373,11 @@ export class TableService {
                 paymentInputs
             );
 
-            // DEBUG: Log payment calculation details
+            // DEBUG: Log de detalles del calculo de pago
             logger.debug('CloseTable payment calculation', { orderId: order.id, total: order.total, paid: paymentResult.totalPaid, isFullyPaid: paymentResult.isFullyPaid, status: paymentResult.paymentStatus });
             logger.debug('CloseTable payments received', { payments: paymentInputs });
 
-            // 4. Register payments
+            // 4. Registrar los pagos en la base de datos
             if (paymentResult.paymentsToCreate.length > 0) {
                  await tx.payment.createMany({
                     data: paymentResult.paymentsToCreate.map(p => ({
@@ -325,8 +388,8 @@ export class TableService {
                 });
             }
 
-            // 5. Update order status
-            // SAFE: tx.order.findFirst at L284 verifies tenant ownership
+            // 5. Actualizar estado de la orden segun resultado del pago
+            // SEGURO: tx.order.findFirst en L284 verifica propiedad del tenant
             await tx.order.update({
                 where: { id: order.id },
                 data: {
@@ -336,10 +399,10 @@ export class TableService {
                 }
             });
 
-            // 6. Free table only if fully paid
+            // 6. Liberar mesa solo si el pago fue total
             if (paymentResult.isFullyPaid) {
                 logger.info('Freeing table after full payment', { tableId });
-                // SAFE: tx.table.findFirst at L280 verifies tenant ownership
+                // SEGURO: tx.table.findFirst en L280 verifica propiedad del tenant
                 await tx.table.updateMany({
                     where: { id: tableId, tenantId },
                     data: {
@@ -351,15 +414,14 @@ export class TableService {
                 logger.debug('Table NOT freed - payment incomplete', { tableId });
             }
 
-            return { 
-                orderId: order.id, 
-                total: Number(order.total), 
-                paid: paymentResult.totalPaid, 
-                status: paymentResult.paymentStatus 
+            return {
+                orderId: order.id,
+                total: Number(order.total),
+                paid: paymentResult.totalPaid,
+                status: paymentResult.paymentStatus
             };
         });
     }
 }
 
 export const tableService = new TableService();
-

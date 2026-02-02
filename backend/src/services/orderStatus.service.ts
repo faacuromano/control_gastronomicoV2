@@ -1,7 +1,8 @@
 /**
- * @fileoverview Order status management with state machine validation.
- * Handles order status transitions and enforces valid state changes.
- * 
+ * @fileoverview Servicio de gestión de estados de orden con validación de máquina de estados.
+ * Controla las transiciones de estado de las órdenes y aplica reglas de negocio
+ * para garantizar que solo se permitan cambios de estado válidos.
+ *
  * @module services/orderStatus.service
  * @extracted_from order.service.ts (DT-001 Refactoring)
  */
@@ -13,7 +14,8 @@ import { auditService } from './audit.service';
 import { ValidationError, NotFoundError } from '../utils/errors';
 
 /**
- * Data structure for updating order status.
+ * Estructura de datos para actualizar el estado de una orden.
+ * Incluye el nuevo estado y opcionalmente la fecha de cierre.
  */
 interface OrderUpdateData {
     status: OrderStatus;
@@ -21,14 +23,18 @@ interface OrderUpdateData {
 }
 
 /**
- * Service for order status transitions.
- * Implements state machine validation to prevent invalid transitions.
+ * Servicio para gestionar las transiciones de estado de las órdenes.
+ * Implementa una máquina de estados finita que define qué transiciones
+ * son válidas desde cada estado, previniendo cambios ilógicos o peligrosos.
  */
 export class OrderStatusService {
-    
+
     /**
-     * Valid state transitions for order status.
-     * Format: { FROM_STATUS: [allowed TO_STATUSES] }
+     * Mapa de transiciones válidas entre estados de orden.
+     * Formato: { ESTADO_ORIGEN: [ESTADOS_DESTINO_PERMITIDOS] }
+     *
+     * Cada estado tiene un conjunto definido de estados a los que puede transicionar.
+     * Esto evita situaciones como cancelar una orden ya entregada o preparar una cancelada.
      */
     private readonly allowedTransitions: Record<OrderStatus, OrderStatus[]> = {
         [OrderStatus.OPEN]: [OrderStatus.CONFIRMED, OrderStatus.IN_PREPARATION, OrderStatus.CANCELLED],
@@ -36,29 +42,39 @@ export class OrderStatusService {
         [OrderStatus.IN_PREPARATION]: [OrderStatus.OPEN, OrderStatus.PREPARED, OrderStatus.CANCELLED],
         [OrderStatus.PREPARED]: [OrderStatus.OPEN, OrderStatus.IN_PREPARATION, OrderStatus.ON_ROUTE, OrderStatus.DELIVERED, OrderStatus.CANCELLED],
         [OrderStatus.ON_ROUTE]: [OrderStatus.DELIVERED, OrderStatus.CANCELLED],
-        [OrderStatus.DELIVERED]: [OrderStatus.OPEN], // Can reopen if more items added
-        [OrderStatus.CANCELLED]: [] // Terminal state, no transitions allowed
+        [OrderStatus.DELIVERED]: [OrderStatus.OPEN], // Se puede reabrir si se agregan mas items
+        [OrderStatus.CANCELLED]: [] // Estado terminal: no se permiten mas transiciones
     };
 
     /**
-     * Terminal statuses that close the order.
+     * Estados terminales que cierran la orden definitivamente.
+     * Cuando una orden alcanza uno de estos estados, se registra la fecha de cierre.
      */
     private readonly terminalStatuses: OrderStatus[] = [
-        OrderStatus.DELIVERED, 
+        OrderStatus.DELIVERED,
         OrderStatus.CANCELLED
     ];
 
     /**
-     * Update order status and broadcast to KDS.
-     * Includes state machine validation to prevent invalid transitions.
+     * Actualiza el estado de una orden y notifica al KDS via WebSocket.
+     * Incluye validacion de maquina de estados para prevenir transiciones invalidas.
+     *
+     * Flujo:
+     * 1. Obtiene el estado actual de la orden
+     * 2. Valida que la transicion sea permitida segun la maquina de estados
+     * 3. Si el estado es terminal, registra la fecha de cierre
+     * 4. Si el estado es PREPARED, marca todos los items pendientes como READY
+     * 5. Actualiza la orden usando updateMany con tenantId (defensa en profundidad)
+     * 6. Si se cancela y tiene mesa asignada, libera la mesa
+     * 7. Notifica al KDS para actualizar pantallas en tiempo real
      */
     async updateStatus(orderId: number, status: OrderStatus, tenantId: number) {
-        // Fetch current order status
+        // Obtener el estado actual de la orden para validar la transicion
         const currentOrder = await prisma.order.findFirst({
             where: { id: orderId, tenantId },
             select: { status: true }
         });
-        
+
         if (!currentOrder) {
             throw new NotFoundError(`Order ${orderId}`);
         }
@@ -66,7 +82,7 @@ export class OrderStatusService {
         const currentStatus = currentOrder.status as OrderStatus;
         const allowedNextStatuses = this.allowedTransitions[currentStatus] || [];
 
-        // Validate transition - block invalid state changes
+        // Validar transicion: bloquear cambios de estado invalidos
         if (!allowedNextStatuses.includes(status)) {
             throw new ValidationError(
                 `Invalid order status transition from ${currentStatus} to ${status}. ` +
@@ -74,15 +90,16 @@ export class OrderStatusService {
             );
         }
 
-        // Build update data
+        // Construir los datos de actualizacion
         const updateData: OrderUpdateData = { status };
-        
-        // Auto-close order if terminal status
+
+        // Registrar fecha de cierre automaticamente si es un estado terminal
         if (this.terminalStatuses.includes(status)) {
             updateData.closedAt = new Date();
         }
 
-        // If status is PREPARED (Ready), mark all non-served items as READY
+        // Si el estado es PREPARED (Listo), marcar todos los items no servidos como READY
+        // Esto sincroniza el estado de los items con el estado general de la orden
         if (status === OrderStatus.PREPARED) {
             await prisma.orderItem.updateMany({
                 where: {
@@ -94,7 +111,8 @@ export class OrderStatusService {
             });
         }
 
-        // Use updateMany with tenantId for defense-in-depth (P1-008 fix)
+        // Usar updateMany con tenantId para defensa en profundidad (fix P1-008)
+        // Esto garantiza aislamiento multi-tenant incluso si el orderId fuera manipulado
         const updateResult = await prisma.order.updateMany({
             where: { id: orderId, tenantId },
             data: updateData
@@ -103,7 +121,7 @@ export class OrderStatusService {
             throw new NotFoundError(`Order ${orderId}`);
         }
 
-        // Fetch the updated order with relations for broadcasting
+        // Obtener la orden actualizada con sus relaciones para la notificacion al KDS
         const order = await prisma.order.findFirstOrThrow({
             where: { id: orderId, tenantId },
             include: {
@@ -117,7 +135,7 @@ export class OrderStatusService {
             }
         });
 
-        // Free the table if order is cancelled and has an associated table
+        // Liberar la mesa si la orden fue cancelada y tenia una mesa asignada
         if (status === OrderStatus.CANCELLED && order.tableId) {
             await prisma.table.updateMany({
                 where: { id: order.tableId, tenantId, currentOrderId: orderId },
@@ -125,14 +143,15 @@ export class OrderStatusService {
             });
         }
 
-        // Broadcast update
+        // Notificar al KDS via WebSocket para actualizar pantallas de cocina
         kdsService.broadcastOrderUpdate(order);
 
         return order;
     }
 
     /**
-     * Check if a status transition is valid.
+     * Verifica si una transicion de estado es valida segun la maquina de estados.
+     * Util para validaciones previas en la UI antes de intentar el cambio.
      */
     isValidTransition(fromStatus: OrderStatus, toStatus: OrderStatus): boolean {
         const allowed = this.allowedTransitions[fromStatus] || [];
@@ -140,7 +159,8 @@ export class OrderStatusService {
     }
 
     /**
-     * Get allowed next statuses for a given status.
+     * Obtiene los estados destino permitidos para un estado dado.
+     * Se usa en el frontend para mostrar solo las opciones validas al usuario.
      */
     getAllowedTransitions(currentStatus: OrderStatus): OrderStatus[] {
         return this.allowedTransitions[currentStatus] || [];

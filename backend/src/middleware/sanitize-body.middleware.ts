@@ -1,12 +1,14 @@
 /**
- * @fileoverview Prototype Pollution Prevention Middleware
- * 
- * Prevents prototype pollution attacks via Express body parser.
- * This is a critical security fix for P1-002.
- * 
- * ATTACK VECTOR: Malicious payloads like {"__proto__": {"admin": true}}
- * can pollute Object.prototype and bypass authentication.
- * 
+ * @fileoverview Middleware de Prevencion de Prototype Pollution y XSS
+ *
+ * Previene ataques de prototype pollution a traves del body parser de Express
+ * y elimina etiquetas HTML de los strings para prevenir XSS almacenado.
+ * Este es un fix critico de seguridad para P1-002.
+ *
+ * VECTOR DE ATAQUE: Payloads maliciosos como {"__proto__": {"admin": true}}
+ * pueden contaminar Object.prototype y evadir la autenticacion, permitiendo
+ * que cualquier objeto en la aplicacion herede propiedades inyectadas.
+ *
  * @module middleware/sanitize-body
  */
 
@@ -14,13 +16,16 @@ import type { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
 
 /**
- * Dangerous keys that can cause prototype pollution.
+ * Claves peligrosas que pueden causar prototype pollution.
+ * Estas claves permiten modificar la cadena de prototipos de JavaScript,
+ * afectando potencialmente a todos los objetos de la aplicacion.
  */
 const DANGEROUS_KEYS = ['__proto__', 'constructor', 'prototype'];
 
 /**
- * SEC-025: Strip HTML tags from strings to prevent stored XSS.
- * Preserves common characters like &, <, > as text but removes actual HTML tags.
+ * SEC-025: Elimina etiquetas HTML de strings para prevenir XSS almacenado.
+ * Conserva caracteres comunes como &, <, > como texto plano pero
+ * remueve etiquetas HTML reales (ej: <script>, <img onerror=...>).
  */
 const HTML_TAG_REGEX = /<\/?[a-z][^>]*>/gi;
 function stripHtmlTags(value: string): string {
@@ -28,13 +33,17 @@ function stripHtmlTags(value: string): string {
 }
 
 /**
- * Recursively sanitize an object by removing dangerous keys.
- * 
- * @param obj - Object to sanitize
- * @returns Sanitized object
+ * Sanitiza recursivamente un objeto eliminando claves peligrosas
+ * y removiendo etiquetas HTML de valores string.
+ *
+ * Recorre toda la estructura del objeto (incluyendo arrays y objetos anidados)
+ * para asegurar que ningun nivel contenga datos maliciosos.
+ *
+ * @param obj - Objeto a sanitizar
+ * @returns Objeto sanitizado sin claves peligrosas ni etiquetas HTML
  */
 function sanitizeObject(obj: unknown): unknown {
-  // SEC-025: Strip HTML tags from string values
+  // SEC-025: Eliminar etiquetas HTML de valores string
   if (typeof obj === 'string') {
     return stripHtmlTags(obj);
   }
@@ -48,15 +57,15 @@ function sanitizeObject(obj: unknown): unknown {
   }
 
   const sanitized: Record<string, unknown> = {};
-  
+
   for (const [key, value] of Object.entries(obj)) {
-    // Skip dangerous keys
+    // Omitir claves peligrosas que podrian contaminar el prototipo
     if (DANGEROUS_KEYS.includes(key)) {
       logger.warn('Dangerous key detected and removed', { key });
       continue;
     }
-    
-    // Recursively sanitize nested objects
+
+    // Sanitizar recursivamente objetos anidados
     sanitized[key] = sanitizeObject(value);
   }
 
@@ -64,61 +73,71 @@ function sanitizeObject(obj: unknown): unknown {
 }
 
 /**
- * Middleware to sanitize request body, query, and params.
- * 
- * FIX P1-002: Prevents prototype pollution via Express body parser.
- * 
+ * Middleware que sanitiza el body, query params y route params de la solicitud.
+ *
+ * FIX P1-002: Previene prototype pollution a traves del body parser de Express.
+ * Debe aplicarse DESPUES del body parser (express.json()) para que req.body
+ * ya este parseado cuando este middleware lo procese.
+ *
+ * Sanitiza tres fuentes de entrada del usuario:
+ * 1. req.body - Cuerpo de la solicitud (POST/PUT/PATCH)
+ * 2. req.query - Parametros de consulta (?key=value)
+ * 3. req.params - Parametros de ruta (/:id)
+ *
+ * Nota: req.query y req.params son propiedades getter-only en Express,
+ * por lo que se modifican IN-PLACE (limpiando y reasignando claves).
+ *
  * @example
  * ```typescript
  * app.use(express.json());
- * app.use(sanitizeBody); // Apply AFTER body parser
+ * app.use(sanitizeBody); // Aplicar DESPUES del body parser
  * ```
  */
 export function sanitizeBody(req: Request, res: Response, next: NextFunction): void | Response {
   try {
-    // Sanitize body (can be reassigned)
+    // Sanitizar body (se puede reasignar directamente)
     if (req.body && typeof req.body === 'object') {
       req.body = sanitizeObject(req.body) as typeof req.body;
     }
 
-    // Sanitize query parameters IN-PLACE (req.query is a getter-only property)
+    // Sanitizar parametros de consulta IN-PLACE (req.query es propiedad getter-only)
     if (req.query && typeof req.query === 'object') {
       const sanitized = sanitizeObject(req.query);
       if (sanitized && typeof sanitized === 'object') {
-        // Clear existing keys
+        // Limpiar claves existentes
         for (const key in req.query) {
           delete req.query[key];
         }
-        // Copy sanitized keys
+        // Copiar claves sanitizadas
         Object.assign(req.query, sanitized);
       }
     }
 
-    // Sanitize route params IN-PLACE (req.params is a getter-only property)
+    // Sanitizar parametros de ruta IN-PLACE (req.params es propiedad getter-only)
     if (req.params && typeof req.params === 'object') {
       const sanitized = sanitizeObject(req.params);
       if (sanitized && typeof sanitized === 'object') {
-        // Clear existing keys
+        // Limpiar claves existentes
         for (const key in req.params) {
           delete req.params[key];
         }
-        // Copy sanitized keys
+        // Copiar claves sanitizadas
         Object.assign(req.params, sanitized);
       }
     }
 
     next();
   } catch (error) {
-    // Log detailed error information
-    logger.error('Error in sanitizeBody middleware', { 
+    // Loguear informacion detallada del error para depuracion
+    logger.error('Error in sanitizeBody middleware', {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
       body: req.body,
       path: req.path,
       method: req.method
     });
-    
-    // On error, reject the request to be safe
+
+    // Ante un error, rechazar la solicitud por seguridad (fail-safe)
     return res.status(400).json({
       error: 'INVALID_REQUEST',
       message: 'Request contains invalid data',

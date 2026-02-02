@@ -1,11 +1,11 @@
 /**
- * @fileoverview Analytics service with database-level aggregations.
- * 
- * PERFORMANCE NOTE:
- * All aggregations are performed at the database level using Prisma's
- * aggregate/groupBy methods. This is much more efficient than loading
- * entire tables into memory.
- * 
+ * @fileoverview Servicio de analíticas con agregaciones a nivel de base de datos.
+ *
+ * NOTA DE RENDIMIENTO:
+ * Todas las agregaciones se ejecutan directamente en la base de datos usando los métodos
+ * aggregate/groupBy de Prisma. Esto es mucho más eficiente que cargar tablas completas
+ * en memoria y procesarlas en Node.js.
+ *
  * @module services/analytics.service
  */
 
@@ -57,19 +57,19 @@ interface LowStockItem {
 
 export class AnalyticsService {
   /**
-   * Get sales summary for a date range using database aggregation.
+   * Obtiene el resumen de ventas para un rango de fechas usando agregación en BD.
    *
-   * PERFORMANCE: Uses Prisma aggregate instead of loading all orders.
-   * O(1) database query instead of O(n) memory processing.
+   * RENDIMIENTO: Usa Prisma aggregate en vez de cargar todas las órdenes en memoria.
+   * Una sola consulta O(1) en lugar de procesar O(n) registros en el servidor.
    *
-   * @param tenantId - Tenant ID for multi-tenant isolation
-   * @param range - Date range for the query
+   * @param tenantId - ID del tenant para aislamiento multi-inquilino
+   * @param range - Rango de fechas para la consulta
    */
   async getSalesSummary(tenantId: number, range: DateRange): Promise<SalesSummary> {
-    // Use database-level aggregation instead of loading all records
+    // Agregación a nivel de BD: evita traer todos los registros a memoria
     const currentPeriod = await prisma.order.aggregate({
       where: {
-        tenantId, // Multi-tenant isolation
+        tenantId, // Aislamiento multi-inquilino
         createdAt: {
           gte: range.startDate,
           lte: range.endDate
@@ -80,19 +80,19 @@ export class AnalyticsService {
       _count: true
     });
 
-    // BIZ-008: Round to 2 decimal places for financial precision
+    // BIZ-008: Redondeo a 2 decimales para precisión financiera
     const totalRevenue = Math.round(Number(currentPeriod._sum.total || 0) * 100) / 100;
     const orderCount = currentPeriod._count;
     const averageTicket = orderCount > 0 ? Math.round((totalRevenue / orderCount) * 100) / 100 : 0;
 
-    // Calculate previous period
+    // Calcular el período anterior (mismo ancho temporal hacia atrás)
     const periodMs = range.endDate.getTime() - range.startDate.getTime();
     const previousStart = new Date(range.startDate.getTime() - periodMs);
     const previousEnd = new Date(range.startDate.getTime() - 1);
 
     const previousPeriod = await prisma.order.aggregate({
       where: {
-        tenantId, // Multi-tenant isolation
+        tenantId, // Aislamiento multi-inquilino
         createdAt: {
           gte: previousStart,
           lte: previousEnd
@@ -117,18 +117,18 @@ export class AnalyticsService {
   }
 
   /**
-   * Get top selling products using database aggregation.
+   * Obtiene los productos más vendidos usando agregación en BD.
    *
-   * PERFORMANCE: Uses Prisma groupBy instead of loading all order items.
-   * O(n products) instead of O(n order items).
+   * RENDIMIENTO: Usa Prisma groupBy en vez de cargar todos los items de órdenes.
+   * Complejidad O(n productos) en lugar de O(n items de órdenes).
    *
-   * @param tenantId - Tenant ID for multi-tenant isolation
-   * @param limit - Maximum number of products to return
-   * @param range - Optional date range for the query
+   * @param tenantId - ID del tenant para aislamiento multi-inquilino
+   * @param limit - Cantidad máxima de productos a retornar
+   * @param range - Rango de fechas opcional para filtrar
    */
   async getTopProducts(tenantId: number, limit: number = 10, range?: DateRange): Promise<TopProduct[]> {
     const orderWhere: Prisma.OrderWhereInput = {
-      tenantId, // Multi-tenant isolation
+      tenantId, // Aislamiento multi-inquilino
       paymentStatus: 'PAID',
       ...(range && {
         createdAt: {
@@ -138,7 +138,7 @@ export class AnalyticsService {
       })
     };
 
-    // Use groupBy for database-level aggregation
+    // groupBy a nivel de BD para agregar cantidades por producto
     const grouped = await prisma.orderItem.groupBy({
       by: ['productId'],
       where: {
@@ -153,18 +153,18 @@ export class AnalyticsService {
       take: limit
     });
 
-    // Now fetch product names (only for top N products)
+    // Obtener nombres de producto solo para los top N (consulta ligera)
     const productIds = grouped.map(g => g.productId);
     const products = await prisma.product.findMany({
       where: {
         id: { in: productIds },
-        tenantId // Multi-tenant isolation
+        tenantId // Aislamiento multi-inquilino
       },
       select: { id: true, name: true, price: true }
     });
     const productMap = new Map(products.map(p => [p.id, p]));
 
-    // Calculate revenue - we need a second query for summed unit prices
+    // Segunda agregación para obtener datos de ingresos por producto
     const revenueData = await prisma.orderItem.groupBy({
       by: ['productId'],
       where: {
@@ -176,12 +176,12 @@ export class AnalyticsService {
       }
     });
 
-    // Calculate revenue using product prices
+    // Calcular ingresos usando el precio unitario del producto
     return grouped.map(g => {
       const product = productMap.get(g.productId);
       const quantitySold = g._sum.quantity || 0;
       const price = product ? Number(product.price) : 0;
-      
+
       return {
         productId: g.productId,
         productName: product?.name ?? 'Unknown',
@@ -192,14 +192,14 @@ export class AnalyticsService {
   }
 
   /**
-   * Get payment method breakdown using database groupBy.
+   * Obtiene el desglose de métodos de pago usando groupBy en BD.
    *
-   * @param tenantId - Tenant ID for multi-tenant isolation
-   * @param range - Optional date range for the query
+   * @param tenantId - ID del tenant para aislamiento multi-inquilino
+   * @param range - Rango de fechas opcional para filtrar
    */
   async getPaymentBreakdown(tenantId: number, range?: DateRange): Promise<PaymentBreakdown[]> {
     const whereClause: Prisma.PaymentWhereInput = {
-      tenantId, // Multi-tenant isolation
+      tenantId, // Aislamiento multi-inquilino
       order: {
         paymentStatus: 'PAID',
         ...(range && {
@@ -231,14 +231,14 @@ export class AnalyticsService {
   }
 
   /**
-   * Get sales by channel using database groupBy.
+   * Obtiene las ventas agrupadas por canal de venta usando groupBy en BD.
    *
-   * @param tenantId - Tenant ID for multi-tenant isolation
-   * @param range - Optional date range for the query
+   * @param tenantId - ID del tenant para aislamiento multi-inquilino
+   * @param range - Rango de fechas opcional para filtrar
    */
   async getSalesByChannel(tenantId: number, range?: DateRange): Promise<ChannelSales[]> {
     const whereClause: Prisma.OrderWhereInput = {
-      tenantId, // Multi-tenant isolation
+      tenantId, // Aislamiento multi-inquilino
       paymentStatus: 'PAID',
       ...(range && {
         createdAt: {
@@ -268,14 +268,15 @@ export class AnalyticsService {
   }
 
   /**
-   * Get ingredients with stock below minimum using raw SQL for efficiency.
+   * Obtiene ingredientes con stock por debajo del mínimo usando SQL crudo.
    *
-   * PERFORMANCE: Uses database-level WHERE filter instead of loading all ingredients.
+   * RENDIMIENTO: Filtra directamente en la BD con WHERE en vez de cargar todos
+   * los ingredientes a memoria y filtrar en Node.js.
    *
-   * @param tenantId - Tenant ID for multi-tenant isolation
+   * @param tenantId - ID del tenant para aislamiento multi-inquilino
    */
   async getLowStockItems(tenantId: number): Promise<LowStockItem[]> {
-    // Use raw query to filter at database level
+    // Consulta cruda para filtrar a nivel de BD (más eficiente que findMany + filter)
     const lowStock = await prisma.$queryRaw<{
       id: number;
       name: string;
@@ -302,19 +303,20 @@ export class AnalyticsService {
   }
 
   /**
-   * Get daily sales for charts using database groupBy with businessDate.
+   * Obtiene las ventas diarias para gráficos usando groupBy sobre businessDate.
    *
-   * PERFORMANCE: Uses groupBy on businessDate for efficient aggregation.
+   * RENDIMIENTO: Agrupa por businessDate (tipo DATE en BD) para obtener
+   * series temporales sin procesar en memoria.
    *
-   * @param tenantId - Tenant ID for multi-tenant isolation
-   * @param range - Date range for the query
+   * @param tenantId - ID del tenant para aislamiento multi-inquilino
+   * @param range - Rango de fechas para la consulta
    */
   async getDailySales(tenantId: number, range: DateRange): Promise<{ date: string; total: number; count: number }[]> {
-    // Group by businessDate which is already a DATE type
+    // Agrupar por businessDate que ya es un tipo DATE en la BD
     const dailySales = await prisma.order.groupBy({
       by: ['businessDate'],
       where: {
-        tenantId, // Multi-tenant isolation
+        tenantId, // Aislamiento multi-inquilino
         businessDate: {
           gte: range.startDate,
           lte: range.endDate

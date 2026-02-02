@@ -35,11 +35,11 @@
 | Audit Logging (AUD) | 8 | 8 | 100% |
 | Config (CFG) | 7 | 8 | 88% |
 | Code Quality (CQ) | 65 | 65 | 100% |
-| i18n (i18n) | 10 | 10 | 100% |
+| i18n (i18n) | 18 | 18 | 100% |
 | Testing (TST) | 8 | 16 | 50% |
 | Dependencies (DEP) | 2 | 4 | 50% |
 | Infrastructure (INF) | 4 | 8 | 50% |
-| **TOTAL** | **212** | **248** | **85%** |
+| **TOTAL** | **220** | **256** | **86%** |
 
 **Tier 1 Critical (11 findings)**: 11/11 fixed (100%)
 **Tier 2 High/Medium (11 findings)**: 11/11 fixed (100%)
@@ -57,6 +57,7 @@
 **Additional fixes (Round 12)**: 18 more fixed (i18n, generic Error→custom, any→typed)
 **Additional fixes (Round 13)**: 22 more fixed (CQ: idempotency/kds/printer any→typed, ERR: adapter Error→ValidationError, i18n: 14 files translated)
 **Additional fixes (Round 14)**: 4 more fixed (CQ: delivery.service Promise<any>, featureFlags Record<string,any>→unknown; i18n: errors.ts, printer.controller.ts Spanish→English)
+**Additional fixes (Round 15)**: 8 more fixed (i18n: auth.service.ts, table.service.ts Spanish error messages→English; normalized.types.ts, jobs/index.ts, BullMQService.ts, queue/types.ts, hmac.middleware.ts, webhook.routes.ts Spanish comments→English)
 **Estimated Quality Score**: 97/100
 **Production Readiness**: 98%
 

@@ -1,9 +1,18 @@
 /**
- * @fileoverview User Management Routes
- * 
- * @business_rule
- * - GET /users: Authenticated users can list (for assignment dropdowns)
- * - POST/PUT/DELETE: ADMIN role only
+ * @fileoverview Rutas de Gestión de Usuarios
+ *
+ * CRUD de usuarios del tenant. Los usuarios representan al personal del
+ * restaurante (administradores, managers, meseros, cajeros, cocineros).
+ * Cada usuario tiene un rol asignado que define sus permisos en el sistema.
+ *
+ * @regla_de_negocio
+ * - GET /users: Cualquier usuario autenticado puede listar (necesario para
+ *   dropdowns como "asignar mesero a mesa" o "filtrar por cajero").
+ * - POST/PUT/DELETE: Solo el rol ADMIN puede crear, modificar o eliminar usuarios.
+ * - Las operaciones de escritura tienen rate limiting adicional para prevenir
+ *   enumeración de PINes por fuerza bruta (fix P1-010).
+ *
+ * @module routes/user.routes
  */
 
 import { Router } from 'express';
@@ -15,22 +24,22 @@ import { validateId } from '../middleware/validateId';
 
 const router = Router();
 
-// Get users by capability - any authenticated user
+// Buscar usuarios por capacidad/permiso específico (ej: usuarios con permiso de delivery)
 router.get('/with-capability', authenticate, getUsersWithCapability);
 
-// List users - any authenticated user (for dropdowns like "assign waiter")
+// Listar usuarios - cualquier usuario autenticado (para dropdowns de asignación)
 router.get('/', authenticate, listUsers);
 
-// Get single user - ADMIN only
+// Obtener detalle de un usuario - solo ADMIN
 router.get('/:id', authenticate, validateId(), authorize(['ADMIN']), getUserById);
 
-// Create user - ADMIN only (rate limited to prevent PIN enumeration P1-010)
+// Crear usuario - solo ADMIN (con rate limiting para prevenir enumeración de PINes P1-010)
 router.post('/', authenticate, authorize(['ADMIN']), apiRateLimiter, createUser);
 
-// Update user - ADMIN only (rate limited to prevent PIN enumeration P1-010)
+// Actualizar usuario - solo ADMIN (con rate limiting para prevenir enumeración de PINes P1-010)
 router.put('/:id', authenticate, validateId(), authorize(['ADMIN']), apiRateLimiter, updateUser);
 
-// Delete (deactivate) user - ADMIN only
+// Eliminar (desactivar) usuario - solo ADMIN (soft delete, no se borra de la BD)
 router.delete('/:id', authenticate, validateId(), authorize(['ADMIN']), deleteUser);
 
 export default router;

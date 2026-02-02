@@ -1,3 +1,13 @@
+/**
+ * @fileoverview Servicio de auditoría para registro inmutable de acciones críticas del sistema.
+ *
+ * Todos los registros de auditoría son de solo escritura (append-only) y no pueden
+ * ser modificados ni eliminados. Esto garantiza trazabilidad completa para cumplimiento
+ * normativo y resolución de incidentes.
+ *
+ * @module services/audit.service
+ */
+
 import { Request } from 'express';
 import { prisma } from '../lib/prisma';
 import { AuditAction, Prisma } from '@prisma/client';
@@ -11,8 +21,8 @@ export interface AuditContext {
 }
 
 /**
- * CQ-003: Shared helper to extract audit context from Express request.
- * Eliminates duplicate getAuditContext() in auth.controller and cashShift.controller.
+ * CQ-003: Helper compartido para extraer contexto de auditoría desde un Request de Express.
+ * Elimina la duplicación de getAuditContext() que existía en auth.controller y cashShift.controller.
  */
 export function getAuditContext(req: Request): AuditContext {
     return {
@@ -24,12 +34,13 @@ export function getAuditContext(req: Request): AuditContext {
 }
 
 /**
- * Audit service for immutable logging of critical system actions.
- * All logs are append-only and cannot be modified or deleted.
+ * Servicio de auditoría para registro inmutable de acciones críticas.
+ * Todos los logs son append-only: no se pueden modificar ni eliminar.
  */
 export class AuditService {
     /**
-     * Log a critical action to the audit trail
+     * Registra una acción crítica en la pista de auditoría.
+     * Si falla el registro, NO interrumpe la operación principal (fail-open).
      */
     async log(
         action: AuditAction,
@@ -39,9 +50,9 @@ export class AuditService {
         details?: Record<string, unknown>
     ): Promise<void> {
         try {
-            // tenantId is required in the AuditLog schema — skip logging if missing
+            // tenantId es obligatorio en el esquema AuditLog — si falta, no se puede guardar
             if (context.tenantId === undefined || context.tenantId === null) {
-                logger.warn(`[AUDIT] Skipping audit log for ${action} on ${entity}:${entityId} — no tenantId`);
+                logger.warn(`[AUDIT] Omitiendo registro de auditoría para ${action} en ${entity}:${entityId} — falta tenantId`);
                 return;
             }
 
@@ -58,7 +69,7 @@ export class AuditService {
 
             await prisma.auditLog.create({ data });
         } catch (error) {
-            // ERR-004: Never fail the main operation, but log with full context for alerting
+            // ERR-004: Nunca fallar la operación principal; registrar con contexto completo para alertas
             logger.error('AUDIT_LOG_FAILED', {
                 action,
                 entity,
@@ -71,7 +82,7 @@ export class AuditService {
     }
 
     /**
-     * Convenience: Log auth events
+     * Atajo para registrar eventos de autenticación (login, logout, intentos fallidos).
      */
     async logAuth(
         action: 'LOGIN' | 'LOGOUT' | 'LOGIN_FAILED',
@@ -83,7 +94,7 @@ export class AuditService {
     }
 
     /**
-     * Convenience: Log order events
+     * Atajo para registrar eventos de órdenes (creación, cancelación, reembolso).
      */
     async logOrder(
         action: 'ORDER_CREATED' | 'ORDER_CANCELLED' | 'ORDER_REFUNDED',
@@ -95,7 +106,7 @@ export class AuditService {
     }
 
     /**
-     * Convenience: Log payment events
+     * Atajo para registrar eventos de pagos (recepción, anulación).
      */
     async logPayment(
         action: 'PAYMENT_RECEIVED' | 'PAYMENT_VOIDED',
@@ -107,7 +118,7 @@ export class AuditService {
     }
 
     /**
-     * Convenience: Log cash shift events
+     * Atajo para registrar eventos de turnos de caja (apertura, cierre, ajuste).
      */
     async logCashShift(
         action: 'SHIFT_OPENED' | 'SHIFT_CLOSED' | 'CASH_ADJUSTMENT',
@@ -119,9 +130,9 @@ export class AuditService {
     }
 
     /**
-     * Query audit logs with filters
+     * Consulta registros de auditoría con filtros dinámicos.
+     * tenantId es OBLIGATORIO para evitar exposición cross-tenant (FIX P1-SEC-002).
      */
-    // FIX P1-SEC-002: tenantId is now REQUIRED to prevent cross-tenant audit log exposure
     async query(filters: {
         tenantId: number;
         userId?: number;
@@ -133,9 +144,9 @@ export class AuditService {
         limit?: number;
         offset?: number;
     }) {
-        // Build where clause dynamically to avoid undefined values
+        // Construir cláusula WHERE dinámicamente, omitiendo valores undefined
         const where: Prisma.AuditLogWhereInput = {
-            tenantId: filters.tenantId, // Always required
+            tenantId: filters.tenantId, // Siempre obligatorio
             ...(filters.userId !== undefined && { userId: filters.userId }),
             ...(filters.entity !== undefined && { entity: filters.entity }),
             ...(filters.entityId !== undefined && { entityId: filters.entityId }),

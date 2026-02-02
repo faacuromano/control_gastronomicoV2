@@ -1,7 +1,10 @@
 /**
- * Bulk Price Update Service
- * Handles mass price updates for products with preview and categorical updates
- * 
+ * @fileoverview Servicio de actualización masiva de precios.
+ *
+ * Permite actualizar precios de múltiples productos simultáneamente,
+ * ya sea por porcentaje o monto fijo, con vista previa antes de aplicar.
+ * Incluye soporte para actualización por categoría y registro en auditoría.
+ *
  * @module services/bulkPriceUpdate.service
  */
 
@@ -15,8 +18,8 @@ export type PriceUpdateType = 'PERCENTAGE' | 'FIXED';
 
 export interface BulkPriceUpdateInput {
     type: PriceUpdateType;
-    value: number;  // Percentage change (+10 = +10%) or fixed adjustment (+5.00)
-    round?: boolean | undefined; // Round to nearest integer
+    value: number;  // Cambio porcentual (+10 = +10%) o ajuste fijo (+5.00)
+    round?: boolean | undefined; // Redondear al entero más cercano
 }
 
 export interface ProductPriceChange {
@@ -38,9 +41,10 @@ export interface BulkUpdateResult {
 }
 
 export class BulkPriceUpdateService {
-    
+
     /**
-     * Get all products with current prices for the bulk update grid
+     * Obtiene todos los productos con precios actuales para la grilla de actualización masiva.
+     * Permite filtrar opcionalmente por categoría.
      */
     async getProductsForPriceGrid(tenantId: number, filters?: { categoryId?: number | undefined }): Promise<ProductPriceChange[]> {
         const where: Prisma.ProductWhereInput = { isActive: true, tenantId };
@@ -48,7 +52,7 @@ export class BulkPriceUpdateService {
             where.categoryId = filters.categoryId;
         }
 
-        // PERF-012: Add limit to prevent unbounded query for tenants with many products
+        // PERF-012: Limitar resultados para evitar consultas sin cota en tenants con muchos productos
         const products = await prisma.product.findMany({
             where,
             include: { category: true },
@@ -69,7 +73,8 @@ export class BulkPriceUpdateService {
     }
 
     /**
-     * Preview price changes without applying them
+     * Calcula la vista previa de cambios de precio sin aplicarlos.
+     * Útil para que el usuario revise los cambios antes de confirmar.
      */
     previewBulkUpdate(
         products: ProductPriceChange[],
@@ -77,7 +82,7 @@ export class BulkPriceUpdateService {
     ): ProductPriceChange[] {
         return products.map(p => {
             let newPrice: number;
-            
+
             if (input.type === 'PERCENTAGE') {
                 newPrice = p.currentPrice * (1 + input.value / 100);
             } else {
@@ -88,22 +93,23 @@ export class BulkPriceUpdateService {
                 newPrice = Math.round(newPrice);
             }
 
-            // Ensure non-negative
+            // Asegurar que el precio nunca sea negativo
             newPrice = Math.max(0, newPrice);
 
             return {
                 ...p,
                 newPrice,
                 difference: newPrice - p.currentPrice,
-                percentChange: p.currentPrice > 0 
-                    ? ((newPrice - p.currentPrice) / p.currentPrice) * 100 
+                percentChange: p.currentPrice > 0
+                    ? ((newPrice - p.currentPrice) / p.currentPrice) * 100
                     : 0
             };
         });
     }
 
     /**
-     * Apply bulk price update to specific products by ID
+     * Aplica la actualización masiva de precios a productos específicos por ID.
+     * Ejecuta todas las actualizaciones en una transacción atómica y registra en auditoría.
      */
     async applyBulkUpdate(
         tenantId: number,
@@ -130,7 +136,7 @@ export class BulkPriceUpdateService {
                 const currentPrice = Number(product.price);
                 const newPrice = Math.max(0, update.newPrice);
 
-                // SAFE: tx.product.findFirst L121 verifies tenant ownership
+                // SAFE: tx.product.findFirst en L121 verifica propiedad del tenant
                 await tx.product.update({
                     where: { id: update.id },
                     data: { price: newPrice }
@@ -144,8 +150,8 @@ export class BulkPriceUpdateService {
                     currentPrice,
                     newPrice,
                     difference: newPrice - currentPrice,
-                    percentChange: currentPrice > 0 
-                        ? ((newPrice - currentPrice) / currentPrice) * 100 
+                    percentChange: currentPrice > 0
+                        ? ((newPrice - currentPrice) / currentPrice) * 100
                         : 0
                 });
 
@@ -161,7 +167,7 @@ export class BulkPriceUpdateService {
             };
         });
 
-        // Log to audit trail
+        // Registrar operación en la pista de auditoría
         await auditService.log(
             AuditAction.BULK_PRICE_UPDATE,
             'Product',
@@ -184,7 +190,8 @@ export class BulkPriceUpdateService {
     }
 
     /**
-     * Update prices by category with percentage/fixed increase
+     * Actualiza precios de todos los productos de una categoría con un ajuste porcentual o fijo.
+     * Combina getProductsForPriceGrid + previewBulkUpdate + applyBulkUpdate en un solo flujo.
      */
     async updateByCategory(
         tenantId: number,
@@ -204,7 +211,7 @@ export class BulkPriceUpdateService {
     }
 
     /**
-     * Get categories for dropdown
+     * Obtiene las categorías disponibles para el dropdown de selección en la UI.
      */
     async getCategories(tenantId: number) {
         return prisma.category.findMany({

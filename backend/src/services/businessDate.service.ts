@@ -1,22 +1,35 @@
+/**
+ * @fileoverview Servicio de fecha de negocio (Business Date).
+ *
+ * En gastronomía, la "fecha de negocio" no siempre coincide con la fecha calendario.
+ * Un restaurante que cierra a las 3 AM considera esas ventas como parte del día anterior.
+ * Este servicio determina la fecha operativa correcta para cada transacción.
+ *
+ * ESTRATEGIA DE RESOLUCIÓN (Regla "KISS"):
+ * 1. Si el usuario tiene un turno activo -> usar la fecha del turno (robustez)
+ * 2. Si NO hay turno activo (webhook, admin, mesero temprano) -> usar reloj del sistema con regla de las 6 AM
+ *
+ * @module services/businessDate.service
+ */
 
 import { prisma } from '../lib/prisma';
 import { getBusinessDate } from '../utils/businessDate';
 import { logger } from '../utils/logger';
 
 export class BusinessDateService {
-    
+
     /**
-     * Determines the operational Business Date for a transaction.
-     * 
-     * FALLBACK STRATEGY (The "KISS" Rule):
-     * 1. If User has an Active Shift -> Use Shift's Business Date (Robustness)
-     * 2. If NO Active Shift (Webhook, Early Waiter, Admin) -> Use System Clock with 6 AM Rule (Availability)
-     * 
-     * This logic ensures operations are never blocked by "No Shift", 
-     * while guaranteeing that waiters working late night stay on the "Previous Day".
+     * Determina la fecha de negocio operativa para una transacción.
+     *
+     * ESTRATEGIA DE FALLBACK:
+     * 1. Si el usuario tiene un turno abierto -> usa la fecha del turno (garantiza consistencia)
+     * 2. Si NO hay turno activo (webhook, admin, madrugada) -> usa reloj del sistema con regla de 6 AM
+     *
+     * Esto asegura que las operaciones nunca se bloqueen por "falta de turno",
+     * y que los meseros trabajando de madrugada sigan en el "día anterior".
      */
     async determineBusinessDate(tenantId: number, userId?: number): Promise<Date> {
-        // Scenario 1: User Context Available (Waiter/Cashier)
+        // Escenario 1: Hay contexto de usuario (mesero/cajero con posible turno abierto)
         if (userId) {
             const activeShift = await prisma.cashShift.findFirst({
                 where: {
@@ -27,7 +40,7 @@ export class BusinessDateService {
             });
 
             if (activeShift) {
-                // BIZ-011: Validate shift business date is not stale (> 2 days old)
+                // BIZ-011: Validar que la fecha del turno no esté obsoleta (> 2 días)
                 const now = new Date();
                 const diffMs = now.getTime() - activeShift.businessDate.getTime();
                 const diffDays = diffMs / (1000 * 60 * 60 * 24);
@@ -40,17 +53,17 @@ export class BusinessDateService {
                         staleDays: Math.floor(diffDays),
                         action: 'USING_SYSTEM_DATE_FALLBACK'
                     });
-                    // Fall through to system clock fallback instead of using stale date
+                    // Si la fecha está obsoleta, caer al fallback del reloj del sistema
                 } else {
                     return activeShift.businessDate;
                 }
             }
         }
 
-        // Scenario 2: No Shift or System Operation (Webhook/Admin)
-        // FALLBACK: Use System Clock with standard 6 AM Rule
+        // Escenario 2: Sin turno activo u operación del sistema (webhook/admin)
+        // FALLBACK: Usar reloj del sistema con la regla estándar de las 6 AM
         const systemDate = getBusinessDate(new Date());
-        
+
         logger.debug('BUSINESS_DATE_FALLBACK', {
             tenantId,
             userId,

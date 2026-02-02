@@ -1,14 +1,22 @@
 /**
- * @fileoverview HMAC Validation Middleware
+ * @fileoverview Middleware de Validacion HMAC para Webhooks de Delivery
  *
- * Middleware to validate HMAC signatures on incoming webhooks.
- * CRITICAL FOR SECURITY: Prevents injection of fake orders.
+ * Middleware Express que valida las firmas HMAC de los webhooks entrantes
+ * de las plataformas de delivery. Esta es la primera linea de defensa
+ * contra la inyeccion de pedidos falsos en el sistema.
  *
- * FLOW:
- * 1. Read raw body (buffer, not parsed)
- * 2. Get signature from the appropriate header per platform
- * 3. Validate with the corresponding adapter
- * 4. If valid, continue; if not, 401 Unauthorized
+ * CRITICO PARA SEGURIDAD: Sin esta validacion, cualquier atacante podria
+ * enviar webhooks falsos al endpoint y crear pedidos fraudulentos.
+ *
+ * FLUJO DE VALIDACION:
+ * 1. Leer el body crudo (Buffer, no parseado) — necesario para calcular HMAC
+ * 2. Extraer la firma del header correspondiente segun la plataforma
+ * 3. Delegar la validacion al adaptador de la plataforma
+ * 4. Si es valida: parsear el JSON y continuar al controller
+ * 5. Si es invalida: responder 401 Unauthorized y no procesar
+ *
+ * IMPORTANTE: Las rutas de webhook DEBEN usar express.raw() en vez de
+ * express.json() para preservar el body original para el calculo HMAC.
  *
  * @module integrations/delivery/webhooks/hmac.middleware
  */
@@ -19,11 +27,12 @@ import { DeliveryPlatformCode } from '../types/normalized.types';
 import { logger } from '../../../utils/logger';
 
 // ============================================================================
-// CONFIGURACIÓN DE HEADERS POR PLATAFORMA
+// MAPEO DE HEADERS DE FIRMA POR PLATAFORMA
 // ============================================================================
 
 /**
- * Platform-to-signature-header mapping.
+ * Mapeo de codigo de plataforma al nombre del header HTTP donde envia su firma.
+ * Cada plataforma usa un header diferente para transmitir la firma HMAC.
  */
 const SIGNATURE_HEADERS: Record<string, string> = {
   [DeliveryPlatformCode.RAPPI]: 'x-rappi-signature',
@@ -33,20 +42,22 @@ const SIGNATURE_HEADERS: Record<string, string> = {
 };
 
 // ============================================================================
-// MIDDLEWARE
+// MIDDLEWARE DE VALIDACION
 // ============================================================================
 
 /**
- * Creates an HMAC validation middleware for a specific platform.
+ * Crea un middleware de validacion HMAC para una plataforma especifica.
+ * El middleware verifica que el webhook tenga una firma valida antes de
+ * permitir que el controller lo procese.
  *
- * @param platformCode - Platform code (RAPPI, GLOVO, etc.)
- * @returns Express middleware
- * 
+ * @param platformCode - Codigo de la plataforma (RAPPI, GLOVO, etc.)
+ * @returns Middleware Express que valida la firma HMAC
+ *
  * @example
  * ```typescript
  * router.post(
- *   '/webhook/rappi', 
- *   express.raw({ type: 'application/json' }),  // IMPORTANTE: raw body
+ *   '/webhook/rappi',
+ *   express.raw({ type: 'application/json' }),  // IMPORTANTE: body crudo
  *   validateHmac('RAPPI'),
  *   webhookController.handleRappiWebhook
  * );
@@ -63,7 +74,7 @@ export function validateHmac(platformCode: string) {
     const startTime = Date.now();
 
     try {
-      // 1. Get signature from header
+      // Paso 1: Obtener la firma del header correspondiente
       const signature = req.headers[headerName] as string | undefined;
 
       if (!signature) {
@@ -78,8 +89,8 @@ export function validateHmac(platformCode: string) {
         });
       }
 
-      // 2. Verify we have the raw body
-      // IMPORTANT: express.raw() must be used before this middleware
+      // Paso 2: Verificar que tenemos el body crudo como Buffer
+      // IMPORTANTE: express.raw() debe usarse antes de este middleware
       const rawBody = req.body as Buffer;
 
       if (!Buffer.isBuffer(rawBody)) {
@@ -93,10 +104,10 @@ export function validateHmac(platformCode: string) {
         });
       }
 
-      // 3. Get adapter for validation
+      // Paso 3: Obtener el adaptador de la plataforma para validar
       const adapter = await AdapterFactory.getByPlatformCode(platformCode);
 
-      // 4. Validar firma
+      // Paso 4: Validar la firma HMAC
       const isValid = adapter.validateWebhookSignature(signature, rawBody);
 
       if (!isValid) {
@@ -111,10 +122,10 @@ export function validateHmac(platformCode: string) {
         });
       }
 
-      // 5. Parse body for later use with JSON bombing protection (IP-003)
+      // Paso 5: Parsear el body JSON con proteccion contra JSON bombing (IP-003)
       const rawString = rawBody.toString('utf-8');
-      
-      // FIX IP-003: Validate JSON depth before parsing to prevent DoS
+
+      // FIX IP-003: Validar profundidad del JSON antes de parsear para prevenir DoS
       const MAX_JSON_DEPTH = 10;
       let depth = 0;
       let maxDepthReached = 0;
@@ -133,10 +144,10 @@ export function validateHmac(platformCode: string) {
           depth--;
         }
       }
-      
+
       req.parsedBody = JSON.parse(rawString);
 
-      // 6. Log success
+      // Paso 6: Registrar exito en logs
       const duration = Date.now() - startTime;
       logger.debug('Webhook signature validated', {
         platform: platformCode,
@@ -149,7 +160,7 @@ export function validateHmac(platformCode: string) {
         platform: platformCode,
         error: error instanceof Error ? error.message : String(error),
       });
-      
+
       return res.status(500).json({
         error: 'VALIDATION_ERROR',
         message: 'Internal error during signature validation',
@@ -159,8 +170,8 @@ export function validateHmac(platformCode: string) {
 }
 
 /**
- * Generic middleware that detects the platform from the path.
- * For routes like /webhook/:platform
+ * Middleware generico que detecta la plataforma desde el parametro de la ruta.
+ * Util para rutas como /webhook/:platform donde la plataforma es dinamica.
  */
 export async function validateHmacDynamic(
   req: Request,
@@ -189,20 +200,24 @@ export async function validateHmacDynamic(
     });
   }
 
-  // Delegate to platform-specific middleware
+  // Delegar al middleware especifico de la plataforma detectada
   return validateHmac(platformCode)(req, res, next);
 }
 
 /**
- * Bypass middleware for local development.
- * NEVER use in production.
+ * Middleware de bypass para desarrollo local.
+ * Permite saltear la validacion HMAC cuando se esta probando localmente
+ * sin webhooks reales de las plataformas.
+ *
+ * NUNCA usar en produccion — tiene un bloqueo explicito que fuerza
+ * la validacion HMAC real cuando NODE_ENV es 'production'.
  */
 export function skipHmacInDevelopment(
   req: Request,
   res: Response,
   next: NextFunction
 ) {
-  // SEC-007: Explicitly block HMAC bypass in production, regardless of env vars
+  // SEC-007: Bloquear explicitamente el bypass HMAC en produccion, sin importar env vars
   if (process.env.NODE_ENV === 'production') {
     return validateHmacDynamic(req, res, next);
   }
@@ -213,7 +228,7 @@ export function skipHmacInDevelopment(
       path: req.path,
     });
 
-    // Parse body if it's a buffer
+    // Parsear el body si es un buffer (para que el controller lo pueda usar)
     if (Buffer.isBuffer(req.body)) {
       req.parsedBody = JSON.parse(req.body.toString('utf-8'));
     } else {
@@ -223,6 +238,6 @@ export function skipHmacInDevelopment(
     return next();
   }
 
-  // Default: always validate
+  // Por defecto: siempre validar HMAC
   return validateHmacDynamic(req, res, next);
 }

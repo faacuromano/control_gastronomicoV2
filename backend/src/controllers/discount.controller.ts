@@ -1,6 +1,12 @@
 /**
- * Discount Controller
- * Endpoints for applying and managing order discounts
+ * @fileoverview Controlador de Descuentos
+ *
+ * Gestiona la aplicación y remoción de descuentos sobre órdenes.
+ * Soporta descuentos porcentuales y de monto fijo, con motivos tipificados
+ * (empleado, VIP, promoción, queja, cortesía, fidelidad, otro).
+ * Cada operación se audita con el usuario y su IP.
+ *
+ * @module controllers/discount.controller
  */
 
 import { Request, Response } from 'express';
@@ -10,6 +16,10 @@ import { z } from 'zod';
 import { ValidationError } from '../utils/errors';
 import { sendSuccess } from '../utils/response';
 
+/**
+ * Esquema de validación para aplicar un descuento a una orden.
+ * El refinamiento garantiza que un descuento porcentual no supere el 100%.
+ */
 const ApplyDiscountSchema = z.object({
     orderId: z.number().int().positive(),
     type: z.enum(['PERCENTAGE', 'FIXED']),
@@ -24,7 +34,8 @@ const ApplyDiscountSchema = z.object({
 
 /**
  * POST /api/v1/discounts/apply
- * Apply a discount to an order
+ * Aplica un descuento a una orden existente.
+ * Construye el input cuidadosamente para evitar valores undefined con exactOptionalPropertyTypes.
  */
 export const applyDiscount = asyncHandler(async (req: Request, res: Response) => {
     const validation = ApplyDiscountSchema.safeParse(req.body);
@@ -33,20 +44,20 @@ export const applyDiscount = asyncHandler(async (req: Request, res: Response) =>
     }
 
     const data = validation.data;
-    
-    // Build input object carefully to avoid undefined values with exactOptionalPropertyTypes
+
+    // Construir objeto input evitando propiedades undefined (requerido por exactOptionalPropertyTypes)
     const input: ApplyDiscountInput = {
         orderId: data.orderId,
         type: data.type,
         value: data.value,
         reason: data.reason
     };
-    
+
     if (data.notes !== undefined) input.notes = data.notes;
     if (data.authorizerId !== undefined) input.authorizerId = data.authorizerId;
 
     const ip = String(req.ip || 'unknown');
-    
+
     const result = await discountService.applyDiscount(
         input,
         req.user!.tenantId!,
@@ -61,7 +72,7 @@ export const applyDiscount = asyncHandler(async (req: Request, res: Response) =>
 
 /**
  * DELETE /api/v1/discounts/:orderId
- * Remove discount from an order
+ * Remueve el descuento de una orden (lo revierte al total original).
  */
 export const removeDiscount = asyncHandler(async (req: Request, res: Response) => {
     const orderId = parseInt(String(req.params.orderId));
@@ -84,7 +95,7 @@ export const removeDiscount = asyncHandler(async (req: Request, res: Response) =
 
 /**
  * GET /api/v1/discounts/reasons
- * Get available discount reasons for UI
+ * Devuelve los motivos de descuento disponibles para poblar el dropdown en la UI.
  */
 export const getDiscountReasons = asyncHandler(async (req: Request, res: Response) => {
     const reasons = discountService.getDiscountReasons();
@@ -93,7 +104,7 @@ export const getDiscountReasons = asyncHandler(async (req: Request, res: Respons
 
 /**
  * GET /api/v1/discounts/types
- * Get available discount types for UI
+ * Devuelve los tipos de descuento disponibles (PERCENTAGE, FIXED) para la UI.
  */
 export const getDiscountTypes = asyncHandler(async (req: Request, res: Response) => {
     const types = discountService.getDiscountTypes();

@@ -1,10 +1,14 @@
 /**
- * @fileoverview Queue Service Factory & Exports
+ * @fileoverview Factory y exportaciones del sistema de colas
  *
- * Entry point for the queue system.
- * Exports the appropriate implementation based on environment.
+ * Punto de entrada del sistema de colas. Exporta la implementacion apropiada
+ * segun el entorno (BullMQ en produccion, potencialmente InMemory en tests).
  *
- * USAGE:
+ * Este patron Factory permite cambiar el proveedor de colas (ej: de BullMQ
+ * a RabbitMQ o AWS SQS) sin modificar el codigo de la aplicacion, ya que
+ * todos los consumidores dependen de la interfaz IQueueService.
+ *
+ * USO:
  *   import { queueService } from '../lib/queue';
  *   await queueService.enqueue('webhooks', { orderId: 123 });
  *
@@ -19,12 +23,14 @@ import { DEFAULT_RETRY_CONFIG } from './types';
 // FACTORY
 // ============================================================================
 
-// CFG-010: Supported queue providers
+// CFG-010: Proveedores de cola soportados.
+// Por ahora solo BullMQ, pero el sistema esta preparado para agregar mas.
 const SUPPORTED_PROVIDERS = ['bullmq'] as const;
 
 /**
- * Factory function to get the appropriate queue service.
- * In testing, could return InMemoryQueueService.
+ * Funcion factory que retorna el servicio de colas apropiado.
+ * En testing, podria retornar un InMemoryQueueService que no necesita Redis.
+ * El proveedor se selecciona via la variable de entorno QUEUE_PROVIDER.
  */
 function createQueueService(): IQueueService {
   const provider = process.env.QUEUE_PROVIDER || 'bullmq';
@@ -41,34 +47,35 @@ function createQueueService(): IQueueService {
 }
 
 // ============================================================================
-// EXPORTS
+// EXPORTACIONES
 // ============================================================================
 
-/** Singleton queue service instance */
+/** Instancia singleton del servicio de colas */
 export const queueService = createQueueService();
 
-/** Re-export types for convenience */
+/** Re-exportar tipos para conveniencia de los consumidores */
 export type { IQueueService, JobOptions, JobResult, JobHandler };
 export { DEFAULT_RETRY_CONFIG };
 
 // ============================================================================
-// PREDEFINED QUEUE NAMES
+// NOMBRES DE COLAS PREDEFINIDOS
 // ============================================================================
 
 /**
- * Standardized queue names.
- * Use these constants instead of hardcoded strings.
+ * Nombres estandarizados de colas.
+ * Usar estas constantes en lugar de strings hardcodeados para evitar typos
+ * y facilitar la busqueda de referencias en el codigo.
  */
 export const QUEUE_NAMES = {
-  /** Process webhooks from delivery platforms */
+  /** Procesar webhooks de plataformas de delivery (Rappi, PedidosYa, Glovo) */
   DELIVERY_WEBHOOKS: 'delivery:webhooks',
-  /** Sync menu to external platforms */
+  /** Sincronizar menu hacia plataformas externas */
   MENU_SYNC: 'delivery:menu-sync',
-  /** Sync stock to external platforms */
+  /** Sincronizar stock hacia plataformas externas */
   STOCK_SYNC: 'delivery:stock-sync',
-  /** Push notifications to users */
+  /** Notificaciones push a usuarios */
   NOTIFICATIONS: 'notifications',
-  /** Background report generation */
+  /** Generacion de reportes en segundo plano */
   REPORTS: 'reports',
 } as const;
 

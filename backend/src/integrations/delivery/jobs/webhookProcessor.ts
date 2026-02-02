@@ -1,17 +1,31 @@
 /**
- * @fileoverview Webhook Job Processor
- * 
- * Worker para procesar webhooks de plataformas de delivery de forma asíncrona.
- * Este worker toma jobs de la cola y los procesa creando/actualizando pedidos.
- * 
- * FLUJO:
- * 1. Recibir job de la cola
- * 2. Parsear payload con adapter correspondiente
- * 3. Mapear productos externos a productos internos
- * 4. Crear orden en el sistema
- * 5. Notificar a cocina via WebSocket
- * 6. Aceptar pedido en la plataforma
- * 
+ * @fileoverview Procesador de Jobs de Webhooks de Delivery
+ *
+ * Worker asincrono que procesa los webhooks recibidos de plataformas de delivery.
+ * Toma los jobs encolados en BullMQ (Redis) y los convierte en pedidos internos,
+ * actualizaciones de estado o cancelaciones dentro del sistema POS.
+ *
+ * FLUJO COMPLETO DE UN WEBHOOK:
+ * 1. El webhook llega al controller y se encola en Redis (respuesta inmediata 200 OK)
+ * 2. Este worker toma el job de la cola
+ * 3. Parsea el payload usando el adaptador de la plataforma correspondiente
+ * 4. Segun el tipo de evento:
+ *    - ORDER_NEW: Mapea SKUs externos a productos internos, crea la orden con
+ *      transaccion atomica (deduplicacion + secuencia + stock), notifica a cocina
+ *      via WebSocket, y acepta el pedido en la plataforma con reintentos
+ *    - ORDER_CANCELLED: Usa bloqueo pesimista (SELECT FOR UPDATE) y maquina de
+ *      estados para cancelar la orden de forma segura y sin race conditions
+ *    - STATUS_UPDATE: Igual que cancelacion pero para transiciones de estado generales
+ * 5. Si el procesamiento falla, BullMQ reintenta automaticamente con backoff
+ *
+ * FIXES IMPLEMENTADOS:
+ * - RC-001: Numero de orden generado DENTRO de la transaccion para evitar duplicados
+ * - RC-002: Deduplicacion via constraint unico de Prisma en vez de check TOCTOU
+ * - RC-006: Descuento de stock dentro de la transaccion para consistencia
+ * - P0-001: Bloqueo pesimista con SELECT FOR UPDATE para cancelaciones y updates
+ * - P0-002: Mapeo de SKUs en batch (1 query en vez de N) para performance
+ * - ES-002: Reintento con backoff exponencial para aceptacion en plataforma
+ *
  * @module integrations/delivery/jobs/webhookProcessor
  */
 
@@ -41,7 +55,7 @@ import {
 } from '../types/normalized.types';
 
 // ============================================================================
-// TIPOS
+// TIPOS DEL JOB
 // ============================================================================
 
 interface WebhookJobData {
@@ -58,11 +72,12 @@ interface WebhookJobData {
 }
 
 // ============================================================================
-// PROCESSOR
+// PROCESADOR PRINCIPAL
 // ============================================================================
 
 /**
- * Handler para procesar webhooks de delivery.
+ * Handler principal para procesar webhooks de delivery desde la cola BullMQ.
+ * Identifica el tipo de evento y delega al procesador correspondiente.
  */
 const webhookProcessor: JobHandler<WebhookJobData> = async (job) => {
   const startTime = Date.now();
@@ -77,20 +92,20 @@ const webhookProcessor: JobHandler<WebhookJobData> = async (job) => {
   });
 
   try {
-    // Obtener adapter
+    // Obtener el adaptador correspondiente a la plataforma
     const adapter = await AdapterFactory.getByPlatformCode(platform);
 
-    // Parsear payload
+    // Parsear el payload crudo al formato normalizado
     const processedWebhook = adapter.parseWebhookPayload(payload);
 
-    // Procesar según tipo de evento
+    // Procesar segun el tipo de evento del webhook
     switch (eventType) {
       case WebhookEventType.ORDER_NEW:
         await processNewOrder(processedWebhook.order!, adapter, metadata.requestId);
         break;
 
       case WebhookEventType.ORDER_CANCELLED: {
-        // Resolve tenantId from the existing order (it was set when the order was created)
+        // Resolver tenantId desde la orden existente (se establecio cuando se creo la orden)
         const existingOrder = await prisma.order.findFirst({
           where: { externalId: externalOrderId },
           select: { tenantId: true },
@@ -107,7 +122,7 @@ const webhookProcessor: JobHandler<WebhookJobData> = async (job) => {
       }
 
       case WebhookEventType.STATUS_UPDATE: {
-        // Resolve tenantId from the existing order (it was set when the order was created)
+        // Resolver tenantId desde la orden existente (se establecio cuando se creo la orden)
         const existingOrder = await prisma.order.findFirst({
           where: { externalId: processedWebhook.order!.externalId },
           select: { tenantId: true },
@@ -146,16 +161,18 @@ const webhookProcessor: JobHandler<WebhookJobData> = async (job) => {
       attempt: job.attemptsMade + 1,
       error: error instanceof Error ? error.message : String(error),
     });
-    throw error; // Re-throw para que BullMQ maneje reintentos
+    throw error; // Re-lanzar para que BullMQ maneje los reintentos automaticos
   }
 };
 
 // ============================================================================
-// FUNCIONES DE PROCESAMIENTO
+// FUNCIONES DE PROCESAMIENTO POR TIPO DE EVENTO
 // ============================================================================
 
 /**
- * Procesa un nuevo pedido de plataforma externa.
+ * Procesa un pedido nuevo recibido desde una plataforma de delivery.
+ * Realiza la resolucion del tenant, mapeo de productos, creacion atomica
+ * de la orden con stock, notificacion a cocina y aceptacion en la plataforma.
  */
 async function processNewOrder(
   normalizedOrder: NormalizedOrder,
@@ -164,13 +181,13 @@ async function processNewOrder(
 ): Promise<void> {
   const { externalId, platform, items } = normalizedOrder;
 
-  // FIX P0-SEC: Resolve tenant FIRST via storeId, then find tenant-scoped platform
-  // 1. Resolver Tenant (Multi-Tenancy)
+  // FIX P0-SEC: Resolver tenant PRIMERO via storeId, luego buscar plataforma scoped al tenant
+  // Paso 1: Resolver Tenant (Multi-Tenancy)
   let tenantId: number | null = null;
   let deliveryPlatform: Awaited<ReturnType<typeof prisma.deliveryPlatform.findFirst>> = null;
 
   if (normalizedOrder.storeId) {
-    // Find tenant config by storeId + platform code via the platform's tenantConfig
+    // Buscar la configuracion del tenant por storeId + codigo de plataforma
     const tenantConfig = await prisma.tenantPlatformConfig.findFirst({
       where: {
         storeId: normalizedOrder.storeId,
@@ -181,9 +198,9 @@ async function processNewOrder(
 
     if (tenantConfig) {
       tenantId = tenantConfig.tenantId;
-      // Now get the tenant-scoped platform
-      // FIX: Prisma client out of sync (tenantId missing in types).
-      // Relying on id from tenantConfig which is already tenant-scoped.
+      // Obtener la plataforma scoped al tenant usando el ID ya resuelto
+      // FIX: El cliente Prisma puede estar desincronizado con tenantId en los tipos.
+      // Se usa el ID de tenantConfig que ya esta scoped al tenant.
       deliveryPlatform = await prisma.deliveryPlatform.findFirst({
         where: { id: tenantConfig.deliveryPlatformId },
       });
@@ -199,10 +216,10 @@ async function processNewOrder(
     throw new ValidationError(`Cannot create delivery order: tenantId could not be resolved for storeId=${normalizedOrder.storeId}, platform=${normalizedOrder.platform}`);
   }
 
-  // 2.1. Mapear productos externos a internos (fuera de transacción - solo lectura)
+  // Paso 2.1: Mapear productos externos a internos (fuera de transaccion — solo lectura)
   const mappedItems = await mapExternalItemsToInternal(items, deliveryPlatform.id, tenantId);
 
-  // 3. Calcular totales usando precios del canal
+  // Paso 3: Calcular totales usando los precios del canal de delivery
   let subtotal = 0;
   const orderItems: Array<{
     productId: number;
@@ -237,25 +254,25 @@ async function processNewOrder(
     });
   }
 
-  //4. ATOMIC TRANSACTION: Deduplication + Sequence + Create + Stock Update
-  // FIX RC-001: orderNumber now generated INSIDE transaction
-  // FIX RC-002: Deduplication via unique constraint, not TOCTOU check
-  // FIX RC-006: Stock updates now inside transaction for consistency
+  // Paso 4: TRANSACCION ATOMICA — Deduplicacion + Secuencia + Creacion + Stock
+  // FIX RC-001: Numero de orden generado DENTRO de la transaccion
+  // FIX RC-002: Deduplicacion via constraint unico, no via check TOCTOU
+  // FIX RC-006: Descuento de stock dentro de la transaccion para consistencia
   let createdOrder;
   let stockSyncFailed = false;
 
   try {
     createdOrder = await prisma.$transaction(async (tx) => {
-      // FIX DB-005: Use centralized orderNumberService with retry logic
-      // This ensures consistent sequenceKey format and deadlock handling
+      // FIX DB-005: Usar servicio centralizado de numeracion con logica de reintento
+      // Esto garantiza formato consistente de sequenceKey y manejo de deadlocks
       const businessDateService = await import('../../../services/businessDate.service');
       const businessDate = await businessDateService.businessDateService.determineBusinessDate(tenantId);
       const { orderNumber } = await orderNumberService.getNextOrderNumber(tx, tenantId, businessDate);
 
-      // Create order - if externalId already exists, P2002 is thrown
+      // Crear la orden — si externalId ya existe, Prisma lanza error P2002
       const order = await tx.order.create({
         data: {
-          tenantId, // Start tracking tenant
+          tenantId, // Tracking de tenant para multi-tenancy
           orderNumber,
           channel: 'DELIVERY_APP',
           externalId,
@@ -295,17 +312,17 @@ async function processNewOrder(
         },
       });
 
-      // FIX RC-006: Stock deduction inside transaction
-      // This ensures stock is rolled back if order creation fails
+      // FIX RC-006: Descuento de stock dentro de la transaccion
+      // Si la creacion de la orden falla, el stock se revierte automaticamente
       await executeIfEnabled('enableStock', async () => {
         const stockService = new StockMovementService();
-        
+
         for (const item of orderItems) {
-          // Get product ingredients
+          // Obtener ingredientes del producto para saber cuanto stock descontar
           const productIngredients = await tx.productIngredient.findMany({
             where: { productId: item.productId, tenantId: tenantId! }
           });
-          
+
           for (const pi of productIngredients) {
             try {
               await stockService.register(
@@ -314,7 +331,7 @@ async function processNewOrder(
                 StockMoveType.SALE,
                 Number(pi.quantity) * item.quantity,
                 `Delivery Order #${order.orderNumber} (${platform})`,
-                tx // Pass transaction context
+                tx // Pasar contexto de transaccion para que sea atomico
               );
             } catch (stockError) {
               stockSyncFailed = true;
@@ -324,9 +341,9 @@ async function processNewOrder(
                 ingredientId: pi.ingredientId,
                 error: stockError instanceof Error ? stockError.stack : String(stockError),
               });
-              // Do NOT re-throw: delivery orders must be created even if stock fails.
-              // The platform already confirmed payment; losing the order is worse than inaccurate stock.
-              // Stock can be reconciled manually via the admin panel.
+              // NO re-lanzar: los pedidos de delivery deben crearse incluso si falla el stock.
+              // La plataforma ya confirmo el pago; perder el pedido es peor que tener stock impreciso.
+              // El stock se puede reconciliar manualmente desde el panel de administracion.
             }
           }
         }
@@ -335,13 +352,13 @@ async function processNewOrder(
       return order;
     });
   } catch (error: unknown) {
-    // FIX RC-002: Handle duplicate via unique constraint violation (P2002)
+    // FIX RC-002: Manejar duplicados via violacion de constraint unico (P2002)
     if (
       error instanceof Error &&
       'code' in error &&
       (error as { code: string }).code === 'P2002'
     ) {
-      // Duplicate order - this is expected for webhook retries
+      // Pedido duplicado — esto es esperado cuando la plataforma reintenta webhooks
       const existingOrder = await prisma.order.findFirst({
         where: { externalId, tenantId },
       });
@@ -350,9 +367,9 @@ async function processNewOrder(
         existingOrderId: existingOrder?.id,
         requestId,
       });
-      return; // Idempotent success - order already exists
+      return; // Exito idempotente — la orden ya existe
     }
-    throw error; // Re-throw other errors
+    throw error; // Re-lanzar otros errores
   }
 
   logger.info('Order created from external platform', {
@@ -364,19 +381,19 @@ async function processNewOrder(
     total: createdOrder.total,
   });
 
-  // FIX RC-006: Stock deduction now happens inside transaction
-  // If stock sync failed, it would have thrown and rolled back the entire transaction
-  // This code path only executes if ALL operations succeeded
-  
-  // 8. Notificar a cocina
+  // FIX RC-006: El descuento de stock ahora ocurre dentro de la transaccion.
+  // Si el stock fallo, se habria registrado el error pero la orden se creo igual.
+  // Este codigo solo se ejecuta si TODAS las operaciones tuvieron exito.
+
+  // Paso 8: Notificar a cocina via WebSocket para que aparezca en la KDS
   kdsService.broadcastNewOrder({
     ...createdOrder,
     source: 'DELIVERY',
     platformName: deliveryPlatform.name,
   });
 
-  // 9. Aceptar pedido en la plataforma
-  // FIX ES-002: Retry with exponential backoff, flag on failure
+  // Paso 9: Aceptar el pedido en la plataforma externa
+  // FIX ES-002: Reintento con backoff exponencial, marcar en caso de fallo
   const MAX_ACCEPT_RETRIES = 3;
   let platformAccepted = false;
 
@@ -385,14 +402,14 @@ async function processNewOrder(
       const estimatedPrepTime = 20; // 20 minutos por defecto
       await adapter.acceptOrder(externalId, estimatedPrepTime);
       platformAccepted = true;
-      
+
       logger.info('Order accepted in platform', {
         externalId,
         platform,
         estimatedPrepTime,
         attempt,
       });
-      break; // Success, exit loop
+      break; // Exito, salir del loop
     } catch (acceptError) {
       logger.warn('Platform acceptance attempt failed', {
         externalId,
@@ -404,14 +421,15 @@ async function processNewOrder(
       });
 
       if (attempt < MAX_ACCEPT_RETRIES) {
-        // Exponential backoff: 1s, 2s, 4s
+        // Backoff exponencial: 1s, 2s, 4s
         const backoffMs = 1000 * Math.pow(2, attempt - 1);
         await new Promise(resolve => setTimeout(resolve, backoffMs));
       }
     }
   }
 
-  // FIX ES-002: Flag order if platform acceptance failed after all retries
+  // FIX ES-002: Si la aceptacion en la plataforma fallo tras todos los reintentos,
+  // marcar la orden con una nota para intervencion manual
   if (!platformAccepted) {
     logger.error('CRITICAL: Platform acceptance failed after all retries', {
       externalId,
@@ -430,14 +448,18 @@ async function processNewOrder(
 }
 
 /**
- * Procesa una cancelación de pedido.
- * 
- * @complexity O(1) - Single row lock + update
- * @guarantee ACID - Pessimistic locking prevents race conditions
- * @implements TDD Section 1.2 - Pessimistic Lock with State Machine
- * 
- * FIX P0-001: Uses SELECT FOR UPDATE to prevent concurrent status updates
- * from overwriting the cancellation.
+ * Procesa la cancelacion de un pedido recibida desde la plataforma.
+ *
+ * Usa bloqueo pesimista (SELECT FOR UPDATE) y validacion de maquina de estados
+ * para garantizar que la cancelacion sea atomica y no haya race conditions
+ * con otras actualizaciones concurrentes del mismo pedido.
+ *
+ * @complexity O(1) - Bloqueo de fila unica + update
+ * @guarantee ACID - Bloqueo pesimista previene condiciones de carrera
+ * @implements TDD Seccion 1.2 - Bloqueo Pesimista con Maquina de Estados
+ *
+ * FIX P0-001: Usa SELECT FOR UPDATE para prevenir que actualizaciones
+ * concurrentes de estado sobrescriban la cancelacion.
  */
 async function processCancelledOrder(
   externalOrderId: string,
@@ -447,7 +469,7 @@ async function processCancelledOrder(
   try {
     const result = await withPessimisticLock(
       async (tx: TransactionClient) => {
-        // Step 1: Acquire exclusive lock on order row
+        // Paso 1: Adquirir bloqueo exclusivo sobre la fila de la orden
         const orderRows = await tx.$queryRaw<Array<{
           id: number;
           orderNumber: number;
@@ -470,8 +492,8 @@ async function processCancelledOrder(
           return null;
         }
 
-        // Step 2: State machine validation
-        // If already cancelled, this is idempotent success
+        // Paso 2: Validacion de maquina de estados
+        // Si ya esta cancelada, es un exito idempotente (la plataforma reintento)
         if (order.status === 'CANCELLED') {
           logger.info('Order already cancelled, skipping', {
             orderId: order.id,
@@ -480,10 +502,10 @@ async function processCancelledOrder(
           return { ...order, alreadyCancelled: true };
         }
 
-        // Step 3: Validate transition is allowed
+        // Paso 3: Validar que la transicion de estado sea permitida
         assertValidStatusTransition(order.status, 'CANCELLED');
 
-        // Step 4: Update with lock held
+        // Paso 4: Actualizar con el bloqueo mantenido
         await tx.order.update({
           where: { id: order.id },
           data: {
@@ -501,11 +523,11 @@ async function processCancelledOrder(
     );
 
     if (!result) {
-      return; // Order not found
+      return; // Orden no encontrada
     }
 
     if ('alreadyCancelled' in result && result.alreadyCancelled) {
-      return; // Idempotent - already cancelled
+      return; // Idempotente — ya estaba cancelada
     }
 
     logger.info('Order cancelled from platform', {
@@ -514,7 +536,7 @@ async function processCancelledOrder(
       platform,
     });
 
-    // Notify kitchen (outside transaction for safety)
+    // Notificar a cocina via WebSocket (fuera de la transaccion por seguridad)
     kdsService.broadcastOrderUpdate({
       id: result.id,
       orderNumber: result.orderNumber,
@@ -523,24 +545,24 @@ async function processCancelledOrder(
     });
 
   } catch (error) {
-    // Handle lock timeout with 409 Conflict
+    // Manejar timeout de bloqueo con 409 Conflict
     if (error instanceof LockTimeoutError) {
       logger.error('Lock timeout during order cancellation', {
         externalId: externalOrderId,
         platform,
         error: error.message,
       });
-      throw error; // Let BullMQ retry
+      throw error; // Dejar que BullMQ reintente
     }
 
-    // Handle invalid state transition
+    // Manejar transicion de estado invalida
     if (error instanceof InvalidStateTransitionError) {
       logger.warn('Invalid state transition for cancellation', {
         externalId: externalOrderId,
         platform,
         error: error.message,
       });
-      return; // Don't retry - terminal state issue
+      return; // No reintentar — es un problema de estado terminal
     }
 
     throw error;
@@ -548,14 +570,18 @@ async function processCancelledOrder(
 }
 
 /**
- * Procesa actualización de estado.
- * 
- * @complexity O(1) - Single row lock + update
- * @guarantee ACID - Pessimistic locking prevents race conditions
- * @implements TDD Section 1.2 - Pessimistic Lock with State Machine
- * 
- * FIX P0-001: Uses SELECT FOR UPDATE and validates state machine
- * to prevent overwriting CANCELLED status or invalid transitions.
+ * Procesa una actualizacion de estado recibida desde la plataforma.
+ *
+ * Usa el mismo patron de bloqueo pesimista que la cancelacion para
+ * garantizar consistencia. Valida la maquina de estados para prevenir
+ * transiciones invalidas (ej: no se puede modificar un pedido CANCELADO).
+ *
+ * @complexity O(1) - Bloqueo de fila unica + update
+ * @guarantee ACID - Bloqueo pesimista previene condiciones de carrera
+ * @implements TDD Seccion 1.2 - Bloqueo Pesimista con Maquina de Estados
+ *
+ * FIX P0-001: Usa SELECT FOR UPDATE y valida la maquina de estados
+ * para prevenir sobrescritura del estado CANCELLED u otras transiciones invalidas.
  */
 async function processStatusUpdate(
   normalizedOrder: NormalizedOrder,
@@ -573,7 +599,7 @@ async function processStatusUpdate(
   try {
     const result = await withPessimisticLock(
       async (tx: TransactionClient) => {
-        // Step 1: Acquire exclusive lock on order row
+        // Paso 1: Adquirir bloqueo exclusivo sobre la fila de la orden
         const orderRows = await tx.$queryRaw<Array<{
           id: number;
           orderNumber: number;
@@ -596,8 +622,8 @@ async function processStatusUpdate(
           return null;
         }
 
-        // Step 2: State machine validation
-        // CRITICAL: Never modify a CANCELLED order
+        // Paso 2: Validacion de maquina de estados
+        // CRITICO: Nunca modificar una orden CANCELADA
         if (order.status === 'CANCELLED') {
           logger.warn('Rejecting status update for cancelled order', {
             orderId: order.id,
@@ -608,10 +634,10 @@ async function processStatusUpdate(
           return { skipped: true, reason: 'ORDER_CANCELLED' };
         }
 
-        // Step 3: Validate transition is allowed
+        // Paso 3: Validar que la transicion de estado sea permitida
         assertValidStatusTransition(order.status, internalStatus);
 
-        // Step 4: Update with lock held
+        // Paso 4: Actualizar con el bloqueo mantenido
         await tx.order.update({
           where: { id: order.id },
           data: { status: internalStatus },
@@ -626,11 +652,11 @@ async function processStatusUpdate(
     );
 
     if (!result) {
-      return; // Order not found
+      return; // Orden no encontrada
     }
 
     if ('skipped' in result) {
-      return; // Status update rejected
+      return; // Actualizacion de estado rechazada
     }
 
     logger.info('Order status updated from platform', {
@@ -641,7 +667,7 @@ async function processStatusUpdate(
     });
 
   } catch (error) {
-    // Handle lock timeout with 409 Conflict
+    // Manejar timeout de bloqueo con 409 Conflict
     if (error instanceof LockTimeoutError) {
       logger.error('Lock timeout during status update', {
         externalId,
@@ -649,10 +675,10 @@ async function processStatusUpdate(
         attemptedStatus: internalStatus,
         error: error.message,
       });
-      throw error; // Let BullMQ retry
+      throw error; // Dejar que BullMQ reintente
     }
 
-    // Handle invalid state transition
+    // Manejar transicion de estado invalida
     if (error instanceof InvalidStateTransitionError) {
       logger.warn('Invalid state transition', {
         externalId,
@@ -660,7 +686,7 @@ async function processStatusUpdate(
         attemptedStatus: internalStatus,
         error: error.message,
       });
-      return; // Don't retry - invalid transition
+      return; // No reintentar — transicion invalida
     }
 
     throw error;
@@ -668,22 +694,25 @@ async function processStatusUpdate(
 }
 
 // ============================================================================
-// HELPERS
+// FUNCIONES AUXILIARES
 // ============================================================================
 
 /**
- * Mapea items externos a productos internos usando ProductChannelPrice.
- * 
- * @complexity O(1) - Single batch query instead of O(N) individual queries
- * @guarantee Memory: O(N) where N = number of items (negligible, ~200 bytes/item)
- * @implements TDD Section 2.2 - Batch Fetch Pattern
- * 
- * FIX P0-002: Replaces N sequential queries with 1 batch query.
- * For 50 items: Cost reduction from 150ms to 5ms (~30x improvement).
- * 
- * @param items - External items from normalized order
- * @param platformId - Delivery platform ID for SKU lookup
- * @returns Mapped items with internal product IDs
+ * Mapea items externos a productos internos usando la tabla ProductChannelPrice.
+ * Utiliza una unica query batch en lugar de N queries individuales para optimizar
+ * el rendimiento de base de datos.
+ *
+ * @complexity O(1) en queries de BD — 1 query batch sin importar la cantidad de items
+ * @guarantee Memoria: O(N) donde N = cantidad de items (despreciable, ~200 bytes/item)
+ * @implements TDD Seccion 2.2 - Patron Batch Fetch
+ *
+ * FIX P0-002: Reemplaza N queries secuenciales con 1 query batch.
+ * Para 50 items: reduccion de costo de 150ms a 5ms (~30x mejora).
+ *
+ * @param items - Items externos del pedido normalizado
+ * @param platformId - ID de la plataforma para busqueda de SKU
+ * @param tenantId - ID del tenant para filtrado multi-tenant
+ * @returns Items mapeados con IDs de producto interno (null si no se encontro mapeo)
  */
 async function mapExternalItemsToInternal(
   items: NormalizedOrderItem[],
@@ -699,11 +728,11 @@ async function mapExternalItemsToInternal(
     return [];
   }
 
-  // Step 1: Extract all SKUs for batch query
+  // Paso 1: Extraer todos los SKUs para la query batch
   const skus = items.map(item => item.externalSku);
 
-  // Step 2: Single batch query for ALL SKU mappings
-  // This is O(1) database round-trips regardless of item count
+  // Paso 2: Una sola query batch para TODOS los mapeos de SKU
+  // Esto es O(1) en viajes a la BD sin importar la cantidad de items
   const channelPrices = await prisma.productChannelPrice.findMany({
     where: {
       externalSku: { in: skus },
@@ -716,15 +745,15 @@ async function mapExternalItemsToInternal(
     },
   });
 
-  // Step 3: Build lookup map for O(1) access per item
-  // Filter out null SKUs (shouldn't happen but TypeScript requires it)
+  // Paso 3: Construir mapa de lookup para acceso O(1) por item
+  // Filtrar SKUs nulos (no deberia pasar pero TypeScript lo requiere)
   const skuToProductMap = new Map<string, number>(
     channelPrices
       .filter((cp): cp is { externalSku: string; productId: number } => cp.externalSku !== null)
       .map(cp => [cp.externalSku, cp.productId])
   );
 
-  // Step 4: Map items using the lookup (O(N) in-memory, no DB calls)
+  // Paso 4: Mapear items usando el lookup (O(N) en memoria, sin llamadas a BD)
   const result = items.map(item => ({
     externalSku: item.externalSku,
     internalProductId: skuToProductMap.get(item.externalSku) ?? null,
@@ -732,7 +761,7 @@ async function mapExternalItemsToInternal(
     notes: item.notes,
   }));
 
-  // Step 5: Log unmapped SKUs for operational visibility
+  // Paso 5: Registrar SKUs no mapeados para visibilidad operativa
   const unmappedSkus = result.filter(r => r.internalProductId === null);
   if (unmappedSkus.length > 0) {
     logger.warn('Some SKUs could not be mapped to internal products', {
@@ -747,17 +776,17 @@ async function mapExternalItemsToInternal(
     platformId,
     totalItems: items.length,
     mappedCount: result.filter(r => r.internalProductId !== null).length,
-    queryCount: 1, // Always 1 query regardless of item count
+    queryCount: 1, // Siempre 1 query sin importar la cantidad de items
   });
 
   return result;
 }
 
-// getNextOrderNumber() REMOVED - now inlined in transaction (FIX RC-001)
-// Order number generation is now atomic with order creation to prevent race conditions
+// getNextOrderNumber() ELIMINADO — ahora se genera inline dentro de la transaccion (FIX RC-001)
+// La generacion de numeros de orden es atomica con la creacion de la orden para prevenir race conditions
 
 /**
- * Mapea estado normalizado a estado interno de Order.
+ * Mapea un estado normalizado de delivery al estado interno de Order del sistema POS.
  */
 function mapNormalizedStatusToInternal(status: string): OrderStatus | null {
   const statusMap: Record<string, OrderStatus> = {
@@ -773,18 +802,19 @@ function mapNormalizedStatusToInternal(status: string): OrderStatus | null {
 }
 
 // ============================================================================
-// INICIALIZACIÓN
+// INICIALIZACION DEL WORKER
 // ============================================================================
 
 /**
- * Registra el processor para la cola de webhooks.
- * Debe llamarse al iniciar la aplicación.
+ * Registra el procesador en la cola de webhooks de BullMQ.
+ * Debe invocarse al iniciar la aplicacion (en server.ts) para que
+ * el worker comience a consumir jobs de la cola.
  */
 export function initWebhookProcessor(): void {
   logger.info('Initializing webhook processor...');
-  
+
   queueService.process(QUEUE_NAMES.DELIVERY_WEBHOOKS, webhookProcessor);
-  
+
   logger.info('Webhook processor initialized', {
     queue: QUEUE_NAMES.DELIVERY_WEBHOOKS,
   });
