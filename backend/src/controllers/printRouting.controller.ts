@@ -38,7 +38,7 @@ export const getOrderRouting = asyncHandler(async (req: Request, res: Response) 
     }
 
     const routing = await printRoutingService.getRoutingForOrder(orderId, req.user!.tenantId!);
-    sendSuccess(res, routing);
+    return sendSuccess(res, routing);
 });
 
 /** Esquema para asignar la impresora por defecto de una categoría (null para desasignar) */
@@ -61,7 +61,7 @@ export const setCategoryPrinter = asyncHandler(async (req: Request, res: Respons
     const category = await printRoutingService.setCategoryPrinter(req.user!.tenantId!, categoryId, printerId);
 
     logger.info('Category printer updated', { categoryId, printerId });
-    sendSuccess(res, category);
+    return sendSuccess(res, category);
 });
 
 /** Esquema para crear un override de impresora por área (null en categoryId = override global del área) */
@@ -86,7 +86,7 @@ export const setAreaOverride = asyncHandler(async (req: Request, res: Response) 
     const override = await printRoutingService.setAreaOverride(req.user!.tenantId!, areaId, categoryId, printerId);
 
     logger.info('Area printer override set', { areaId, categoryId, printerId });
-    sendSuccess(res, override);
+    return sendSuccess(res, override);
 });
 
 /** Esquema para eliminar un override de área (null en categoryId = override global) */
@@ -106,5 +106,5 @@ export const removeAreaOverride = asyncHandler(async (req: Request, res: Respons
     await printRoutingService.removeAreaOverride(req.user!.tenantId!, areaId, categoryId);
 
     logger.info('Area printer override removed', { areaId, categoryId });
-    sendSuccess(res, { message: 'Override removed' });
+    return sendSuccess(res, { message: 'Override removed' });
 });

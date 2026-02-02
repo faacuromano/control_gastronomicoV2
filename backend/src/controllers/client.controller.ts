@@ -54,5 +54,5 @@ export const createClient = asyncHandler(async (req: Request, res: Response) => 
         return res.status(404).json({ success: false, error: 'Client not found' });
     }
 
-    sendSuccess(res, client, undefined, created ? 201 : 200);
+    return sendSuccess(res, client, undefined, created ? 201 : 200);
 });

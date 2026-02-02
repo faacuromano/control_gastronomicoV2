@@ -44,7 +44,7 @@ export const registerMovement = asyncHandler(async (req: Request, res: Response)
     }
 
     const result = await stockService.register(data.ingredientId, req.user!.tenantId!, data.type, data.quantity, data.reason);
-    sendSuccess(res, result, undefined, 201);
+    return sendSuccess(res, result, undefined, 201);
 });
 
 /**

@@ -34,6 +34,6 @@ export function validateId(...paramNames: string[]) {
         });
       }
     }
-    next();
+    return next();
   };
 }

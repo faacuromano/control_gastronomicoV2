@@ -55,7 +55,7 @@ export const getIngredientById = asyncHandler(async (req: Request, res: Response
   if (!ingredient) {
     return res.status(404).json({ success: false, error: 'Ingredient not found' });
   }
-  sendSuccess(res, ingredient);
+  return sendSuccess(res, ingredient);
 });
 
 /** Crea un nuevo ingrediente en el inventario del tenant. El minStock por defecto es 0. */
@@ -84,7 +84,7 @@ export const updateIngredient = asyncHandler(async (req: Request, res: Response)
   );
 
   const ingredient = await ingredientService.update(id, req.user!.tenantId!, cleanData);
-  sendSuccess(res, ingredient);
+  return sendSuccess(res, ingredient);
 });
 
 /** Elimina un ingrediente del inventario del tenant */
@@ -95,5 +95,5 @@ export const deleteIngredient = asyncHandler(async (req: Request, res: Response)
   }
 
   await ingredientService.delete(id, req.user!.tenantId!);
-  sendSuccess(res, { message: 'Ingredient deleted' });
+  return sendSuccess(res, { message: 'Ingredient deleted' });
 });

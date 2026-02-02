@@ -112,7 +112,7 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
 
     // FIX P1-003: Algoritmo explicito para prevenir el ataque "alg: none"
     // donde un atacante envia un token sin firma y el servidor lo acepta
-    jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }, (err, decoded) => {
+    return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }, (err, decoded) => {
         if (err) {
             logger.debug('Auth failed: invalid token', {
                 error: err.message,
@@ -122,7 +122,7 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
         }
 
         req.user = decoded as JwtPayload;
-        next();
+        return next();
     });
 };
 
@@ -156,7 +156,7 @@ export const authorize = (allowedRoles: string[]) => {
             return sendError(res, 'AUTH_FORBIDDEN', `Role ${userRole} is not authorized`, null, 403);
         }
 
-        next();
+        return next();
     };
 };
 
@@ -204,6 +204,6 @@ export const requirePermission = (resource: string, action: string) => {
              return sendError(res, 'AUTH_FORBIDDEN', `Action '${action}' on '${resource}' denied`, null, 403);
         }
 
-        next();
+        return next();
     };
 };

@@ -60,7 +60,7 @@ export const getGroups = asyncHandler(async (req: Request, res: Response) => {
 export const getGroup = asyncHandler(async (req: Request, res: Response) => {
   const group = await modifierService.getGroupById(Number(req.params.id), req.user!.tenantId!);
   if (!group) return res.status(404).json({ success: false, error: 'Group not found' });
-  sendSuccess(res, group);
+  return sendSuccess(res, group);
 });
 
 /** Crea un nuevo grupo de modificadores para el tenant */
