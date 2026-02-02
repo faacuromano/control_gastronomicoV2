@@ -10,6 +10,40 @@
 #   - .env file with production values (JWT_SECRET, passwords, CORS_ORIGINS)
 #   - SSL certificates in ./certbot/conf/ (or use certbot init container)
 #   - DNS pointing to VPS IP
+#
+# ---------------------------------------------------------------------------
+# SSL/TLS Setup Guide (CFG-003)
+# ---------------------------------------------------------------------------
+# 1. Ensure DNS A record points to your VPS IP address.
+#
+# 2. Create certbot directories:
+#      mkdir -p ./certbot/conf ./certbot/www
+#
+# 3. Start nginx first (for ACME challenge):
+#      docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d nginx
+#
+# 4. Obtain initial certificate:
+#      docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm certbot \
+#        certonly --webroot -w /var/www/certbot \
+#        -d yourdomain.com -d www.yourdomain.com \
+#        --email admin@yourdomain.com --agree-tos --no-eff-email
+#
+# 5. Configure nginx to use SSL (in nginx/conf.d/default.conf):
+#      server {
+#        listen 443 ssl;
+#        ssl_certificate     /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+#        ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+#        ssl_protocols       TLSv1.2 TLSv1.3;
+#        ssl_ciphers         HIGH:!aNULL:!MD5;
+#        # ... proxy_pass to backend
+#      }
+#
+# 6. Restart all services:
+#      docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# 7. Auto-renewal: The certbot container runs `certbot renew` every 12h.
+#    To force renewal: docker compose ... run --rm certbot renew --force-renewal
+#    After renewal, reload nginx: docker compose ... exec nginx nginx -s reload
 # =============================================================================
 
 services:

@@ -30,10 +30,10 @@ import type { IQueueService, JobOptions, JobResult, JobHandler, DEFAULT_RETRY_CO
 const REDIS_CONFIG = {
   host: process.env.REDIS_HOST || 'localhost',
   port: parseInt(process.env.REDIS_PORT || '6379', 10),
-  ...(process.env.REDIS_PASSWORD && { password: process.env.REDIS_PASSWORD }), // Only add if defined
-  maxRetriesPerRequest: null,  // Requerido por BullMQ
-  ...(process.env.NODE_ENV === 'production' && { 
-    tls: {} // Enable TLS in production
+  ...(process.env.REDIS_PASSWORD && { password: process.env.REDIS_PASSWORD }),
+  maxRetriesPerRequest: null,  // Required by BullMQ
+  ...(process.env.REDIS_TLS === 'true' && {
+    tls: { rejectUnauthorized: true } // SEC-032: Validate server certificates
   }),
 };
 
@@ -111,10 +111,7 @@ class BullMQService implements IQueueService {
 
     if (!this.queues.has(queueName)) {
       const queue = new Queue(queueName, {
-        connection: {
-          host: REDIS_CONFIG.host,
-          port: REDIS_CONFIG.port,
-        },
+        connection: REDIS_CONFIG,
         defaultJobOptions: {
           removeOnComplete: {
             age: 3600,  // Mantener jobs completados por 1 hora
@@ -206,11 +203,8 @@ class BullMQService implements IQueueService {
         }
       },
       {
-        connection: {
-          host: REDIS_CONFIG.host,
-          port: REDIS_CONFIG.port,
-        },
-        concurrency: 5,  // Procesar hasta 5 jobs en paralelo
+        connection: REDIS_CONFIG,
+        concurrency: 5,
       }
     );
 

@@ -1,7 +1,25 @@
 import { Request, Response } from 'express';
+import { z } from 'zod';
 import { modifierService } from '../services/modifier.service';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { sendSuccess } from '../utils/response';
+
+const createGroupSchema = z.object({
+  name: z.string().min(1).max(100),
+  minSelection: z.number().int().min(0).optional(),
+  maxSelection: z.number().int().min(1).optional()
+});
+
+const updateGroupSchema = createGroupSchema.partial();
+
+const createOptionSchema = z.object({
+  name: z.string().min(1).max(100),
+  priceOverlay: z.number().min(0).optional(),
+  ingredientId: z.number().int().positive().optional(),
+  qtyUsed: z.number().min(0).optional()
+});
+
+const updateOptionSchema = createOptionSchema.partial();
 
 export const getGroups = asyncHandler(async (req: Request, res: Response) => {
   const { page: pageStr, limit: limitStr } = req.query;
@@ -27,15 +45,17 @@ export const getGroup = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const createGroup = asyncHandler(async (req: Request, res: Response) => {
+  const data = createGroupSchema.parse(req.body);
   const group = await modifierService.createGroup({
-    ...req.body,
+    ...data,
     tenantId: req.user!.tenantId!
-  });
+  } as any);
   sendSuccess(res, group, undefined, 201);
 });
 
 export const updateGroup = asyncHandler(async (req: Request, res: Response) => {
-  const group = await modifierService.updateGroup(Number(req.params.id), req.user!.tenantId!, req.body);
+  const data = updateGroupSchema.parse(req.body);
+  const group = await modifierService.updateGroup(Number(req.params.id), req.user!.tenantId!, data as any);
   sendSuccess(res, group);
 });
 
@@ -45,12 +65,14 @@ export const deleteGroup = asyncHandler(async (req: Request, res: Response) => {
 });
 
 export const addOption = asyncHandler(async (req: Request, res: Response) => {
-  const option = await modifierService.addOption(Number(req.params.groupId), req.user!.tenantId!, req.body);
+  const data = createOptionSchema.parse(req.body);
+  const option = await modifierService.addOption(Number(req.params.groupId), req.user!.tenantId!, data as any);
   sendSuccess(res, option, undefined, 201);
 });
 
 export const updateOption = asyncHandler(async (req: Request, res: Response) => {
-  const option = await modifierService.updateOption(Number(req.params.optionId), req.user!.tenantId!, req.body);
+  const data = updateOptionSchema.parse(req.body);
+  const option = await modifierService.updateOption(Number(req.params.optionId), req.user!.tenantId!, data as any);
   sendSuccess(res, option);
 });
 

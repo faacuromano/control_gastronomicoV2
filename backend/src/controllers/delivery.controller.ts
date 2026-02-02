@@ -4,9 +4,39 @@
  */
 
 import { Request, Response } from 'express';
+import { z } from 'zod';
+import { VehicleType } from '@prisma/client';
 import { deliveryService } from '../services/delivery.service';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { sendSuccess } from '../utils/response';
+
+const createPlatformSchema = z.object({
+    code: z.string().min(2).max(20),
+    name: z.string().min(2).max(100),
+    apiKey: z.string().max(500).optional(),
+    webhookSecret: z.string().max(500).optional(),
+    storeId: z.string().max(100).optional()
+});
+
+const updatePlatformSchema = createPlatformSchema.partial();
+
+const createDriverSchema = z.object({
+    name: z.string().min(1).max(100),
+    phone: z.string().min(1).max(30),
+    email: z.string().email().max(254).optional(),
+    vehicleType: z.nativeEnum(VehicleType).optional(),
+    licensePlate: z.string().max(20).optional()
+});
+
+const updateDriverSchema = createDriverSchema.partial();
+
+const assignDriverToOrderSchema = z.object({
+    orderId: z.number().int().positive()
+});
+
+const assignUserDriverSchema = z.object({
+    driverId: z.number().int().positive()
+});
 
 // ============================================================================
 // PLATFORMS
@@ -25,13 +55,15 @@ export const getPlatformById = asyncHandler(async (req: Request, res: Response) 
 
 // FIX P0-SEC-001: All platform CRUD scoped by tenantId from authenticated user
 export const createPlatform = asyncHandler(async (req: Request, res: Response) => {
-    const platform = await deliveryService.createPlatform(req.user!.tenantId!, req.body);
+    const data = createPlatformSchema.parse(req.body);
+    const platform = await deliveryService.createPlatform(req.user!.tenantId!, data as any);
     sendSuccess(res, platform, undefined, 201);
 });
 
 export const updatePlatform = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
-    const platform = await deliveryService.updatePlatform(id, req.user!.tenantId!, req.body);
+    const data = updatePlatformSchema.parse(req.body);
+    const platform = await deliveryService.updatePlatform(id, req.user!.tenantId!, data as any);
     sendSuccess(res, platform);
 });
 
@@ -68,13 +100,15 @@ export const getDriverById = asyncHandler(async (req: Request, res: Response) =>
 });
 
 export const createDriver = asyncHandler(async (req: Request, res: Response) => {
-    const driver = await deliveryService.createDriver(req.user!.tenantId!, req.body);
+    const data = createDriverSchema.parse(req.body);
+    const driver = await deliveryService.createDriver(req.user!.tenantId!, data as any);
     sendSuccess(res, driver, undefined, 201);
 });
 
 export const updateDriver = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
-    const driver = await deliveryService.updateDriver(id, req.user!.tenantId!, req.body);
+    const data = updateDriverSchema.parse(req.body);
+    const driver = await deliveryService.updateDriver(id, req.user!.tenantId!, data as any);
     sendSuccess(res, driver);
 });
 
@@ -92,7 +126,7 @@ export const toggleDriverActive = asyncHandler(async (req: Request, res: Respons
 
 export const assignDriverToOrder = asyncHandler(async (req: Request, res: Response) => {
     const driverId = parseInt(req.params.id as string);
-    const { orderId } = req.body;
+    const { orderId } = assignDriverToOrderSchema.parse(req.body);
     await deliveryService.assignDriverToOrder(driverId, orderId, req.user!.tenantId!);
     sendSuccess(res, { message: 'Driver assigned to order' });
 });
@@ -125,8 +159,8 @@ export const getDeliveryOrders = asyncHandler(async (req: Request, res: Response
  */
 export const assignUserDriverToOrder = asyncHandler(async (req: Request, res: Response) => {
     const orderId = parseInt(req.params.orderId as string);
-    const { driverId } = req.body;
-    
+    const { driverId } = assignUserDriverSchema.parse(req.body);
+
     // Import orderDeliveryService for User driver assignment
     const { orderDeliveryService } = await import('../services/orderDelivery.service');
     const order = await orderDeliveryService.assignDriver(orderId, driverId, req.user!.tenantId!);

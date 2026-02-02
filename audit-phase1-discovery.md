@@ -872,17 +872,19 @@
 - **Severity**: Medium
 - **Fix**: Created .github/dependabot.yml with weekly npm checks for backend/frontend, monthly Docker and GitHub Actions checks. Groups minor+patch updates together.
 
-### DEP-003: Express 5 Still in RC
+### DEP-003: Express 5 Still in RC ⏭️ ACCEPTED RISK
 - **Where**: `backend/package.json`
 - **What**: Express ^5.2.1 used in production
 - **Why**: May have stability issues as not fully released
 - **Severity**: Low
+- **Disposition**: Express 5 is the intended migration path. Downgrading to Express 4 would require removing async middleware support. Monitor Express 5 release notes.
 
-### DEP-004: bcryptjs Last Updated 2016
+### DEP-004: bcryptjs Last Updated 2016 ⏭️ ACCEPTED RISK
 - **Where**: `backend/package.json`
 - **What**: Uses bcryptjs ^3.0.3 instead of native bcrypt
 - **Why**: Older library, consider native bcrypt for better performance
 - **Severity**: Low
+- **Disposition**: bcryptjs is pure JS (no native build deps), stable, and widely used. Native bcrypt requires Python/C++ build tools which complicates Docker builds. Acceptable trade-off.
 
 ---
 
@@ -929,17 +931,19 @@
 - **Severity**: Low
 - **Fix**: Translated 8 Spanish error messages to English across purchaseOrder.service, purchaseOrder.controller, table.service, and marginConsent.service.
 
-### CQ-007: No OpenAPI/Swagger Annotations
+### CQ-007: No OpenAPI/Swagger Annotations ⏭️ DEFERRED
 - **Where**: All controllers
 - **What**: No API documentation annotations
 - **Why**: Manual API documentation, prone to drift
 - **Severity**: Low
+- **Disposition**: Deferred to future sprint. Recommend `tsoa` or `swagger-jsdoc` integration when API stabilizes post-MVP.
 
-### CQ-008: Missing Return Types on Controllers
+### CQ-008: Missing Return Types on Controllers ⏭️ ACCEPTED
 - **Where**: All controller functions
 - **What**: No explicit return type annotations
 - **Why**: Less type safety on response contracts
 - **Severity**: Low
+- **Disposition**: The `asyncHandler` wrapper enforces the `(req, res) => Promise<void>` contract. Adding explicit return types to every handler is noisy without meaningful type safety gain.
 
 ### CQ-009: Console.error Instead of Logger in Services ✅ FIXED
 - **Where**: `printer.service.ts:98,134,191`, multiple other services
@@ -973,11 +977,12 @@
 - **Severity**: Medium
 - **Fix**: Pinned to nginx:1.25-alpine in docker-compose.prod.yml.
 
-### INF-003: Development Containers Use unless-stopped
+### INF-003: Development Containers Use unless-stopped ⏭️ WON'T FIX
 - **Where**: `docker-compose.yml:23,71,110,183`
 - **What**: `restart: unless-stopped` won't restart after host reboot
 - **Why**: Containers don't auto-start on dev machine reboot
 - **Severity**: Low
+- **Disposition**: `unless-stopped` is correct for development containers. Production override (`docker-compose.prod.yml`) should use `always` if needed.
 
 ### INF-004: Docker Logging Limits May Be Insufficient ✅ FIXED
 - **Where**: `docker-compose.yml:47-50,91-94,161-164,211-214`
