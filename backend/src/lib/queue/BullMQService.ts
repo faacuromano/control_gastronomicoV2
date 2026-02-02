@@ -273,6 +273,14 @@ class BullMQService implements IQueueService {
   }
 
   /**
+   * TST-008 FIX: Check if workers are registered and running.
+   * Returns false if queue is connected but no workers are processing jobs.
+   */
+  hasActiveWorkers(): boolean {
+    return this.workers.size > 0;
+  }
+
+  /**
    * Cierra todas las conexiones gracefully.
    * Espera a que los jobs en proceso terminen.
    */

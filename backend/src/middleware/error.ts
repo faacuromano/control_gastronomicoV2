@@ -72,6 +72,15 @@ export const errorHandler = (
         return sendError(res, 'VALIDATION_ERROR', 'Invalid data format', null, 400);
     }
 
+    // TST-007 FIX: Handle errors with statusCode property (LockTimeoutError, InvalidStateTransitionError)
+    if ('statusCode' in err && typeof (err as any).statusCode === 'number') {
+        const statusCode = (err as any).statusCode as number;
+        const code = ('code' in err && typeof (err as any).code === 'string')
+            ? (err as any).code as string
+            : 'ERROR';
+        return sendError(res, code, err.message, null, statusCode);
+    }
+
     // Handle JSON parsing errors
     if (err instanceof SyntaxError && 'body' in err) {
         return sendError(res, 'INVALID_JSON', 'Invalid JSON in request body', null, 400);

@@ -139,7 +139,7 @@ export class PrinterService {
                 if (fs.existsSync(tempFile)) {
                     fs.unlinkSync(tempFile);
                 }
-            } catch (e) {
+            } catch (_error) {
                 // Ignore cleanup errors
             }
         }

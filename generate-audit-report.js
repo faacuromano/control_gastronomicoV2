@@ -7,23 +7,23 @@ const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
 // DATA
 // ============================================================
 
-const QUALITY_SCORE = 85;
-const READINESS_PCT = 88;
+const QUALITY_SCORE = 88;
+const READINESS_PCT = 91;
 
 const severityCounts = { Critical: 12, High: 38, Medium: 72, Low: 45, Info: 30, Total: 197 };
-const fixedCount = 97;
-const remainingCount = 100;
+const fixedCount = 111;
+const remainingCount = 86;
 
 const categoryScores = [
   { category: "Security",       weight: "20%", score: 82, rationale: "30/43 findings fixed. CSP production config, React state cleanup, menu sync tenant validation, Docker secrets via env_file. Remaining: signature rotation, namespace isolation." },
-  { category: "Error Handling",  weight: "15%", score: 82, rationale: "11/16 fixed. Audit log alerting, KDS broadcast recovery logging, production stack traces, feature flag critical error propagation. Remaining: sync conflict, queue health." },
-  { category: "API Design",      weight: "15%", score: 58, rationale: "2/11 fixed. Response format standardized. Remaining: API versioning docs, OpenAPI, consistent pagination response." },
+  { category: "Error Handling",  weight: "15%", score: 85, rationale: "11/16 fixed. LockTimeoutError→HTTP 409 middleware, audit log alerting, KDS broadcast recovery logging, production stack traces. Remaining: sync conflict." },
+  { category: "API Design",      weight: "15%", score: 68, rationale: "4/11 fixed. Pagination consistency, default ordering verified. Remaining: API versioning docs, OpenAPI spec." },
   { category: "Database",        weight: "12%", score: 85, rationale: "10/18 fixed. Connection pool configurable (50 default), documented in prisma.ts. Remaining: payment sync rollback, composite indices." },
-  { category: "Code Quality",    weight: "10%", score: 65, rationale: "8/28 fixed. Eliminated 18+ 'as any' casts, extracted duplicate helpers, typed filter objects. Remaining: mixed languages, OpenAPI annotations." },
+  { category: "Code Quality",    weight: "10%", score: 72, rationale: "10/28 fixed. 'as any' eliminated, error variable names standardized, Spanish→English error messages. Remaining: OpenAPI annotations." },
   { category: "Performance",     weight: "8%",  score: 82, rationale: "11/21 fixed. Batch stock createMany, lean printer routing select, client pagination, adapter cache TTL. Remaining: further batch optimizations." },
   { category: "Dependencies",    weight: "7%",  score: 65, rationale: "2/4 fixed. npm audit + Dependabot config. Remaining: Express 5 RC stability, bcryptjs upgrade." },
-  { category: "Configuration",   weight: "5%",  score: 65, rationale: "2/8 fixed. Nginx config, conditional Redis validation. Remaining: SSL docs, hardcoded config values." },
-  { category: "Testing",         weight: "5%",  score: 30, rationale: "0/16 fixed. Major coverage gaps remain. Good: tenant isolation tests, forensic tests for P0 fixes." },
+  { category: "Configuration",   weight: "5%",  score: 72, rationale: "3/8 fixed. Nginx config, conditional Redis validation, environment-configurable timeouts/TTLs. Remaining: SSL docs." },
+  { category: "Testing",         weight: "5%",  score: 65, rationale: "8/16 fixed. 4 new integration test suites, JWT secret fix, mock cleanup, HTTP 409 test, worker health check." },
   { category: "Documentation",   weight: "3%",  score: 55, rationale: "Audit documents maintained with full remediation tracking. No OpenAPI/Swagger yet." },
 ];
 

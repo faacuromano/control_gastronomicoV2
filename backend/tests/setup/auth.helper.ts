@@ -33,7 +33,8 @@ export interface MockUser {
 // CONSTANTS
 // ============================================================================
 
-const JWT_SECRET = process.env.JWT_SECRET || 'test_secret_key_for_testing_only';
+// TST-005 FIX: Use the same secret set by tests/setup.ts to avoid divergence
+const JWT_SECRET = process.env.JWT_SECRET!;
 const AUTH_COOKIE_NAME = 'auth_token';
 
 /**

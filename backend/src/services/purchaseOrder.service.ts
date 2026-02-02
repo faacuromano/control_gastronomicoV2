@@ -75,7 +75,7 @@ export class PurchaseOrderService {
 
     // Validate items
     if (!data.items || data.items.length === 0) {
-      throw new ValidationError('La orden debe tener al menos un item');
+      throw new ValidationError('Order must have at least one item');
     }
 
     // Validate all ingredients exist (outside transaction - read-only, safe)
@@ -167,11 +167,11 @@ export class PurchaseOrderService {
     if (!order) throw new NotFoundError('Purchase Order');
 
     if (order.status === 'RECEIVED') {
-      throw new ConflictError('No se puede modificar una orden ya recibida');
+      throw new ConflictError('Cannot modify a received order');
     }
 
     if (order.status === 'CANCELLED') {
-      throw new ConflictError('No se puede modificar una orden cancelada');
+      throw new ConflictError('Cannot modify a cancelled order');
     }
 
     return await prisma.purchaseOrder.updateMany({
@@ -200,11 +200,11 @@ export class PurchaseOrderService {
       if (!order) throw new NotFoundError('Purchase Order');
 
       if (order.status === 'RECEIVED') {
-        throw new ConflictError('La orden ya fue recibida');
+        throw new ConflictError('Order has already been received');
       }
 
       if (order.status === 'CANCELLED') {
-        throw new ConflictError('No se puede recibir una orden cancelada');
+        throw new ConflictError('Cannot receive a cancelled order');
       }
 
       // 2. Create stock movements for each item
@@ -250,7 +250,7 @@ export class PurchaseOrderService {
     if (!order) throw new NotFoundError('Purchase Order');
 
     if (order.status === 'RECEIVED') {
-      throw new ConflictError('No se puede cancelar una orden ya recibida');
+      throw new ConflictError('Cannot cancel a received order');
     }
 
     return await prisma.purchaseOrder.updateMany({

@@ -51,7 +51,7 @@ export class TableService {
         const occupiedCount = await prisma.table.count({
             where: { areaId: id, tenantId, status: 'OCCUPIED' }
         });
-        if (occupiedCount > 0) throw new ConflictError('No se puede eliminar un área con mesas ocupadas');
+        if (occupiedCount > 0) throw new ConflictError('Cannot delete an area with occupied tables');
 
         // Cascade delete tables
         await prisma.table.deleteMany({ where: { areaId: id, tenantId } });

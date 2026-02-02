@@ -2,6 +2,7 @@
 import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { NotFoundError, ConflictError } from '../utils/errors';
+import { getBusinessDate } from '../utils/businessDate';
 
 export interface ShiftReport {
     shift: {
@@ -28,23 +29,12 @@ export interface ShiftReport {
 
 export class CashShiftService {
     
-    private getBusinessDate(date: Date): Date {
-        const businessDate = new Date(date);
-        // If hour < 6 AM, it belongs to previous day
-        if (businessDate.getHours() < 6) {
-            businessDate.setDate(businessDate.getDate() - 1);
-        }
-        // Normalize time to midnight/noon? Usually just the Date part matters for grouping
-        businessDate.setHours(0, 0, 0, 0);
-        return businessDate;
-    }
-
     /**
      * Open a new cash shift for a user.
      * FIX RC-004: Atomic transaction prevents double shift opening under concurrent requests.
      */
     async openShift(tenantId: number, userId: number, startAmount: number) {
-        const businessDate = this.getBusinessDate(new Date());
+        const businessDate = getBusinessDate(new Date());
 
         // FIX RC-004: Wrap check + create in atomic transaction
         return await prisma.$transaction(async (tx) => {

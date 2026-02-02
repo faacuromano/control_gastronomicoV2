@@ -14,6 +14,7 @@ import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { ForbiddenError, ValidationError, ConflictError, NotFoundError } from '../utils/errors';
 import { auditService } from '../services/audit.service';
+import { sendSuccess } from '../utils/response';
 
 const createRoleSchema = z.object({
     name: z.string().min(2).max(50),
@@ -100,16 +101,7 @@ export const getRoles = asyncHandler(async (req: Request, res: Response) => {
         take: limit
     });
 
-    res.json({
-        success: true,
-        data: roles,
-        meta: {
-            page,
-            limit,
-            total,
-            totalPages: Math.ceil(total / limit)
-        }
-    });
+    sendSuccess(res, roles, { page, limit, total, totalPages: Math.ceil(total / limit) });
 });
 
 /**

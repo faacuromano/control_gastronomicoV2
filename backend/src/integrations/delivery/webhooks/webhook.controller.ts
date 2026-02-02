@@ -221,10 +221,13 @@ class WebhookController {
    */
   async healthCheck(req: Request, res: Response) {
     const queueHealthy = await queueService.isHealthy();
+    const workersActive = queueService.hasActiveWorkers();
+    const fullyHealthy = queueHealthy && workersActive;
 
-    return res.status(queueHealthy ? 200 : 503).json({
-      status: queueHealthy ? 'healthy' : 'degraded',
+    return res.status(fullyHealthy ? 200 : 503).json({
+      status: fullyHealthy ? 'healthy' : 'degraded',
       queue: queueHealthy ? 'connected' : 'disconnected',
+      workers: workersActive ? 'running' : 'stopped',
       timestamp: new Date().toISOString(),
       availablePlatforms: AdapterFactory.getAvailablePlatformCodes(),
     });

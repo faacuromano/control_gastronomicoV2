@@ -138,8 +138,8 @@ class MarginConsentService {
     // VALIDACIÓN ESTRICTA: El consentimiento debe ser explícito
     if (explicitConsent !== true) {
       throw new BadRequestError(
-        'El consentimiento debe ser explícito. ' +
-        'El usuario debe marcar la casilla de aceptación.'
+        'Consent must be explicit. ' +
+        'User must check the acceptance checkbox.'
       );
     }
 

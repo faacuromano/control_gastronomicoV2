@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { NotFoundError, ConflictError, ValidationError } from '../utils/errors';
+import { getBusinessDate } from '../utils/businessDate';
 
 interface GenerateInvoiceData {
     orderId: number;
@@ -65,7 +66,8 @@ export async function generateInvoice(tenantId: number, data: GenerateInvoiceDat
             return await prisma.$transaction(async (tx) => {
                 // Generate invoice number INSIDE transaction for atomicity
                 // Format: YYYY-NNNNNNNN (Year + sequential number)
-                const year = new Date().getFullYear();
+                // BIZ-016 FIX: Use business date to avoid timezone boundary issues
+                const year = getBusinessDate().getFullYear();
 
                 const lastInvoice = await tx.invoice.findFirst({
                     where: {

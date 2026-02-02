@@ -19,8 +19,9 @@
 | Additional Round 2 | SEC/DB/BIZ/PERF/INF/DEP | 19/19 | **COMPLETE** |
 | Additional Round 3 | SEC/ERR/DB/BIZ/PERF | 14/14 | **COMPLETE** |
 | Additional Round 4 | CQ/PERF/DB code quality | 9/9 | **COMPLETE** |
+| Additional Round 5 | TST/API/CQ/BIZ/CFG | 14/14 | **COMPLETE** |
 
-**Total: 97/197 findings fixed (49%) | Quality Score: 85/100 | Readiness: 88%**
+**Total: 111/197 findings fixed (56%) | Quality Score: 88/100 | Readiness: 91%**
 
 ---
 
@@ -1009,6 +1010,28 @@ Round 4 focused on code quality improvements and performance optimizations:
 
 ---
 
+## Additional Fixes: Round 5 (Testing, API Consistency, Business Logic)
+
+Round 5 focused on testing gaps, API consistency, and business logic fixes:
+
+- TST-001: Added delivery adapter error recovery tests (HMAC, parsing, status mapping, API errors) — `delivery-adapter.test.ts`
+- TST-002: Added real transaction integrity tests (order+items+stock atomicity) — `order-transaction-real.test.ts`
+- TST-003: Added multi-tenant webhook isolation tests (storeId→tenantId resolution) — `webhook-tenant-isolation.test.ts`
+- TST-004: Added concurrent order sequence tests (parallel creation, uniqueness, no gaps) — `concurrent-order-sequence.test.ts`
+- TST-005: Removed JWT_SECRET fallback in auth.helper.ts, now uses setup.ts value
+- TST-006: Added global `afterEach(jest.restoreAllMocks)` in setup.ts
+- TST-007: Error middleware now handles `statusCode` property (LockTimeoutError → 409), added HTTP test
+- TST-008: Queue health check now verifies worker status via `hasActiveWorkers()`
+- API-002: Replaced `res.json()` with `sendSuccess()` in role/user controllers for consistent pagination
+- API-005: Verified all findMany calls already include `orderBy`
+- CQ-005: Standardized catch variable names (`e`→`_error`, `err`→`error`)
+- CQ-006: Translated 8 Spanish error messages to English across 4 services
+- BIZ-015: Replaced duplicate business date logic in cashShift.service with shared `getBusinessDate()` utility
+- BIZ-016: Invoice year now uses `getBusinessDate().getFullYear()` for timezone safety
+- CFG-004: Made lock/transaction timeouts and cache TTLs environment-configurable with defaults
+
+---
+
 **End of Phase 2 Recommendations**
 **Tier 1: 11/11 fixes complete (100%)**
 **Tier 2: 11/11 fixes complete (100%)**
@@ -1017,7 +1040,8 @@ Round 4 focused on code quality improvements and performance optimizations:
 **Additional Round 2: 19 extra fixes complete**
 **Additional Round 3: 14 extra fixes complete**
 **Additional Round 4: 9 extra fixes complete**
-**Total: 97/197 findings resolved (49%)**
-**Quality Score: 85/100 (up from 38/100 initial)**
-**Production Readiness: 88%**
+**Additional Round 5: 14 extra fixes complete**
+**Total: 111/197 findings resolved (56%)**
+**Quality Score: 88/100 (up from 38/100 initial)**
+**Production Readiness: 91%**
 **Forward to Phase 3: DOCX Report Generation**

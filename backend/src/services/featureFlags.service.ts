@@ -10,7 +10,7 @@ import { logger } from '../utils/logger';
 // Cache for tenant configs keyed by tenantId
 const MAX_CACHE_SIZE = 500;
 const configCache = new Map<number, { config: TenantConfig; expiry: number }>();
-const CACHE_TTL_MS = 60 * 1000; // 1 minute cache
+const CACHE_TTL_MS = parseInt(process.env.FEATURE_FLAGS_CACHE_TTL_MS || '60000', 10);
 
 /**
  * Get the current tenant configuration

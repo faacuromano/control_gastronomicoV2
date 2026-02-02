@@ -88,12 +88,12 @@ export class SyncService {
                 if (result.warnings.length > 0) {
                     warnings.push(...result.warnings);
                 }
-            } catch (err: any) {
-                logger.error('Sync order failed', { tempId: pendingOrder.tempId, error: err.message });
+            } catch (error: any) {
+                logger.error('Sync order failed', { tempId: pendingOrder.tempId, error: error.message });
                 errors.push({
                     tempId: pendingOrder.tempId,
                     code: 'ORDER_SYNC_FAILED',
-                    message: err.message
+                    message: error.message
                 });
                 orderMappings.push({
                     tempId: pendingOrder.tempId,
@@ -116,15 +116,15 @@ export class SyncService {
         for (const pendingPayment of request.pendingPayments) {
             try {
                 await this.processOfflinePayment(pendingPayment, tenantId, tempToRealId, context);
-            } catch (err: any) {
-                logger.error('Sync payment failed', { 
-                    tempOrderId: pendingPayment.tempOrderId, 
-                    error: err.message 
+            } catch (error: any) {
+                logger.error('Sync payment failed', {
+                    tempOrderId: pendingPayment.tempOrderId,
+                    error: error.message
                 });
                 errors.push({
                     tempId: pendingPayment.tempOrderId,
                     code: 'PAYMENT_SYNC_FAILED',
-                    message: err.message
+                    message: error.message
                 });
             }
         }

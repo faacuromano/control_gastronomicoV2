@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const CACHE_TTL_SECONDS = 300; // 5 minutes (for Redis SETEX)
+const CACHE_TTL_SECONDS = parseInt(process.env.IDEMPOTENCY_CACHE_TTL_SECONDS || '300', 10);
+const CACHE_TTL_MS = CACHE_TTL_SECONDS * 1000;
 const CACHE_MAX_SIZE = 10_000;
 
 // =============================================================================

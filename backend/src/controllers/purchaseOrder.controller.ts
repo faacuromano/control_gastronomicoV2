@@ -14,7 +14,7 @@ const createOrderSchema = z.object({
     ingredientId: z.number().int().positive(),
     quantity: z.number().positive(),
     unitCost: z.number().positive()
-  })).min(1, 'La orden debe tener al menos un item')
+  })).min(1, 'Order must have at least one item')
 });
 
 /**

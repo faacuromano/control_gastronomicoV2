@@ -20,6 +20,7 @@ import { asyncHandler } from '../middleware/asyncHandler';
 import { ValidationError, NotFoundError, ConflictError, UnauthorizedError, ApiError } from '../utils/errors';
 import { BCRYPT_SALT_ROUNDS, generatePinLookup } from '../services/auth.service';
 import { auditService } from '../services/audit.service';
+import { sendSuccess } from '../utils/response';
 
 /**
  * Schema for creating a new user
@@ -95,16 +96,7 @@ export const listUsers = asyncHandler(async (req: Request, res: Response) => {
         take: limit
     });
 
-    res.json({
-        success: true,
-        data: users,
-        meta: {
-            page,
-            limit,
-            total,
-            totalPages: Math.ceil(total / limit)
-        }
-    });
+    sendSuccess(res, users, { page, limit, total, totalPages: Math.ceil(total / limit) });
 });
 
 /**
@@ -156,7 +148,7 @@ export const getUsersWithCapability = asyncHandler(async (req: Request, res: Res
         orderBy: { name: 'asc' }
     });
 
-    res.json({ success: true, data: users });
+    sendSuccess(res, users);
 });
 
 /**

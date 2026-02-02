@@ -24,6 +24,12 @@ jest.setTimeout(10000);
 //   warn: jest.fn(),
 // };
 
+// TST-006 FIX: Reset mocks and spies between tests to prevent cross-test contamination.
+// Individual test suites should handle their own DB cleanup in afterEach/afterAll.
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+
 // Cleanup after all tests
 afterAll(async () => {
   // Add any global cleanup here if needed

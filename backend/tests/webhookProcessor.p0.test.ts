@@ -153,11 +153,30 @@ describe('P0-001: Pessimistic Locking & State Machine', () => {
   });
 
   describe('LockTimeoutError', () => {
-    
+
     it('should have 409 status code', () => {
       const error = new LockTimeoutError('Order:123', 5000);
       expect(error.statusCode).toBe(409);
       expect(error.code).toBe('LOCK_TIMEOUT');
+    });
+
+    // TST-007: Verify error middleware maps LockTimeoutError to HTTP 409
+    it('should produce HTTP 409 via error middleware', async () => {
+      const { errorHandler } = await import('../src/middleware/error');
+      const mockReq = { path: '/test', method: 'POST' } as any;
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn().mockReturnThis(),
+      } as any;
+      const mockNext = jest.fn();
+
+      const error = new LockTimeoutError('Order:123', 5000);
+      errorHandler(error, mockReq, mockRes, mockNext);
+
+      expect(mockRes.status).toHaveBeenCalledWith(409);
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'LOCK_TIMEOUT' })
+      );
     });
   });
 });

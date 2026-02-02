@@ -113,6 +113,11 @@ export interface IQueueService {
   isHealthy(): Promise<boolean>;
 
   /**
+   * TST-008: Check if any workers are registered and processing jobs.
+   */
+  hasActiveWorkers(): boolean;
+
+  /**
    * Cerrar conexiones gracefully.
    */
   close(): Promise<void>;

@@ -25,7 +25,7 @@ import { logger } from '../utils/logger';
  * 
  * @constant
  */
-const LOCK_TIMEOUT_MS = 5000;
+const LOCK_TIMEOUT_MS = parseInt(process.env.LOCK_TIMEOUT_MS || '5000', 10);
 
 /**
  * Maximum transaction duration before timeout.
@@ -33,7 +33,7 @@ const LOCK_TIMEOUT_MS = 5000;
  * 
  * @constant
  */
-const TRANSACTION_TIMEOUT_MS = 10000;
+const TRANSACTION_TIMEOUT_MS = parseInt(process.env.TRANSACTION_TIMEOUT_MS || '10000', 10);
 
 // ============================================================================
 // ERROR TYPES
