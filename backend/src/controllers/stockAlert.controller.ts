@@ -6,6 +6,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { stockAlertService } from '../services/stockAlert.service';
 import { asyncHandler } from '../middleware/asyncHandler';
+import { sendSuccess } from '../utils/response';
 
 /**
  * GET /api/v1/stock-alerts
@@ -13,10 +14,7 @@ import { asyncHandler } from '../middleware/asyncHandler';
  */
 export const getLowStockItems = asyncHandler(async (req: Request, res: Response) => {
     const alerts = await stockAlertService.getLowStockItems(req.user!.tenantId!);
-    res.json({
-        success: true,
-        data: alerts
-    });
+    sendSuccess(res, alerts);
 });
 
 /**
@@ -25,8 +23,5 @@ export const getLowStockItems = asyncHandler(async (req: Request, res: Response)
  */
 export const broadcastStatus = asyncHandler(async (req: Request, res: Response) => {
     await stockAlertService.broadcastLowStockStatus(req.user!.tenantId!);
-    res.json({
-        success: true,
-        message: 'Low stock status broadcasted to connected clients'
-    });
+    sendSuccess(res, { message: 'Low stock status broadcasted to connected clients' });
 });

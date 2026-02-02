@@ -284,11 +284,48 @@ export abstract class AbstractDeliveryAdapter {
     const crypto = require('crypto');
     const bufA = Buffer.from(a);
     const bufB = Buffer.from(b);
-    
+
     if (bufA.length !== bufB.length) {
       return false;
     }
-    
+
     return crypto.timingSafeEqual(bufA, bufB);
+  }
+
+  /**
+   * SEC-027: Validate webhook signature against current and previous secrets.
+   * Supports seamless secret rotation by checking both secrets during transition.
+   *
+   * The webhookSecret field supports comma-separated values:
+   *   "current_secret,previous_secret"
+   * During rotation, both are valid. After confirming the platform uses the new
+   * secret, remove the old one.
+   *
+   * @param signature - Signature from webhook header
+   * @param rawBody - Raw request body
+   * @param algorithm - HMAC algorithm to use
+   * @returns true if signature matches any configured secret
+   */
+  protected validateWithRotation(
+    signature: string,
+    rawBody: Buffer,
+    algorithm: 'sha256' | 'sha512' = 'sha256'
+  ): boolean {
+    const secrets = this.config.webhookSecret.split(',').map(s => s.trim()).filter(Boolean);
+
+    for (const secret of secrets) {
+      const computed = this.computeHmac(rawBody, secret, algorithm);
+      if (this.timingSafeEqual(signature, computed)) {
+        // Log if matched with non-primary secret (rotation in progress)
+        if (secrets.indexOf(secret) > 0) {
+          this.log('info', 'Webhook validated with previous secret — rotation in progress', {
+            secretIndex: secrets.indexOf(secret),
+          });
+        }
+        return true;
+      }
+    }
+
+    return false;
   }
 }

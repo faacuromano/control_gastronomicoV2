@@ -94,39 +94,54 @@ export const initSocket = (httpServer: HttpServer) => {
 
     // --- Room Management (all rooms scoped to tenant) ---
 
-    // Kitchen (General)
-    socket.on('join:kitchen', () => {
-        const room = `tenant:${tenantId}:kitchen`;
+    // SEC-031: Helper to validate and join tenant-scoped rooms only.
+    // Prevents any attempt to join rooms outside the authenticated tenant's namespace.
+    const joinTenantRoom = (roomSuffix: string) => {
+        const room = `tenant:${tenantId}:${roomSuffix}`;
         socket.join(room);
         logger.debug(`Socket joined room: ${room}`, { socketId: socket.id, tenantId });
+    };
+
+    // SEC-031: Reject any raw room join attempts that bypass tenant scoping
+    socket.on('join', (room: string) => {
+        if (typeof room === 'string' && !room.startsWith(`tenant:${tenantId}:`)) {
+            logger.warn('Rejected cross-tenant room join attempt', {
+                socketId: socket.id,
+                tenantId,
+                requestedRoom: room,
+            });
+            socket.emit('error', { message: 'Cannot join rooms outside your tenant' });
+            return;
+        }
+    });
+
+    // Kitchen (General)
+    socket.on('join:kitchen', () => {
+        joinTenantRoom('kitchen');
     });
 
     // Kitchen Stations (e.g., 'tenant:1:kitchen:station:hot')
     socket.on('join:kitchen:station', (station: string) => {
-        const room = `tenant:${tenantId}:kitchen:station:${station}`;
-        socket.join(room);
-        logger.debug(`Socket joined room: ${room}`, { socketId: socket.id, tenantId });
+        // Sanitize station name to prevent room injection
+        const safeStation = String(station).replace(/[^a-zA-Z0-9_-]/g, '');
+        joinTenantRoom(`kitchen:station:${safeStation}`);
     });
 
     // Waiters (for ready alerts)
     socket.on('join:waiters', () => {
-        const room = `tenant:${tenantId}:waiters`;
-        socket.join(room);
-        logger.debug(`Socket joined room: ${room}`, { socketId: socket.id, tenantId });
+        joinTenantRoom('waiters');
     });
 
     // Specific Table (for customer updates in future)
     socket.on('join:table', (tableId: number) => {
-        const room = `tenant:${tenantId}:table:${tableId}`;
-        socket.join(room);
-        logger.debug(`Socket joined room: ${room}`, { socketId: socket.id, tenantId });
+        const safeTableId = parseInt(String(tableId), 10);
+        if (isNaN(safeTableId) || safeTableId <= 0) return;
+        joinTenantRoom(`table:${safeTableId}`);
     });
 
     // Admin stock alerts room (already tenant-scoped in stockAlert.service.ts)
     socket.on('join:admin:stock', () => {
-        const room = `tenant:${tenantId}:admin:stock`;
-        socket.join(room);
-        logger.debug(`Socket joined room: ${room}`, { socketId: socket.id, tenantId });
+        joinTenantRoom('admin:stock');
     });
   });
 

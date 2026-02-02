@@ -2,9 +2,10 @@ import { prisma } from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { NotFoundError, ValidationError } from '../utils/errors';
 
-// Configuration - Could be moved to TenantConfig later
-const POINTS_PER_DOLLAR = 10;  // 10 points per $1 spent
-const POINTS_TO_REDEEM_VALUE = 100;  // 100 points = $1 discount
+// BIZ-014: Configurable loyalty constants via environment variables
+// Can be overridden per-deployment; per-tenant config is a future enhancement
+const POINTS_PER_DOLLAR = parseInt(process.env.LOYALTY_POINTS_PER_DOLLAR || '10', 10);
+const POINTS_TO_REDEEM_VALUE = parseInt(process.env.LOYALTY_POINTS_REDEEM_VALUE || '100', 10);
 
 export interface LoyaltyBalance {
     clientId: number;

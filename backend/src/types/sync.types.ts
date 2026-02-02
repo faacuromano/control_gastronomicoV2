@@ -117,6 +117,7 @@ export interface PendingPayment {
  */
 export interface SyncPushRequest {
     clientId: string;        // Terminal identifier
+    syncToken?: string;      // BIZ-009: Token from last pull for conflict detection
     pendingOrders: PendingOrder[];
     pendingPayments: PendingPayment[];
 }

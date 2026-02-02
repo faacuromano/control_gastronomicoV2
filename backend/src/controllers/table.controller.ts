@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { tableService } from '../services/table.service';
 import { UnauthorizedError, ValidationError } from '../utils/errors';
 import { asyncHandler } from '../middleware/asyncHandler';
+import { sendSuccess } from '../utils/response';
 
 // FIX IP-001: Validate tableId parameter
 const tableIdSchema = z.coerce.number().int().positive();
@@ -12,43 +13,43 @@ export class TableController {
     // Areas
     static getAreas = asyncHandler(async (req: Request, res: Response) => {
         const areas = await tableService.getAreas(req.user!.tenantId!);
-        res.json({ success: true, data: areas });
+        sendSuccess(res, areas);
     });
 
     static createArea = asyncHandler(async (req: Request, res: Response) => {
         const area = await tableService.createArea(req.user!.tenantId!, req.body);
-        res.status(201).json({ success: true, data: area });
+        sendSuccess(res, area, undefined, 201);
     });
 
     static updateArea = asyncHandler(async (req: Request, res: Response) => {
         const id = Number(req.params.id as string);
         const area = await tableService.updateArea(id, req.user!.tenantId!, req.body);
-        res.json({ success: true, data: area });
+        sendSuccess(res, area);
     });
 
     static deleteArea = asyncHandler(async (req: Request, res: Response) => {
         const id = Number(req.params.id as string);
         await tableService.deleteArea(id, req.user!.tenantId!);
-        res.json({ success: true, message: 'Area deleted' });
+        sendSuccess(res, { message: 'Area deleted' });
     });
 
     // Tables
     static createTable = asyncHandler(async (req: Request, res: Response) => {
         const table = await tableService.createTable(req.user!.tenantId!, req.body);
-        res.status(201).json({ success: true, data: table });
+        sendSuccess(res, table, undefined, 201);
     });
 
     static updateTable = asyncHandler(async (req: Request, res: Response) => {
         const id = tableIdSchema.parse(req.params.id);
         const table = await tableService.updateTable(id, req.user!.tenantId!, req.body);
-        res.json({ success: true, data: table });
+        sendSuccess(res, table);
     });
 
     static updatePosition = asyncHandler(async (req: Request, res: Response) => {
         const id = tableIdSchema.parse(req.params.id);
         const { x, y } = req.body;
         const table = await tableService.updateTablePosition(id, req.user!.tenantId!, x, y);
-        res.json({ success: true, data: table });
+        sendSuccess(res, table);
     });
 
     static updatePositions = asyncHandler(async (req: Request, res: Response) => {
@@ -57,19 +58,19 @@ export class TableController {
             throw new ValidationError('Updates must be an array');
         }
         const result = await tableService.updatePositions(req.user!.tenantId!, updates);
-        res.json({ success: true, data: result });
+        sendSuccess(res, result);
     });
 
     static deleteTable = asyncHandler(async (req: Request, res: Response) => {
         const id = tableIdSchema.parse(req.params.id);
         await tableService.deleteTable(id, req.user!.tenantId!);
-        res.json({ success: true, message: 'Table deleted' });
+        sendSuccess(res, { message: 'Table deleted' });
     });
 
     static getTable = asyncHandler(async (req: Request, res: Response) => {
         const id = tableIdSchema.parse(req.params.id);
         const table = await tableService.getTable(id, req.user!.tenantId!);
-        res.json({ success: true, data: table });
+        sendSuccess(res, table);
     });
 
     // Operations
@@ -82,7 +83,7 @@ export class TableController {
         const pax = req.body?.pax ?? 1;
 
         const order = await tableService.openTableWithOrder(tableId, serverId, pax, req.user!.tenantId!);
-        res.status(201).json({ success: true, data: order });
+        sendSuccess(res, order, undefined, 201);
     });
 
     static closeTable = asyncHandler(async (req: Request, res: Response) => {
@@ -94,6 +95,6 @@ export class TableController {
         const payments = req.body?.payments;
 
         const result = await tableService.closeTableWithPayment(tableId, serverId, payments, req.user!.tenantId!);
-        res.json({ success: true, data: result });
+        sendSuccess(res, result);
     });
 }

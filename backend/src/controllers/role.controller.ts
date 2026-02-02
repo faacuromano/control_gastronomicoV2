@@ -127,7 +127,7 @@ export const getRoleById = asyncHandler(async (req: Request, res: Response) => {
         throw new NotFoundError('Role');
     }
 
-    res.json({ success: true, data: role });
+    sendSuccess(res, role);
 });
 
 /**
@@ -171,7 +171,7 @@ export const createRole = asyncHandler(async (req: Request, res: Response) => {
         { name: role.name }
     );
 
-    res.status(201).json({ success: true, data: role });
+    sendSuccess(res, role, undefined, 201);
 });
 
 /**
@@ -230,11 +230,7 @@ export const updateRolePermissions = asyncHandler(async (req: Request, res: Resp
         { roleName: role.name, permissions }
     );
 
-    res.json({
-        success: true,
-        data: updatedRole,
-        message: 'Permissions updated successfully'
-    });
+    sendSuccess(res, updatedRole);
 });
 
 /**
@@ -290,19 +286,16 @@ export const deleteRole = asyncHandler(async (req: Request, res: Response) => {
         { roleName: role.name }
     );
 
-    res.json({ success: true, message: 'Role deleted successfully' });
+    sendSuccess(res, { message: 'Role deleted successfully' });
 });
 
 /**
  * Get available modules, resources and actions for UI
  */
 export const getPermissionOptions = asyncHandler(async (req: Request, res: Response) => {
-    res.json({
-        success: true,
-        data: {
-            modules: VALID_MODULES,
-            resources: VALID_RESOURCES,
-            actions: VALID_ACTIONS
-        }
+    sendSuccess(res, {
+        modules: VALID_MODULES,
+        resources: VALID_RESOURCES,
+        actions: VALID_ACTIONS
     });
 });

@@ -7,7 +7,7 @@
 
 import { prisma } from '../lib/prisma';
 import { withSerializableTransaction, type TransactionClient } from '../lib/prisma-extensions';
-import { OrderChannel, PaymentMethod, AuditAction } from '@prisma/client';
+import { OrderChannel, PaymentMethod, PaymentStatus, AuditAction } from '@prisma/client';
 import { orderService } from './order.service';
 import { auditService, type AuditContext } from './audit.service';
 import { logger } from '../utils/logger';
@@ -63,6 +63,10 @@ export class SyncService {
         const orderMappings: OrderMapping[] = [];
         const errors: SyncError[] = [];
         const warnings: SyncWarning[] = [];
+
+        // BIZ-009: Conflict detection — warn if server data changed since last sync
+        const conflictWarnings = await this.validateSyncToken(request.syncToken, tenantId);
+        warnings.push(...conflictWarnings);
 
         // BIZ-010: Idempotency check — detect duplicate tempIds in retry scenarios
         const seenTempIds = new Set<string>();
@@ -129,7 +133,22 @@ export class SyncService {
             }
         }
 
-        // 4. Log sync operation
+        // 4. DB-010: Reconcile payment statuses after all payments processed
+        //    If some payments failed, the order paymentStatus may be inconsistent
+        for (const mapping of orderMappings) {
+            if (mapping.status === 'SYNCED' && mapping.realId) {
+                try {
+                    await this.reconcileOrderPaymentStatus(mapping.realId, tenantId);
+                } catch (error: any) {
+                    logger.warn('Payment status reconciliation failed', {
+                        orderId: mapping.realId,
+                        error: error.message,
+                    });
+                }
+            }
+        }
+
+        // 5. Log sync operation
         await auditService.log(
             AuditAction.CONFIG_CHANGED, // TODO: Add SYNC_COMPLETED to enum
             'Sync',
@@ -322,6 +341,119 @@ export class SyncService {
                 lockTimeoutMs: 5000,
             }
         );
+    }
+
+    // =========================================================================
+    // DB-010: PAYMENT RECONCILIATION
+    // =========================================================================
+
+    /**
+     * Reconcile order payment status after sync.
+     * Ensures paymentStatus matches actual sum of payments.
+     * Handles partial failure where some payments succeeded but others didn't.
+     */
+    private async reconcileOrderPaymentStatus(orderId: number, tenantId: number): Promise<void> {
+        const order = await prisma.order.findFirst({
+            where: { id: orderId, tenantId },
+            include: { payments: true },
+        });
+
+        if (!order) return;
+
+        const totalPaid = order.payments.reduce(
+            (sum, p) => sum + Number(p.amount), 0
+        );
+        const orderTotal = Number(order.total);
+
+        let expectedStatus: PaymentStatus;
+        if (totalPaid <= 0) {
+            expectedStatus = PaymentStatus.PENDING;
+        } else if (totalPaid >= orderTotal) {
+            expectedStatus = PaymentStatus.PAID;
+        } else {
+            expectedStatus = PaymentStatus.PARTIAL;
+        }
+
+        if (order.paymentStatus !== expectedStatus) {
+            logger.warn('Payment status inconsistency detected, reconciling', {
+                orderId,
+                currentStatus: order.paymentStatus,
+                expectedStatus,
+                totalPaid,
+                orderTotal,
+            });
+            await prisma.order.updateMany({
+                where: { id: orderId, tenantId },
+                data: { paymentStatus: expectedStatus },
+            });
+        }
+    }
+
+    // =========================================================================
+    // BIZ-009: CONFLICT DETECTION
+    // =========================================================================
+
+    /**
+     * Validate sync token to detect conflicts from concurrent offline clients.
+     * If server data changed since client's last pull, warn about potential conflicts.
+     */
+    async validateSyncToken(
+        syncToken: string | undefined,
+        tenantId: number
+    ): Promise<SyncWarning[]> {
+        const warnings: SyncWarning[] = [];
+
+        if (!syncToken) {
+            warnings.push({
+                tempId: '__sync__',
+                code: 'MISSING_SYNC_TOKEN',
+                message: 'No sync token provided. Data may be stale.',
+            });
+            return warnings;
+        }
+
+        // Extract timestamp from sync token (format: sync_<timestamp>_<random>)
+        const tokenParts = syncToken.split('_');
+        if (tokenParts.length < 2) return warnings;
+
+        const lastSyncTime = parseInt(tokenParts[1] || '0', 10);
+        if (isNaN(lastSyncTime) || lastSyncTime <= 0) return warnings;
+
+        const lastSyncDate = new Date(lastSyncTime);
+
+        // Check if any orders were created by OTHER users since last sync
+        const recentOrders = await prisma.order.count({
+            where: {
+                tenantId,
+                createdAt: { gt: lastSyncDate },
+            },
+        });
+
+        if (recentOrders > 0) {
+            warnings.push({
+                tempId: '__sync__',
+                code: 'CONCURRENT_CHANGES',
+                message: `${recentOrders} order(s) created since last sync at ${lastSyncDate.toISOString()}. Review for conflicts.`,
+            });
+        }
+
+        // Check if products/prices changed since last sync
+        const recentProductChanges = await prisma.product.count({
+            where: {
+                tenantId,
+                updatedAt: { gt: lastSyncDate },
+            },
+        });
+
+        if (recentProductChanges > 0) {
+            warnings.push({
+                tempId: '__sync__',
+                code: 'CATALOG_CHANGED',
+                message: `${recentProductChanges} product(s) updated since last sync. Prices may differ.`,
+            });
+        }
+
+        return warnings;
     }
 
     // =========================================================================

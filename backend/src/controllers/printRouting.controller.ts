@@ -10,13 +10,14 @@ import { z } from 'zod';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { printRoutingService } from '../services/printRouting.service';
 import { logger } from '../utils/logger';
+import { sendSuccess } from '../utils/response';
 
 /**
  * Get print routing configuration (for admin UI).
  */
 export const getConfiguration = asyncHandler(async (req: Request, res: Response) => {
     const config = await printRoutingService.getRoutingConfiguration(req.user!.tenantId!);
-    res.json({ success: true, data: config });
+    sendSuccess(res, config);
 });
 
 /**
@@ -29,7 +30,7 @@ export const getOrderRouting = asyncHandler(async (req: Request, res: Response) 
     }
 
     const routing = await printRoutingService.getRoutingForOrder(orderId, req.user!.tenantId!);
-    res.json({ success: true, data: routing });
+    sendSuccess(res, routing);
 });
 
 /**
@@ -53,7 +54,7 @@ export const setCategoryPrinter = asyncHandler(async (req: Request, res: Respons
     const category = await printRoutingService.setCategoryPrinter(req.user!.tenantId!, categoryId, printerId);
     
     logger.info('Category printer updated', { categoryId, printerId });
-    res.json({ success: true, data: category });
+    sendSuccess(res, category);
 });
 
 /**
@@ -78,7 +79,7 @@ export const setAreaOverride = asyncHandler(async (req: Request, res: Response) 
     const override = await printRoutingService.setAreaOverride(req.user!.tenantId!, areaId, categoryId, printerId);
     
     logger.info('Area printer override set', { areaId, categoryId, printerId });
-    res.json({ success: true, data: override });
+    sendSuccess(res, override);
 });
 
 /**
@@ -102,5 +103,5 @@ export const removeAreaOverride = asyncHandler(async (req: Request, res: Respons
     await printRoutingService.removeAreaOverride(req.user!.tenantId!, areaId, categoryId);
     
     logger.info('Area printer override removed', { areaId, categoryId });
-    res.json({ success: true, message: 'Override removed' });
+    sendSuccess(res, { message: 'Override removed' });
 });

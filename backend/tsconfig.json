@@ -22,12 +22,12 @@
     // Stricter Typechecking Options
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
-    // Style Options
-    // "noImplicitReturns": true,
-    // "noImplicitOverride": true,
-    // "noUnusedLocals": true,
-    // "noUnusedParameters": true,
-    // "noFallthroughCasesInSwitch": true,
+    // Style Options — CFG-005: Enabled safe strict options
+    // "noImplicitReturns": true,     // TODO: 20+ controllers need void returns added
+    "noImplicitOverride": true,
+    // "noUnusedLocals": true,        // TODO: Enable after cleanup pass
+    // "noUnusedParameters": true,    // TODO: Enable after cleanup pass
+    "noFallthroughCasesInSwitch": true,
     // "noPropertyAccessFromIndexSignature": true,
     // Recommended Options
     "moduleResolution": "node",

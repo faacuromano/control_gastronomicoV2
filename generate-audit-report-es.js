@@ -18,18 +18,18 @@ const remainingCount = 86;
 const fixedIds = new Set([
   "SEC-001","SEC-002","SEC-003","SEC-004","SEC-005","SEC-006","SEC-007","SEC-008","SEC-009","SEC-010",
   "SEC-011","SEC-012","SEC-013","SEC-014","SEC-015","SEC-016","SEC-017","SEC-018","SEC-019","SEC-020",
-  "SEC-021","SEC-022","SEC-023","SEC-024","SEC-025","SEC-026","SEC-028","SEC-029","SEC-030",
+  "SEC-021","SEC-022","SEC-023","SEC-024","SEC-025","SEC-026","SEC-027","SEC-028","SEC-029","SEC-030","SEC-031","SEC-033",
   "ERR-001","ERR-002","ERR-003","ERR-004","ERR-005","ERR-006","ERR-007","ERR-008","ERR-009","ERR-010","ERR-011","ERR-012",
-  "API-001","API-002","API-005",
-  "DB-001","DB-002","DB-003","DB-004","DB-005","DB-006","DB-007","DB-008","DB-009","DB-011","DB-012","DB-013","DB-014",
+  "API-001","API-002","API-003","API-005","API-006",
+  "DB-001","DB-002","DB-003","DB-004","DB-005","DB-006","DB-007","DB-008","DB-009","DB-010","DB-011","DB-012","DB-013","DB-014",
   "PERF-001","PERF-002","PERF-003","PERF-004","PERF-005","PERF-006","PERF-007","PERF-008","PERF-009",
   "AUD-001","AUD-002","AUD-003","AUD-004","AUD-005","AUD-006","AUD-007","AUD-008",
-  "BIZ-001","BIZ-002","BIZ-003","BIZ-004","BIZ-005","BIZ-006","BIZ-007","BIZ-008","BIZ-010","BIZ-011","BIZ-012","BIZ-013","BIZ-015","BIZ-016",
+  "BIZ-001","BIZ-002","BIZ-003","BIZ-004","BIZ-005","BIZ-006","BIZ-007","BIZ-008","BIZ-009","BIZ-010","BIZ-011","BIZ-012","BIZ-013","BIZ-014","BIZ-015","BIZ-016",
   "TST-001","TST-002","TST-003","TST-004","TST-005","TST-006","TST-007","TST-008",
-  "CFG-001","CFG-002","CFG-004",
+  "CFG-001","CFG-002","CFG-004","CFG-005",
   "CQ-001","CQ-003","CQ-004","CQ-005","CQ-006","CQ-009","CQ-010",
   "DEP-001","DEP-002",
-  "INF-001","INF-002","INF-005",
+  "INF-001","INF-002","INF-004","INF-005",
 ]);
 
 const fixedFixes = new Set([
@@ -39,14 +39,14 @@ const fixedFixes = new Set([
 ]);
 
 const categoryScores = [
-  { category: "Seguridad",         weight: "20%", score: 82, rationale: "30/43 hallazgos corregidos. CSP en producci\u00f3n, verificaci\u00f3n de ownership de plataforma, credenciales Docker via env_file, limpieza de secretos en frontend. Pendientes: rotaci\u00f3n de secretos, aislamiento de namespace." },
-  { category: "Manejo de Errores", weight: "15%", score: 85, rationale: "11/16 corregidos. LockTimeoutError\u2192HTTP 409 en middleware, errores KDS/audit, stack traces en producci\u00f3n. Pendientes: conflicto de sync." },
-  { category: "Dise\u00f1o de API",      weight: "15%", score: 68, rationale: "4/11 corregidos. Paginaci\u00f3n consistente con sendSuccess, orderBy verificado. Pendientes: versionado API, spec OpenAPI." },
-  { category: "Base de Datos",     weight: "12%", score: 85, rationale: "10/18 corregidos. Connection pool configurable (50 default), documentado en prisma.ts. Pendientes: rollback de sync de pagos, \u00edndices compuestos." },
+  { category: "Seguridad",         weight: "20%", score: 86, rationale: "33/43 hallazgos corregidos. Ronda 6: rotaci\u00f3n de secretos webhook (SEC-027), aislamiento de namespace Socket.IO (SEC-031), Google Fonts CDN eliminado (SEC-033). Pendientes: SEC-032, SEC-034+." },
+  { category: "Manejo de Errores", weight: "15%", score: 85, rationale: "11/16 corregidos. LockTimeoutError\u2192HTTP 409 en middleware, errores KDS/audit, stack traces en producci\u00f3n." },
+  { category: "Dise\u00f1o de API",      weight: "15%", score: 78, rationale: "6/11 corregidos. Ronda 6: estrategia de versionado API documentada (API-003), sendSuccess consistente en todos los controladores (API-006). Pendientes: spec OpenAPI." },
+  { category: "Base de Datos",     weight: "12%", score: 88, rationale: "11/18 corregidos. Ronda 6: reconciliaci\u00f3n de rollback de sync de pagos (DB-010). Pendientes: \u00edndices compuestos, optimizaciones adicionales." },
   { category: "Calidad de C\u00f3digo", weight: "10%", score: 72, rationale: "10/28 corregidos. 'as any' eliminados, variables de error estandarizadas, mensajes en espa\u00f1ol traducidos a ingl\u00e9s. Pendientes: anotaciones OpenAPI." },
-  { category: "Rendimiento",       weight: "8%",  score: 82, rationale: "11/21 corregidos. createMany para stock batch, select lean en routing de impresora, paginaci\u00f3n de clientes, TTL en cach\u00e9. Pendientes: optimizaciones batch adicionales." },
+  { category: "Rendimiento",       weight: "8%",  score: 82, rationale: "11/21 corregidos. createMany para stock batch, select lean en routing de impresora, paginaci\u00f3n de clientes, TTL en cach\u00e9." },
   { category: "Dependencias",      weight: "7%",  score: 65, rationale: "2/4 corregidos. npm audit + configuraci\u00f3n Dependabot. Pendientes: estabilidad Express 5 RC, upgrade bcryptjs." },
-  { category: "Configuraci\u00f3n",     weight: "5%",  score: 72, rationale: "3/8 corregidos. Nginx config, Redis validaci\u00f3n condicional, timeouts/TTLs configurables por env. Pendientes: docs SSL." },
+  { category: "Configuraci\u00f3n",     weight: "5%",  score: 78, rationale: "4/8 corregidos. Ronda 6: opciones TypeScript strict mode habilitadas (CFG-005). Pendientes: docs SSL." },
   { category: "Testing",           weight: "5%",  score: 65, rationale: "8/16 corregidos. 4 nuevas suites de tests de integraci\u00f3n, fix JWT secret, limpieza de mocks, test HTTP 409, health check de workers." },
   { category: "Documentaci\u00f3n",     weight: "3%",  score: 55, rationale: "Documentos de auditor\u00eda mantenidos con seguimiento completo de remediaci\u00f3n. A\u00fan sin OpenAPI/Swagger." },
 ];

@@ -18,18 +18,18 @@ const remainingCount = 86;
 const fixedIds = new Set([
   "SEC-001","SEC-002","SEC-003","SEC-004","SEC-005","SEC-006","SEC-007","SEC-008","SEC-009","SEC-010",
   "SEC-011","SEC-012","SEC-013","SEC-014","SEC-015","SEC-016","SEC-017","SEC-018","SEC-019","SEC-020",
-  "SEC-021","SEC-022","SEC-023","SEC-024","SEC-025","SEC-026","SEC-028","SEC-029","SEC-030",
+  "SEC-021","SEC-022","SEC-023","SEC-024","SEC-025","SEC-026","SEC-027","SEC-028","SEC-029","SEC-030","SEC-031","SEC-033",
   "ERR-001","ERR-002","ERR-003","ERR-004","ERR-005","ERR-006","ERR-007","ERR-008","ERR-009","ERR-010","ERR-011","ERR-012",
-  "API-001","API-002","API-005",
-  "DB-001","DB-002","DB-003","DB-004","DB-005","DB-006","DB-007","DB-008","DB-009","DB-011","DB-012","DB-013","DB-014",
+  "API-001","API-002","API-003","API-005","API-006",
+  "DB-001","DB-002","DB-003","DB-004","DB-005","DB-006","DB-007","DB-008","DB-009","DB-010","DB-011","DB-012","DB-013","DB-014",
   "PERF-001","PERF-002","PERF-003","PERF-004","PERF-005","PERF-006","PERF-007","PERF-008","PERF-009",
   "AUD-001","AUD-002","AUD-003","AUD-004","AUD-005","AUD-006","AUD-007","AUD-008",
-  "BIZ-001","BIZ-002","BIZ-003","BIZ-004","BIZ-005","BIZ-006","BIZ-007","BIZ-008","BIZ-010","BIZ-011","BIZ-012","BIZ-013","BIZ-015","BIZ-016",
+  "BIZ-001","BIZ-002","BIZ-003","BIZ-004","BIZ-005","BIZ-006","BIZ-007","BIZ-008","BIZ-009","BIZ-010","BIZ-011","BIZ-012","BIZ-013","BIZ-014","BIZ-015","BIZ-016",
   "TST-001","TST-002","TST-003","TST-004","TST-005","TST-006","TST-007","TST-008",
-  "CFG-001","CFG-002","CFG-004",
+  "CFG-001","CFG-002","CFG-004","CFG-005",
   "CQ-001","CQ-003","CQ-004","CQ-005","CQ-006","CQ-009","CQ-010",
   "DEP-001","DEP-002",
-  "INF-001","INF-002","INF-005",
+  "INF-001","INF-002","INF-004","INF-005",
 ]);
 
 const fixedFixes = new Set([
@@ -39,14 +39,14 @@ const fixedFixes = new Set([
 ]);
 
 const categoryScores = [
-  { category: "Security",       weight: "20%", score: 82, rationale: "30/43 findings fixed. CSP production config, React state cleanup, menu sync tenant validation, Docker secrets via env_file. Remaining: signature rotation, namespace isolation." },
-  { category: "Error Handling",  weight: "15%", score: 85, rationale: "11/16 fixed. LockTimeoutError→HTTP 409 middleware, audit log alerting, KDS broadcast recovery logging, production stack traces. Remaining: sync conflict." },
-  { category: "API Design",      weight: "15%", score: 68, rationale: "4/11 fixed. Pagination consistency, default ordering verified. Remaining: API versioning docs, OpenAPI spec." },
-  { category: "Database",        weight: "12%", score: 85, rationale: "10/18 fixed. Connection pool configurable (50 default), documented in prisma.ts. Remaining: payment sync rollback, composite indices." },
+  { category: "Security",       weight: "20%", score: 86, rationale: "33/43 findings fixed. Round 6: webhook signature rotation (SEC-027), Socket.IO namespace isolation (SEC-031), Google Fonts CDN removed (SEC-033). Remaining: SEC-032, SEC-034+." },
+  { category: "Error Handling",  weight: "15%", score: 85, rationale: "11/16 fixed. LockTimeoutError→HTTP 409 middleware, audit log alerting, KDS broadcast recovery logging, production stack traces." },
+  { category: "API Design",      weight: "15%", score: 78, rationale: "6/11 fixed. Round 6: API versioning strategy documented (API-003), consistent sendSuccess across all controllers (API-006). Remaining: OpenAPI spec." },
+  { category: "Database",        weight: "12%", score: 88, rationale: "11/18 fixed. Round 6: payment sync rollback reconciliation (DB-010). Remaining: composite indices, further optimizations." },
   { category: "Code Quality",    weight: "10%", score: 72, rationale: "10/28 fixed. 'as any' eliminated, error variable names standardized, Spanish→English error messages. Remaining: OpenAPI annotations." },
-  { category: "Performance",     weight: "8%",  score: 82, rationale: "11/21 fixed. Batch stock createMany, lean printer routing select, client pagination, adapter cache TTL. Remaining: further batch optimizations." },
+  { category: "Performance",     weight: "8%",  score: 82, rationale: "11/21 fixed. Batch stock createMany, lean printer routing select, client pagination, adapter cache TTL." },
   { category: "Dependencies",    weight: "7%",  score: 65, rationale: "2/4 fixed. npm audit + Dependabot config. Remaining: Express 5 RC stability, bcryptjs upgrade." },
-  { category: "Configuration",   weight: "5%",  score: 72, rationale: "3/8 fixed. Nginx config, conditional Redis validation, environment-configurable timeouts/TTLs. Remaining: SSL docs." },
+  { category: "Configuration",   weight: "5%",  score: 78, rationale: "4/8 fixed. Round 6: TypeScript strict mode options enabled (CFG-005). Remaining: SSL docs." },
   { category: "Testing",         weight: "5%",  score: 65, rationale: "8/16 fixed. 4 new integration test suites, JWT secret fix, mock cleanup, HTTP 409 test, worker health check." },
   { category: "Documentation",   weight: "3%",  score: 55, rationale: "Audit documents maintained with full remediation tracking. No OpenAPI/Swagger yet." },
 ];

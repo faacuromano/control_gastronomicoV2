@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { analyticsService } from '../services/analytics.service';
+import { sendSuccess } from '../utils/response';
 
 /**
  * Parse date range from query params with strict validation (P2-005 fix)
@@ -51,7 +52,7 @@ function getTodayRange(): { startDate: Date; endDate: Date } {
 export const getSalesSummary = asyncHandler(async (req: Request, res: Response) => {
   const range = parseDateRange(req.query) || getTodayRange();
   const summary = await analyticsService.getSalesSummary(req.user!.tenantId!, range);
-  res.json({ success: true, data: summary });
+  sendSuccess(res, summary );
 });
 
 /**
@@ -61,7 +62,7 @@ export const getTopProducts = asyncHandler(async (req: Request, res: Response) =
   const limit = parseInt(req.query.limit as string) || 10;
   const range = parseDateRange(req.query);
   const products = await analyticsService.getTopProducts(req.user!.tenantId!, limit, range);
-  res.json({ success: true, data: products });
+  sendSuccess(res, products );
 });
 
 /**
@@ -70,7 +71,7 @@ export const getTopProducts = asyncHandler(async (req: Request, res: Response) =
 export const getPaymentBreakdown = asyncHandler(async (req: Request, res: Response) => {
   const range = parseDateRange(req.query);
   const breakdown = await analyticsService.getPaymentBreakdown(req.user!.tenantId!, range);
-  res.json({ success: true, data: breakdown });
+  sendSuccess(res, breakdown );
 });
 
 /**
@@ -79,7 +80,7 @@ export const getPaymentBreakdown = asyncHandler(async (req: Request, res: Respon
 export const getSalesByChannel = asyncHandler(async (req: Request, res: Response) => {
   const range = parseDateRange(req.query);
   const channels = await analyticsService.getSalesByChannel(req.user!.tenantId!, range);
-  res.json({ success: true, data: channels });
+  sendSuccess(res, channels );
 });
 
 /**
@@ -87,7 +88,7 @@ export const getSalesByChannel = asyncHandler(async (req: Request, res: Response
  */
 export const getLowStockItems = asyncHandler(async (req: Request, res: Response) => {
   const items = await analyticsService.getLowStockItems(req.user!.tenantId!);
-  res.json({ success: true, data: items });
+  sendSuccess(res, items );
 });
 
 /**
@@ -100,5 +101,5 @@ export const getDailySales = asyncHandler(async (req: Request, res: Response) =>
   const range = parseDateRange(req.query) || { startDate: defaultStart, endDate: now };
 
   const sales = await analyticsService.getDailySales(req.user!.tenantId!, range);
-  res.json({ success: true, data: sales });
+  sendSuccess(res, sales );
 });

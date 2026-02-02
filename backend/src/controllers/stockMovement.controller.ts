@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { StockMovementService } from '../services/stockMovement.service';
 import { StockMoveType } from '@prisma/client';
 import { asyncHandler } from '../middleware/asyncHandler';
+import { sendSuccess } from '../utils/response';
 
 const stockService = new StockMovementService();
 
@@ -30,11 +31,11 @@ export const registerMovement = asyncHandler(async (req: Request, res: Response)
     }
 
     const result = await stockService.register(data.ingredientId, req.user!.tenantId!, data.type, data.quantity, data.reason);
-    res.status(201).json({ success: true, data: result });
+    sendSuccess(res, result, undefined, 201);
 });
 
 export const getMovementHistory = asyncHandler(async (req: Request, res: Response) => {
     const ingredientId = req.query.ingredientId ? parseInt(req.query.ingredientId as string) : undefined;
     const history = await stockService.getHistory(req.user!.tenantId!, ingredientId);
-    res.json({ success: true, data: history });
+    sendSuccess(res, history);
 });

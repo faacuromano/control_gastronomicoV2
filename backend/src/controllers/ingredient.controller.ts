@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { IngredientService } from '../services/ingredient.service';
 import { asyncHandler } from '../middleware/asyncHandler';
+import { sendSuccess } from '../utils/response';
 
 const ingredientService = new IngredientService();
 
@@ -19,7 +20,12 @@ export const getIngredients = asyncHandler(async (req: Request, res: Response) =
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const limit = Math.max(1, parseInt(req.query.limit as string) || 100);
   const result = await ingredientService.getAll(req.user!.tenantId!, page, limit);
-  res.json({ success: true, ...result });
+  sendSuccess(res, result.data, {
+    page: result.page,
+    limit: result.limit,
+    total: result.total,
+    totalPages: Math.ceil(result.total / result.limit)
+  });
 });
 
 export const getIngredientById = asyncHandler(async (req: Request, res: Response) => {
@@ -32,16 +38,16 @@ export const getIngredientById = asyncHandler(async (req: Request, res: Response
   if (!ingredient) {
     return res.status(404).json({ success: false, error: 'Ingredient not found' });
   }
-  res.json({ success: true, data: ingredient });
+  sendSuccess(res, ingredient);
 });
 
 export const createIngredient = asyncHandler(async (req: Request, res: Response) => {
   const data = ingredientSchema.parse(req.body);
   const ingredient = await ingredientService.create(req.user!.tenantId!, {
       ...data,
-      minStock: data.minStock ?? 0 
+      minStock: data.minStock ?? 0
   });
-  res.status(201).json({ success: true, data: ingredient });
+  sendSuccess(res, ingredient, undefined, 201);
 });
 
 export const updateIngredient = asyncHandler(async (req: Request, res: Response) => {
@@ -56,7 +62,7 @@ export const updateIngredient = asyncHandler(async (req: Request, res: Response)
   );
 
   const ingredient = await ingredientService.update(id, req.user!.tenantId!, cleanData);
-  res.json({ success: true, data: ingredient });
+  sendSuccess(res, ingredient);
 });
 
 export const deleteIngredient = asyncHandler(async (req: Request, res: Response) => {
@@ -66,5 +72,5 @@ export const deleteIngredient = asyncHandler(async (req: Request, res: Response)
   }
 
   await ingredientService.delete(id, req.user!.tenantId!);
-  res.json({ success: true, message: 'Ingredient deleted' });
+  sendSuccess(res, { message: 'Ingredient deleted' });
 });

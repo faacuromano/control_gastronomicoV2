@@ -4,6 +4,7 @@ import { AuditAction } from '@prisma/client';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { paymentMethodService, type PaymentMethodConfigInput } from '../services/paymentMethod.service';
 import { auditService } from '../services/audit.service';
+import { sendSuccess } from '../utils/response';
 
 const createSchema = z.object({
   code: z.string().min(2).max(20),
@@ -27,15 +28,11 @@ export const getAll = asyncHandler(async (req: Request, res: Response) => {
 
   const result = await paymentMethodService.getAll(req.user!.tenantId!, page, limit);
 
-  res.json({
-    success: true,
-    data: result.data,
-    meta: {
-      page: result.page,
-      limit: result.limit,
-      total: result.total,
-      totalPages: Math.ceil(result.total / result.limit)
-    }
+  sendSuccess(res, result.data, {
+    page: result.page,
+    limit: result.limit,
+    total: result.total,
+    totalPages: Math.ceil(result.total / result.limit)
   });
 });
 
@@ -44,7 +41,7 @@ export const getAll = asyncHandler(async (req: Request, res: Response) => {
  */
 export const getActive = asyncHandler(async (req: Request, res: Response) => {
   const methods = await paymentMethodService.getActive(req.user!.tenantId!);
-  res.json({ success: true, data: methods });
+  sendSuccess(res, methods);
 });
 
 /**
@@ -53,7 +50,7 @@ export const getActive = asyncHandler(async (req: Request, res: Response) => {
 export const getById = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   const method = await paymentMethodService.getById(id, req.user!.tenantId!);
-  res.json({ success: true, data: method });
+  sendSuccess(res, method);
 });
 
 /**
@@ -77,7 +74,7 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
     { code: method.code, name: method.name }
   );
 
-  res.status(201).json({ success: true, data: method });
+  sendSuccess(res, method, undefined, 201);
 });
 
 /**
@@ -102,7 +99,7 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
     { updates: data }
   );
 
-  res.json({ success: true, data: method });
+  sendSuccess(res, method);
 });
 
 /**
@@ -111,7 +108,7 @@ export const update = asyncHandler(async (req: Request, res: Response) => {
 export const toggleActive = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   const method = await paymentMethodService.toggleActive(id, req.user!.tenantId!);
-  res.json({ success: true, data: method });
+  sendSuccess(res, method);
 });
 
 /**
@@ -139,7 +136,7 @@ export const remove = asyncHandler(async (req: Request, res: Response) => {
     { code: method.code, name: method.name }
   );
 
-  res.json({ success: true, message: 'Payment method deleted' });
+  sendSuccess(res, { message: 'Payment method deleted' });
 });
 
 /**
@@ -147,5 +144,5 @@ export const remove = asyncHandler(async (req: Request, res: Response) => {
  */
 export const seedDefaults = asyncHandler(async (req: Request, res: Response) => {
   await paymentMethodService.seedDefaults(req.user!.tenantId!);
-  res.json({ success: true, message: 'Default payment methods seeded' });
+  sendSuccess(res, { message: 'Default payment methods seeded' });
 });

@@ -4,6 +4,7 @@ import { Prisma, AuditAction } from '@prisma/client';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { supplierService } from '../services/supplier.service';
 import { auditService } from '../services/audit.service';
+import { sendSuccess } from '../utils/response';
 
 /**
  * Zod schema for supplier creation/update
@@ -24,7 +25,12 @@ export const getSuppliers = asyncHandler(async (req: Request, res: Response) => 
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const limit = Math.max(1, parseInt(req.query.limit as string) || 200);
   const result = await supplierService.getAll(req.user!.tenantId!, page, limit);
-  res.json({ success: true, ...result });
+  sendSuccess(res, result.data, {
+    page: result.page,
+    limit: result.limit,
+    total: result.total,
+    totalPages: Math.ceil(result.total / result.limit)
+  });
 });
 
 /**
@@ -33,7 +39,7 @@ export const getSuppliers = asyncHandler(async (req: Request, res: Response) => 
 export const getSupplierById = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   const supplier = await supplierService.getById(id, req.user!.tenantId!);
-  res.json({ success: true, data: supplier });
+  sendSuccess(res, supplier);
 });
 
 /**
@@ -58,7 +64,7 @@ export const createSupplier = asyncHandler(async (req: Request, res: Response) =
     { name: supplier.name, email: supplier.email, phone: supplier.phone }
   );
 
-  res.status(201).json({ success: true, data: supplier });
+  sendSuccess(res, supplier, undefined, 201);
 });
 
 /**
@@ -84,7 +90,7 @@ export const updateSupplier = asyncHandler(async (req: Request, res: Response) =
     { updates: parsed }
   );
 
-  res.json({ success: true, data: supplier });
+  sendSuccess(res, supplier);
 });
 
 /**
@@ -112,5 +118,5 @@ export const deleteSupplier = asyncHandler(async (req: Request, res: Response) =
     { supplierName: supplier.name }
   );
 
-  res.json({ success: true, message: 'Proveedor eliminado correctamente' });
+  sendSuccess(res, { message: 'Proveedor eliminado correctamente' });
 });

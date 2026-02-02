@@ -8,6 +8,7 @@ import { bulkPriceUpdateService, type PriceUpdateType } from '../services/bulkPr
 import { asyncHandler } from '../middleware/asyncHandler';
 import { z } from 'zod';
 import { ValidationError } from '../utils/errors';
+import { sendSuccess } from '../utils/response';
 
 const BulkUpdateSchema = z.object({
     type: z.enum(['PERCENTAGE', 'FIXED']),
@@ -30,7 +31,7 @@ export const getProductsForGrid = asyncHandler(async (req: Request, res: Respons
     const categoryId = req.query.categoryId ? parseInt(String(req.query.categoryId)) : undefined;
     const tenantId = req.user!.tenantId!;
     const products = await bulkPriceUpdateService.getProductsForPriceGrid(tenantId, { categoryId });
-    res.json({ success: true, data: products });
+    sendSuccess(res, products);
 });
 
 /**
@@ -39,7 +40,7 @@ export const getProductsForGrid = asyncHandler(async (req: Request, res: Respons
  */
 export const getCategories = asyncHandler(async (req: Request, res: Response) => {
     const categories = await bulkPriceUpdateService.getCategories(req.user!.tenantId!);
-    res.json({ success: true, data: categories });
+    sendSuccess(res, categories);
 });
 
 /**
@@ -57,7 +58,7 @@ export const previewChanges = asyncHandler(async (req: Request, res: Response) =
     const products = await bulkPriceUpdateService.getProductsForPriceGrid(tenantId, { categoryId });
     const previewed = bulkPriceUpdateService.previewBulkUpdate(products, validation.data);
 
-    res.json({ success: true, data: previewed });
+    sendSuccess(res, previewed);
 });
 
 /**
@@ -80,7 +81,7 @@ export const applyUpdates = asyncHandler(async (req: Request, res: Response) => 
         }
     );
 
-    res.json({ success: true, data: result });
+    sendSuccess(res, result);
 });
 
 /**
@@ -109,5 +110,5 @@ export const updateByCategory = asyncHandler(async (req: Request, res: Response)
         }
     );
 
-    res.json({ success: true, data: result });
+    sendSuccess(res, result);
 });

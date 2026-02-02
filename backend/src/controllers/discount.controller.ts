@@ -8,6 +8,7 @@ import { discountService, type ApplyDiscountInput } from '../services/discount.s
 import { asyncHandler } from '../middleware/asyncHandler';
 import { z } from 'zod';
 import { ValidationError } from '../utils/errors';
+import { sendSuccess } from '../utils/response';
 
 const ApplyDiscountSchema = z.object({
     orderId: z.number().int().positive(),
@@ -55,7 +56,7 @@ export const applyDiscount = asyncHandler(async (req: Request, res: Response) =>
         }
     );
 
-    res.json({ success: true, data: result });
+    sendSuccess(res, result );
 });
 
 /**
@@ -78,7 +79,7 @@ export const removeDiscount = asyncHandler(async (req: Request, res: Response) =
         }
     );
 
-    res.json({ success: true, data: result });
+    sendSuccess(res, result );
 });
 
 /**
@@ -87,7 +88,7 @@ export const removeDiscount = asyncHandler(async (req: Request, res: Response) =
  */
 export const getDiscountReasons = asyncHandler(async (req: Request, res: Response) => {
     const reasons = discountService.getDiscountReasons();
-    res.json({ success: true, data: reasons });
+    sendSuccess(res, reasons );
 });
 
 /**
@@ -96,5 +97,5 @@ export const getDiscountReasons = asyncHandler(async (req: Request, res: Respons
  */
 export const getDiscountTypes = asyncHandler(async (req: Request, res: Response) => {
     const types = discountService.getDiscountTypes();
-    res.json({ success: true, data: types });
+    sendSuccess(res, types );
 });

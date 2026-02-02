@@ -109,7 +109,14 @@ import printRoutingRoutes from './routes/printRouting.routes';
 import stockAlertRoutes from './routes/stockAlert.routes';
 import discountRoutes from './routes/discount.routes';
 
-// Register all routes under /api/v1 for versioning
+// API-003: Versioning Strategy
+// All routes are mounted under /api/v1. When breaking changes are needed:
+// 1. Create new route files under /api/v2 with updated contracts
+// 2. Keep /api/v1 routes active for backward compatibility (minimum 6 months)
+// 3. Add Deprecation header to v1 responses: res.set('Deprecation', 'true')
+// 4. Document migration guide in release notes
+// 5. Monitor v1 usage via access logs before decommissioning
+// Non-breaking changes (new fields, new endpoints) are added to v1 directly.
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/roles', roleRoutes);

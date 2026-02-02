@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { PurchaseStatus } from '@prisma/client';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { purchaseOrderService } from '../services/purchaseOrder.service';
+import { sendSuccess } from '../utils/response';
 
 /**
  * Zod schema for creating purchase order
@@ -30,7 +31,7 @@ const updateStatusSchema = z.object({
 export const getPurchaseOrders = asyncHandler(async (req: Request, res: Response) => {
   const status = req.query.status as PurchaseStatus | undefined;
   const orders = await purchaseOrderService.getAll(req.user!.tenantId!, status);
-  res.json({ success: true, data: orders });
+  sendSuccess(res, orders);
 });
 
 /**
@@ -39,7 +40,7 @@ export const getPurchaseOrders = asyncHandler(async (req: Request, res: Response
 export const getPurchaseOrderById = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   const order = await purchaseOrderService.getById(id, req.user!.tenantId!);
-  res.json({ success: true, data: order });
+  sendSuccess(res, order);
 });
 
 /**
@@ -52,7 +53,7 @@ export const createPurchaseOrder = asyncHandler(async (req: Request, res: Respon
     items: data.items,
     ...(data.notes !== undefined && { notes: data.notes }),
   });
-  res.status(201).json({ success: true, data: order });
+  sendSuccess(res, order, undefined, 201);
 });
 
 /**
@@ -62,7 +63,7 @@ export const updatePurchaseOrderStatus = asyncHandler(async (req: Request, res: 
   const id = parseInt(req.params.id as string);
   const { status } = updateStatusSchema.parse(req.body);
   const order = await purchaseOrderService.updateStatus(id, req.user!.tenantId!, status);
-  res.json({ success: true, data: order });
+  sendSuccess(res, order);
 });
 
 /**
@@ -71,7 +72,7 @@ export const updatePurchaseOrderStatus = asyncHandler(async (req: Request, res: 
 export const receivePurchaseOrder = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   const order = await purchaseOrderService.receivePurchaseOrder(id, req.user!.tenantId!);
-  res.json({ success: true, data: order, message: 'Orden recibida y stock actualizado' });
+  sendSuccess(res, order);
 });
 
 /**
@@ -80,7 +81,7 @@ export const receivePurchaseOrder = asyncHandler(async (req: Request, res: Respo
 export const cancelPurchaseOrder = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   const order = await purchaseOrderService.cancel(id, req.user!.tenantId!);
-  res.json({ success: true, data: order });
+  sendSuccess(res, order);
 });
 
 /**
@@ -89,5 +90,5 @@ export const cancelPurchaseOrder = asyncHandler(async (req: Request, res: Respon
 export const deletePurchaseOrder = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   await purchaseOrderService.delete(id, req.user!.tenantId!);
-  res.json({ success: true, message: 'Orden eliminada correctamente' });
+  sendSuccess(res, { message: 'Orden eliminada correctamente' });
 });

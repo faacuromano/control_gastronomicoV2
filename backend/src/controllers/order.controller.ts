@@ -12,6 +12,7 @@ import { OrderChannel, PaymentMethod, OrderStatus } from '@prisma/client';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { UnauthorizedError } from '../utils/errors';
 import { logger } from '../utils/logger';
+import { sendSuccess } from '../utils/response';
 
 const orderService = new OrderService();
 
@@ -108,7 +109,7 @@ const addPaymentsSchema = z.object({
 export const updateStatus = asyncHandler(async (req: Request, res: Response) => {
     const { status } = updateStatusSchema.parse(req.body);
     const order = await orderService.updateStatus(Number(req.params.id as string), status, req.user!.tenantId!);
-    res.json({ success: true, data: order });
+    sendSuccess(res, order);
 });
 
 /**
@@ -117,7 +118,7 @@ export const updateStatus = asyncHandler(async (req: Request, res: Response) => 
 export const updateItemStatus = asyncHandler(async (req: Request, res: Response) => {
     const { status } = updateItemStatusSchema.parse(req.body);
     const item = await orderService.updateItemStatus(Number(req.params.itemId as string), status, req.user!.tenantId!);
-    res.json({ success: true, data: item });
+    sendSuccess(res, item);
 });
 
 /**
@@ -125,7 +126,7 @@ export const updateItemStatus = asyncHandler(async (req: Request, res: Response)
  */
 export const getActiveOrders = asyncHandler(async (req: Request, res: Response) => {
     const orders = await orderService.getActiveOrders(req.user!.tenantId!);
-    res.json({ success: true, data: orders });
+    sendSuccess(res, orders);
 });
 
 /**
@@ -175,7 +176,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     };
 
     const order = await orderService.createOrder(orderInput);
-    res.status(201).json({ success: true, data: order });
+    sendSuccess(res, order, undefined, 201);
 });
 
 /**
@@ -183,7 +184,7 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
  */
 export const getOrders = asyncHandler(async (req: Request, res: Response) => {
     const orders = await orderService.getRecentOrders(req.user!.tenantId!);
-    res.json({ success: true, data: orders });
+    sendSuccess(res, orders);
 });
 
 /**
@@ -195,7 +196,7 @@ export const getOrderByTable = asyncHandler(async (req: Request, res: Response) 
         return res.status(400).json({ success: false, error: 'Invalid table ID' });
     }
     const order = await orderService.getOrderByTable(tableId, req.user!.tenantId!);
-    res.json({ success: true, data: order });
+    sendSuccess(res, order);
 });
 
 /**
@@ -223,7 +224,7 @@ export const addItemsToOrder = asyncHandler(async (req: Request, res: Response) 
     }));
 
     const order = await orderService.addItemsToOrder(orderId, items, serverId, req.user!.tenantId!);
-    res.json({ success: true, data: order });
+    sendSuccess(res, order);
 });
 
 /**
@@ -309,10 +310,7 @@ export const addPayments = asyncHandler(async (req: Request, res: Response) => {
     );
 
     // 6. Return success response with comprehensive data
-    res.status(200).json({
-        success: true,
-        data: result
-    });
+    sendSuccess(res, result);
 });
 
 /**
@@ -322,7 +320,7 @@ export const getDeliveryOrders = asyncHandler(async (req: Request, res: Response
     logger.debug('getDeliveryOrders requested', { userId: req.user?.id });
     const orders = await orderService.getDeliveryOrders(req.user!.tenantId!);
     logger.debug('getDeliveryOrders result', { count: orders.length });
-    res.json({ success: true, data: orders });
+    sendSuccess(res, orders);
 });
 
 /**
@@ -336,7 +334,7 @@ export const assignDriver = asyncHandler(async (req: Request, res: Response) => 
     if (!driverId) return res.status(400).json({ success: false, error: 'Driver ID required' });
 
     const order = await orderService.assignDriver(orderId, Number(driverId), req.user!.tenantId!);
-    res.json({ success: true, data: order });
+    sendSuccess(res, order);
 });
 
 /**
@@ -351,7 +349,7 @@ export const markAllItemsServed = asyncHandler(async (req: Request, res: Respons
     }
 
     const order = await orderService.markAllItemsServed(orderId, req.user!.tenantId!);
-    res.json({ success: true, data: order });
+    sendSuccess(res, order);
 });
 
 // =============================================================================
@@ -397,7 +395,7 @@ export const voidItem = asyncHandler(async (req: Request, res: Response) => {
         }
     );
     
-    res.json({ success: true, data: result });
+    sendSuccess(res, result);
 });
 
 /**
@@ -405,7 +403,7 @@ export const voidItem = asyncHandler(async (req: Request, res: Response) => {
  */
 export const getVoidReasons = asyncHandler(async (_req: Request, res: Response) => {
     const reasons = orderVoidService.getVoidReasons();
-    res.json({ success: true, data: reasons });
+    sendSuccess(res, reasons);
 });
 
 /**
@@ -437,6 +435,6 @@ export const transferItems = asyncHandler(async (req: Request, res: Response) =>
         }
     );
     
-    res.json({ success: true, data: result });
+    sendSuccess(res, result);
 });
 

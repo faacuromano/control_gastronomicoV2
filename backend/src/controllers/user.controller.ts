@@ -184,7 +184,7 @@ export const getUserById = asyncHandler(async (req: Request, res: Response) => {
         throw new NotFoundError('Usuario');
     }
 
-    res.json({ success: true, data: user });
+    sendSuccess(res, user);
 });
 
 /**
@@ -279,7 +279,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
         { name: user.name, email: user.email, roleId }
     );
 
-    res.status(201).json({ success: true, data: user });
+    sendSuccess(res, user, undefined, 201);
 });
 
 /**
@@ -390,7 +390,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
         { updates: data }
     );
 
-    res.json({ success: true, data: user });
+    sendSuccess(res, user);
 });
 
 /**
@@ -437,5 +437,5 @@ export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
         { userName: user.name, userEmail: user.email }
     );
 
-    res.json({ success: true, message: 'Usuario desactivado correctamente' });
+    sendSuccess(res, { message: 'Usuario desactivado correctamente' });
 });

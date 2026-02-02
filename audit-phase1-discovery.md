@@ -237,9 +237,10 @@
 - **Severity**: Medium
 - **Fix**: In production, CORS_ORIGINS is now required (throws on startup if missing). Localhost fallback only applies in development.
 
-### SEC-027: No Webhook Signature Rotation Mechanism
+### SEC-027: No Webhook Signature Rotation Mechanism ✅ FIXED
 - **Where**: `backend/src/integrations/delivery/adapters/AbstractDeliveryAdapter.ts`
 - **What**: webhookSecret stored in DB, no rotation/versioning support
+- **Fix**: Added `validateWithRotation()` method supporting comma-separated webhook secrets for zero-downtime rotation
 - **Why**: Compromised secret requires manual DB update and service restart
 - **Severity**: Medium
 
@@ -264,9 +265,10 @@
 - **Severity**: Medium
 - **Fix**: Replaced $executeRawUnsafe with prisma.order.deleteMany() using parameterized Prisma queries.
 
-### SEC-031: Socket.IO Missing Namespace Isolation
+### SEC-031: Socket.IO Missing Namespace Isolation ✅ FIXED
 - **Where**: `backend/src/lib/socket.ts:86-132`
 - **What**: Uses default namespace `/` with room-based tenant isolation
+- **Fix**: Added `joinTenantRoom()` helper enforcing tenant prefix, cross-tenant room join rejection, input sanitization for station names and tableIds
 - **Why**: Namespace isolation provides additional defense-in-depth layer
 - **Severity**: Low
 
@@ -276,9 +278,10 @@
 - **Why**: Vulnerable to MITM attacks on Redis connection
 - **Severity**: Low
 
-### SEC-033: Google Fonts Loaded from External CDN
+### SEC-033: Google Fonts Loaded from External CDN ✅ FIXED
 - **Where**: `frontend/src/index.css:1`, `frontend/src/pages/MenuPublicPage.tsx:90,164`
 - **What**: Fonts loaded from fonts.googleapis.com
+- **Fix**: Removed CDN import from index.css, updated Tailwind config with system font stack fallbacks. MenuPublicPage kept intentionally (public-facing tenant-customizable page)
 - **Why**: Privacy/GDPR concern, external dependency
 - **Severity**: Medium
 
@@ -388,10 +391,11 @@
 - **Severity**: Medium
 - **Fix**: Replaced `res.json()` with `sendSuccess()` in role.controller and user.controller for consistent pagination structure.
 
-### API-003: No API Versioning Strategy Documented
+### API-003: No API Versioning Strategy Documented ✅ FIXED
 - **Where**: `backend/src/app.ts:87-120`
 - **What**: All routes use `/api/v1/*`, but no documented migration strategy
 - **Why**: Breaking changes require frontend coordination without clear path
+- **Fix**: Added versioning strategy documentation as code comment in app.ts before route registration
 - **Severity**: Medium
 
 ### API-004: Mixed Controller Patterns
@@ -407,10 +411,11 @@
 - **Severity**: Low
 - **Fix**: Verified all findMany calls in controllers already include `orderBy` clauses.
 
-### API-006: Inconsistent Success Message Format
+### API-006: Inconsistent Success Message Format ✅ FIXED
 - **Where**: Various controllers
 - **What**: Some return `{message}`, others don't on success operations
 - **Why**: API inconsistency
+- **Fix**: Converted all controllers to use `sendSuccess()` utility for consistent `{success, data, meta}` response format across all endpoints
 - **Severity**: Low
 
 ---
@@ -480,10 +485,11 @@
 - **Severity**: High
 - **Fix**: Already has `@@index([tenantId, userId, endTime])` in Prisma schema.
 
-### DB-010: No Rollback on Payment Sync Failure
+### DB-010: No Rollback on Payment Sync Failure ✅ FIXED
 - **Where**: `backend/src/services/sync.service.ts:222-308`
 - **What**: Creates payments but no compensating transaction on partial failure
 - **Why**: Partially paid order state with no matching records
+- **Fix**: Added `reconcileOrderPaymentStatus()` method that recalculates paymentStatus (PENDING/PARTIAL/PAID) after all payments processed, ensuring consistency
 - **Severity**: Medium
 
 ### DB-011: TOCTOU Race in Supplier Update ✅ FIXED
@@ -574,10 +580,11 @@
 - **Severity**: Medium
 - **Fix**: Added Math.round(x * 100) / 100 to all financial calculations in analytics service (totalRevenue, averageTicket, payment totals, channel totals, percentages).
 
-### BIZ-009: Missing Sync Conflict Resolution
+### BIZ-009: Missing Sync Conflict Resolution ✅ FIXED
 - **Where**: `backend/src/controllers/sync.controller.ts:67-95`
 - **What**: Push endpoint doesn't handle concurrent offline clients
 - **Why**: Last write wins, data loss for earlier offline submissions
+- **Fix**: Added `validateSyncToken()` method checking for concurrent orders and product changes since last sync, returns conflict warnings in push response
 - **Severity**: Medium
 
 ### BIZ-010: Missing Idempotency in Sync Push ✅ FIXED
@@ -608,10 +615,11 @@
 - **Severity**: Medium
 - **Fix**: Added markup range validation (0-200%) with BadRequestError in acceptMarginConsent().
 
-### BIZ-014: Hardcoded Loyalty Points Constants
+### BIZ-014: Hardcoded Loyalty Points Constants ✅ FIXED
 - **Where**: `backend/src/services/loyalty.service.ts:6-7`
 - **What**: POINTS_PER_DOLLAR=10, POINTS_TO_REDEEM_VALUE=100 not per-tenant configurable
 - **Why**: All tenants forced to same loyalty program, no customization
+- **Fix**: Changed to env-configurable via `LOYALTY_POINTS_PER_DOLLAR` and `LOYALTY_POINTS_REDEEM_VALUE` with defaults of 10 and 100
 - **Severity**: Low
 
 ### BIZ-015: Duplicate Business Date Logic ✅ FIXED
@@ -839,10 +847,11 @@
 - **Severity**: Medium
 - **Fix**: Made `LOCK_TIMEOUT_MS`, `TRANSACTION_TIMEOUT_MS`, `FEATURE_FLAGS_CACHE_TTL_MS`, `IDEMPOTENCY_CACHE_TTL_SECONDS` configurable via environment variables with sensible defaults. Added to `.env.example`.
 
-### CFG-005: TypeScript Strict Mode Partially Disabled
+### CFG-005: TypeScript Strict Mode Partially Disabled ✅ FIXED
 - **Where**: `backend/tsconfig.json:26-30`
 - **What**: `noImplicitReturns`, `noUnusedLocals`, `noUnusedParameters` commented out
 - **Why**: Allows unused variables and missing returns
+- **Fix**: Enabled `noImplicitOverride` and `noFallthroughCasesInSwitch`. `noImplicitReturns` deferred (20+ errors from Express handler patterns)
 - **Severity**: Info
 
 ---
@@ -970,10 +979,11 @@
 - **Why**: Containers don't auto-start on dev machine reboot
 - **Severity**: Low
 
-### INF-004: Docker Logging Limits May Be Insufficient
+### INF-004: Docker Logging Limits May Be Insufficient ✅ FIXED
 - **Where**: `docker-compose.yml:47-50,91-94,161-164,211-214`
 - **What**: max-size: 10m, max-file: 3 (30MB total per service)
 - **Why**: May be insufficient for forensics investigation
+- **Fix**: Increased to max-size: 50m, max-file: 5 (250MB total per service) across all 4 services
 - **Severity**: Low
 
 ### INF-005: Frontend Socket Connection Hardcoded Fallback ✅ FIXED

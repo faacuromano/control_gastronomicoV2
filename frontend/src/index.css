@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+/* SEC-033: Replaced Google Fonts CDN with system font stack for privacy/GDPR.
+   Inter is available locally if installed; otherwise falls back to system UI fonts. */
 
 
 
