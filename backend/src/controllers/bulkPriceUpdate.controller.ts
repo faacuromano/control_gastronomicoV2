@@ -75,7 +75,7 @@ export const applyUpdates = asyncHandler(async (req: Request, res: Response) => 
         req.user!.tenantId!,
         validation.data.updates,
         {
-            userId: (req as any).user?.id,
+            userId: req.user?.id,
             ipAddress: ip
         }
     );
@@ -104,7 +104,7 @@ export const updateByCategory = asyncHandler(async (req: Request, res: Response)
         categoryId,
         validation.data,
         {
-            userId: (req as any).user?.id,
+            userId: req.user?.id,
             ipAddress: ip
         }
     );

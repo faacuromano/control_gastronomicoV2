@@ -72,7 +72,7 @@ export const push = asyncHandler(async (req: Request, res: Response) => {
     }
 
     // Get user from auth middleware
-    const userId = (req as any).user?.id;
+    const userId = req.user?.id;
     if (!userId) {
         throw new ValidationError('User authentication required for sync');
     }

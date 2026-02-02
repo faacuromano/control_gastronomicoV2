@@ -9,6 +9,7 @@
 
 import { Request, Response } from 'express';
 import { z } from 'zod';
+import { AuditAction } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { ForbiddenError, ValidationError, ConflictError, NotFoundError } from '../utils/errors';
@@ -166,7 +167,7 @@ export const createRole = asyncHandler(async (req: Request, res: Response) => {
 
     // Audit log - after successful creation
     auditService.log(
-        'ROLE_CREATED' as any,
+        AuditAction.ROLE_CREATED,
         'Role',
         role.id,
         {
@@ -225,7 +226,7 @@ export const updateRolePermissions = asyncHandler(async (req: Request, res: Resp
 
     // Audit log - after successful permissions update
     auditService.log(
-        'ROLE_PERMISSIONS_UPDATED' as any,
+        AuditAction.ROLE_PERMISSIONS_UPDATED,
         'Role',
         id,
         {
@@ -285,7 +286,7 @@ export const deleteRole = asyncHandler(async (req: Request, res: Response) => {
 
     // Audit log - after successful deletion
     auditService.log(
-        'ROLE_DELETED' as any,
+        AuditAction.ROLE_DELETED,
         'Role',
         id,
         {

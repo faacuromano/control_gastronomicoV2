@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { Prisma } from '@prisma/client';
+import { Prisma, AuditAction } from '@prisma/client';
 import * as productService from '../services/product.service';
 import { sendSuccess } from '../utils/response';
 import { asyncHandler } from '../middleware/asyncHandler';
@@ -31,7 +31,7 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
 
     // Audit log - after successful creation
     auditService.log(
-        'PRODUCT_CREATED' as any,
+        AuditAction.PRODUCT_CREATED,
         'Product',
         product.id,
         {
@@ -52,7 +52,7 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
 
     // Audit log - after successful update
     auditService.log(
-        'PRODUCT_UPDATED' as any,
+        AuditAction.PRODUCT_UPDATED,
         'Product',
         id,
         {
@@ -79,7 +79,7 @@ export const deleteProduct = asyncHandler(async (req: Request, res: Response) =>
 
     // Audit log - after successful deletion
     auditService.log(
-        'PRODUCT_DELETED' as any,
+        AuditAction.PRODUCT_DELETED,
         'Product',
         id,
         {

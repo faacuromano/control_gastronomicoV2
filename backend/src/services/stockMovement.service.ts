@@ -114,26 +114,36 @@ export class StockMovementService {
     });
     const validIds = new Set(ingredients.map((i: { id: number }) => i.id));
 
-    // 2. Create all movement records and update stock
-    for (const update of updates) {
-      if (!validIds.has(update.ingredientId)) continue;
+    // PERF-005: Batch create movements in one query, then update stock individually
+    // (Prisma doesn't support batch increment updates, but createMany saves N-1 round trips)
+    const validUpdates = updates.filter(u => validIds.has(u.ingredientId));
 
-      const increment = (type === 'SALE' || type === 'WASTE')
-        ? -Math.abs(update.quantity)
-        : Math.abs(update.quantity);
+    if (validUpdates.length > 0) {
+      await tx.stockMovement.createMany({
+        data: validUpdates.map(u => ({
+          tenantId,
+          ingredientId: u.ingredientId,
+          type,
+          quantity: u.quantity,
+          reason
+        }))
+      });
 
-      // Create movement + update stock (2 queries per ingredient instead of 4)
-      await tx.stockMovement.create({
-        data: { tenantId, ingredientId: update.ingredientId, type, quantity: update.quantity, reason }
-      });
-      await tx.ingredient.update({
-        where: { id: update.ingredientId },
-        data: { stock: { increment } }
-      });
+      // Stock updates must be individual (atomic increment per row)
+      for (const update of validUpdates) {
+        const increment = (type === 'SALE' || type === 'WASTE')
+          ? -Math.abs(update.quantity)
+          : Math.abs(update.quantity);
+
+        await tx.ingredient.update({
+          where: { id: update.ingredientId },
+          data: { stock: { increment } }
+        });
+      }
     }
 
     // 3. Check alerts after all updates - single batch query instead of N queries
-    const processedIds = updates.filter(u => validIds.has(u.ingredientId)).map(u => u.ingredientId);
+    const processedIds = validUpdates.map(u => u.ingredientId);
     if (processedIds.length > 0) {
       const updatedIngredients = await tx.ingredient.findMany({
         where: { id: { in: processedIds }, tenantId },
@@ -146,7 +156,7 @@ export class StockMovementService {
   }
 
   async getHistory(tenantId: number, ingredientId?: number) {
-    const where: any = { tenantId };
+    const where: { tenantId: number; ingredientId?: number } = { tenantId };
     if (ingredientId) where.ingredientId = ingredientId;
     return await prisma.stockMovement.findMany({
       where,

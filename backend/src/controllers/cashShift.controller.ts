@@ -4,7 +4,7 @@ import { sendSuccess } from '../utils/response';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { UnauthorizedError, ValidationError } from '../utils/errors';
-import { auditService } from '../services/audit.service';
+import { auditService, getAuditContext } from '../services/audit.service';
 
 const openShiftSchema = z.object({
     startAmount: z.number().min(0)
@@ -12,15 +12,6 @@ const openShiftSchema = z.object({
 
 const closeShiftSchema = z.object({
     countedCash: z.number().min(0)
-});
-
-/**
- * Extract audit context from request
- */
-const getAuditContext = (req: Request) => ({
-    userId: req.user?.id,
-    ipAddress: req.ip || req.socket.remoteAddress,
-    userAgent: req.headers['user-agent']
 });
 
 export const openShift = asyncHandler(async (req: Request, res: Response) => {

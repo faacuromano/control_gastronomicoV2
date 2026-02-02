@@ -7,20 +7,20 @@ const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
 // DATA
 // ============================================================
 
-const QUALITY_SCORE = 82;
-const READINESS_PCT = 85;
+const QUALITY_SCORE = 85;
+const READINESS_PCT = 88;
 
 const severityCounts = { Critical: 12, High: 38, Medium: 72, Low: 45, Info: 30, Total: 197 };
-const fixedCount = 88;
-const remainingCount = 109;
+const fixedCount = 97;
+const remainingCount = 100;
 
 const categoryScores = [
   { category: "Security",       weight: "20%", score: 82, rationale: "30/43 findings fixed. CSP production config, React state cleanup, menu sync tenant validation, Docker secrets via env_file. Remaining: signature rotation, namespace isolation." },
   { category: "Error Handling",  weight: "15%", score: 82, rationale: "11/16 fixed. Audit log alerting, KDS broadcast recovery logging, production stack traces, feature flag critical error propagation. Remaining: sync conflict, queue health." },
   { category: "API Design",      weight: "15%", score: 58, rationale: "2/11 fixed. Response format standardized. Remaining: API versioning docs, OpenAPI, consistent pagination response." },
-  { category: "Database",        weight: "12%", score: 82, rationale: "9/18 fixed. Connection pool configurable (50 default), Redis noeviction confirmed. Remaining: payment sync rollback." },
-  { category: "Code Quality",    weight: "10%", score: 50, rationale: "2/28 fixed. console.* replaced with logger, ID validation middleware. Remaining: 'as any' casts, duplicate helpers." },
-  { category: "Performance",     weight: "8%",  score: 78, rationale: "9/21 fixed. Client search pagination, adapter cache TTL eviction added. Remaining: batch stock, printer routing optimization." },
+  { category: "Database",        weight: "12%", score: 85, rationale: "10/18 fixed. Connection pool configurable (50 default), documented in prisma.ts. Remaining: payment sync rollback, composite indices." },
+  { category: "Code Quality",    weight: "10%", score: 65, rationale: "8/28 fixed. Eliminated 18+ 'as any' casts, extracted duplicate helpers, typed filter objects. Remaining: mixed languages, OpenAPI annotations." },
+  { category: "Performance",     weight: "8%",  score: 82, rationale: "11/21 fixed. Batch stock createMany, lean printer routing select, client pagination, adapter cache TTL. Remaining: further batch optimizations." },
   { category: "Dependencies",    weight: "7%",  score: 65, rationale: "2/4 fixed. npm audit + Dependabot config. Remaining: Express 5 RC stability, bcryptjs upgrade." },
   { category: "Configuration",   weight: "5%",  score: 65, rationale: "2/8 fixed. Nginx config, conditional Redis validation. Remaining: SSL docs, hardcoded config values." },
   { category: "Testing",         weight: "5%",  score: 30, rationale: "0/16 fixed. Major coverage gaps remain. Good: tenant isolation tests, forensic tests for P0 fixes." },

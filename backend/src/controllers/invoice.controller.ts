@@ -64,7 +64,7 @@ export const getByInvoiceNumber = asyncHandler(async (req: Request, res: Respons
 export const getAll = asyncHandler(async (req: Request, res: Response) => {
     const { type, startDate, endDate } = req.query;
     
-    const filters: any = {};
+    const filters: { type?: 'RECEIPT' | 'INVOICE_B'; startDate?: Date; endDate?: Date } = {};
     if (type && (type === 'RECEIPT' || type === 'INVOICE_B')) {
         filters.type = type;
     }

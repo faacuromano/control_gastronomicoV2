@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
+import { AuditAction } from '@prisma/client';
 import { asyncHandler } from '../middleware/asyncHandler';
-import { paymentMethodService } from '../services/paymentMethod.service';
+import { paymentMethodService, type PaymentMethodConfigInput } from '../services/paymentMethod.service';
 import { auditService } from '../services/audit.service';
 
 const createSchema = z.object({
@@ -60,11 +61,11 @@ export const getById = asyncHandler(async (req: Request, res: Response) => {
  */
 export const create = asyncHandler(async (req: Request, res: Response) => {
   const data = createSchema.parse(req.body);
-  const method = await paymentMethodService.create(req.user!.tenantId!, data as any);
+  const method = await paymentMethodService.create(req.user!.tenantId!, data as PaymentMethodConfigInput);
 
   // Audit log - after successful creation
   auditService.log(
-    'PAYMENT_METHOD_CREATED' as any,
+    AuditAction.PAYMENT_METHOD_CREATED,
     'PaymentMethodConfig',
     method.id,
     {
@@ -85,11 +86,11 @@ export const create = asyncHandler(async (req: Request, res: Response) => {
 export const update = asyncHandler(async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   const data = updateSchema.parse(req.body);
-  const method = await paymentMethodService.update(id, req.user!.tenantId!, data as any);
+  const method = await paymentMethodService.update(id, req.user!.tenantId!, data as Partial<PaymentMethodConfigInput>);
 
   // Audit log - after successful update
   auditService.log(
-    'PAYMENT_METHOD_UPDATED' as any,
+    AuditAction.PAYMENT_METHOD_UPDATED,
     'PaymentMethodConfig',
     id,
     {
@@ -126,7 +127,7 @@ export const remove = asyncHandler(async (req: Request, res: Response) => {
 
   // Audit log - after successful deletion
   auditService.log(
-    'PAYMENT_METHOD_DELETED' as any,
+    AuditAction.PAYMENT_METHOD_DELETED,
     'PaymentMethodConfig',
     id,
     {

@@ -53,27 +53,45 @@ export class PrintRoutingService {
      * @returns RoutingResult with routes and unrouted items
      */
     async getRoutingForOrder(orderId: number, tenantId: number): Promise<RoutingResult> {
-        // 1. Get order with items, products, categories
+        // PERF-006: Select only fields needed for routing instead of full relations
         const order = await prisma.order.findFirst({
             where: { id: orderId, tenantId },
-            include: {
+            select: {
+                id: true,
                 table: {
-                    include: {
+                    select: {
+                        areaId: true,
                         area: {
-                            include: {
+                            select: {
                                 printerOverrides: {
-                                    include: { printer: true }
+                                    select: {
+                                        categoryId: true,
+                                        printerId: true,
+                                        printer: { select: { name: true } }
+                                    }
                                 }
                             }
                         }
                     }
                 },
                 items: {
-                    include: {
+                    select: {
+                        id: true,
+                        productId: true,
+                        quantity: true,
+                        notes: true,
                         product: {
-                            include: {
+                            select: {
+                                id: true,
+                                name: true,
+                                categoryId: true,
                                 category: {
-                                    include: { printer: true }
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        printerId: true,
+                                        printer: { select: { id: true, name: true } }
+                                    }
                                 }
                             }
                         }

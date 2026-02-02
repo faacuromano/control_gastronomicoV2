@@ -14,11 +14,12 @@
  */
 
 import { Request, Response } from 'express';
+import { AuditAction } from '@prisma/client';
 import { loginWithPin, register, loginWithPassword, registerTenant, createRefreshToken, refreshAccessToken, revokeRefreshTokens } from '../services/auth.service';
 import { sendSuccess, sendError } from '../utils/response';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../middleware/asyncHandler';
-import { auditService } from '../services/audit.service';
+import { auditService, getAuditContext } from '../services/audit.service';
 import { logger } from '../utils/logger';
 
 // ============================================================================
@@ -52,13 +53,7 @@ const REFRESH_COOKIE_OPTIONS = {
 // HELPERS
 // ============================================================================
 
-/**
- * Extract audit context from request
- */
-const getAuditContext = (req: Request) => ({
-    ipAddress: req.ip || req.socket.remoteAddress,
-    userAgent: req.headers['user-agent']
-});
+// CQ-003: getAuditContext imported from audit.service
 
 /**
  * Set authentication cookie on response.
@@ -220,7 +215,7 @@ export const registerNewTenant = asyncHandler(async (req: Request, res: Response
     
     // Audit: log new tenant registration
     await auditService.log(
-        'TENANT_REGISTERED' as any,
+        AuditAction.CONFIG_CHANGED, // Tenant registration (no dedicated enum value)
         'Tenant',
         result.tenant.id,
         {

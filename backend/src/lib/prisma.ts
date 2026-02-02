@@ -2,6 +2,9 @@ import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
+// DB-007: Connection pool configured via DATABASE_URL connection_limit param
+// or DB_POOL_SIZE env var in docker-compose (default 50).
+// Prisma reads connection_limit from the URL automatically.
 const basePrisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development'
     ? ['warn', 'error']

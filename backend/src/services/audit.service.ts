@@ -1,3 +1,4 @@
+import { Request } from 'express';
 import { prisma } from '../lib/prisma';
 import { AuditAction } from '@prisma/client';
 import { logger } from '../utils/logger';
@@ -7,6 +8,19 @@ export interface AuditContext {
     tenantId?: number | undefined;
     ipAddress?: string | undefined;
     userAgent?: string | undefined;
+}
+
+/**
+ * CQ-003: Shared helper to extract audit context from Express request.
+ * Eliminates duplicate getAuditContext() in auth.controller and cashShift.controller.
+ */
+export function getAuditContext(req: Request): AuditContext {
+    return {
+        userId: req.user?.id,
+        tenantId: req.user?.tenantId,
+        ipAddress: req.ip || req.socket?.remoteAddress,
+        userAgent: req.headers['user-agent'],
+    };
 }
 
 /**

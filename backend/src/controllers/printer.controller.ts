@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { AuditAction } from '@prisma/client';
 import { PrinterService } from '../services/printer.service';
 import { sendSuccess } from '../utils/response';
 import { asyncHandler } from '../middleware/asyncHandler';
@@ -152,7 +153,7 @@ export const createPrinter = asyncHandler(async (req: Request, res: Response) =>
 
     // Audit log - after successful creation
     auditService.log(
-        'PRINTER_CREATED' as any,
+        AuditAction.PRINTER_CREATED,
         'Printer',
         printer.id,
         {
@@ -179,7 +180,7 @@ export const updatePrinter = asyncHandler(async (req: Request, res: Response) =>
     validatePrinterInputs(ipAddress, windowsName, name);
 
     // Build update data
-    const updateData: any = {};
+    const updateData: Record<string, string | null | undefined> = {};
     if (name !== undefined) updateData.name = name;
     if (connectionType !== undefined) updateData.connectionType = connectionType;
     
@@ -208,7 +209,7 @@ export const updatePrinter = asyncHandler(async (req: Request, res: Response) =>
 
     // Audit log - after successful update
     auditService.log(
-        'PRINTER_UPDATED' as any,
+        AuditAction.PRINTER_UPDATED,
         'Printer',
         id,
         {
@@ -244,7 +245,7 @@ export const deletePrinter = asyncHandler(async (req: Request, res: Response) =>
     // Audit log - after successful deletion
     if (printer) {
         auditService.log(
-            'PRINTER_DELETED' as any,
+            AuditAction.PRINTER_DELETED,
             'Printer',
             id,
             {

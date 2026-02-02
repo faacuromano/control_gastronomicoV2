@@ -20,7 +20,7 @@ export class PurchaseOrderService {
    * Get all purchase orders with supplier info
    */
   async getAll(tenantId: number, status?: PurchaseStatus) {
-    const whereClause: any = { tenantId };
+    const whereClause: { tenantId: number; status?: PurchaseStatus } = { tenantId };
     if (status) whereClause.status = status;
     
     return await prisma.purchaseOrder.findMany({

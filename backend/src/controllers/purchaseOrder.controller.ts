@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { PurchaseStatus, Prisma } from '@prisma/client';
+import { PurchaseStatus } from '@prisma/client';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { purchaseOrderService } from '../services/purchaseOrder.service';
 
@@ -47,8 +47,11 @@ export const getPurchaseOrderById = asyncHandler(async (req: Request, res: Respo
  */
 export const createPurchaseOrder = asyncHandler(async (req: Request, res: Response) => {
   const data = createOrderSchema.parse(req.body);
-  // Type assertion needed due to Prisma exactOptionalPropertyTypes incompatibility
-  const order = await purchaseOrderService.create(req.user!.tenantId!, data as any);
+  const order = await purchaseOrderService.create(req.user!.tenantId!, {
+    supplierId: data.supplierId,
+    items: data.items,
+    ...(data.notes !== undefined && { notes: data.notes }),
+  });
   res.status(201).json({ success: true, data: order });
 });
 

@@ -13,7 +13,7 @@
 
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
-import { Prisma } from '@prisma/client';
+import { Prisma, AuditAction } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/asyncHandler';
@@ -359,7 +359,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
             throw new ConflictError('PIN ya en uso por otro usuario');
         }
         updateData.pinHash = await bcrypt.hash(pinCode, BCRYPT_SALT_ROUNDS);
-        (updateData as any).pinLookup = pinLookup;
+        updateData.pinLookup = pinLookup;
     }
 
     // SAFE: Defense-in-depth — include tenantId in WHERE
@@ -386,7 +386,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
 
     // Audit log - after successful update
     auditService.log(
-        'USER_UPDATED' as any, // Type will be available after Prisma regeneration
+        AuditAction.USER_UPDATED,
         'User',
         userId,
         {

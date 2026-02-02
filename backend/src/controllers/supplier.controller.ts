@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
+import { Prisma, AuditAction } from '@prisma/client';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { supplierService } from '../services/supplier.service';
 import { auditService } from '../services/audit.service';
@@ -46,7 +46,7 @@ export const createSupplier = asyncHandler(async (req: Request, res: Response) =
 
   // Audit log - after successful creation
   auditService.log(
-    'SUPPLIER_CREATED' as any,
+    AuditAction.SUPPLIER_CREATED,
     'Supplier',
     supplier.id,
     {
@@ -72,7 +72,7 @@ export const updateSupplier = asyncHandler(async (req: Request, res: Response) =
 
   // Audit log - after successful update
   auditService.log(
-    'SUPPLIER_UPDATED' as any,
+    AuditAction.SUPPLIER_UPDATED,
     'Supplier',
     id,
     {
@@ -100,7 +100,7 @@ export const deleteSupplier = asyncHandler(async (req: Request, res: Response) =
 
   // Audit log - after successful deletion
   auditService.log(
-    'SUPPLIER_DELETED' as any,
+    AuditAction.SUPPLIER_DELETED,
     'Supplier',
     id,
     {
