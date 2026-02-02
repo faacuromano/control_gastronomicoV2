@@ -14,6 +14,30 @@ const severityCounts = { Critical: 12, High: 38, Medium: 72, Low: 45, Info: 30, 
 const fixedCount = 111;
 const remainingCount = 86;
 
+// Track which findings and fixes are resolved
+const fixedIds = new Set([
+  "SEC-001","SEC-002","SEC-003","SEC-004","SEC-005","SEC-006","SEC-007","SEC-008","SEC-009","SEC-010",
+  "SEC-011","SEC-012","SEC-013","SEC-014","SEC-015","SEC-016","SEC-017","SEC-018","SEC-019","SEC-020",
+  "SEC-021","SEC-022","SEC-023","SEC-024","SEC-025","SEC-026","SEC-028","SEC-029","SEC-030",
+  "ERR-001","ERR-002","ERR-003","ERR-004","ERR-005","ERR-006","ERR-007","ERR-008","ERR-009","ERR-010","ERR-011","ERR-012",
+  "API-001","API-002","API-005",
+  "DB-001","DB-002","DB-003","DB-004","DB-005","DB-006","DB-007","DB-008","DB-009","DB-011","DB-012","DB-013","DB-014",
+  "PERF-001","PERF-002","PERF-003","PERF-004","PERF-005","PERF-006","PERF-007","PERF-008","PERF-009",
+  "AUD-001","AUD-002","AUD-003","AUD-004","AUD-005","AUD-006","AUD-007","AUD-008",
+  "BIZ-001","BIZ-002","BIZ-003","BIZ-004","BIZ-005","BIZ-006","BIZ-007","BIZ-008","BIZ-010","BIZ-011","BIZ-012","BIZ-013","BIZ-015","BIZ-016",
+  "TST-001","TST-002","TST-003","TST-004","TST-005","TST-006","TST-007","TST-008",
+  "CFG-001","CFG-002","CFG-004",
+  "CQ-001","CQ-003","CQ-004","CQ-005","CQ-006","CQ-009","CQ-010",
+  "DEP-001","DEP-002",
+  "INF-001","INF-002","INF-005",
+]);
+
+const fixedFixes = new Set([
+  "FIX-001","FIX-002","FIX-003","FIX-004","FIX-005","FIX-006","FIX-007","FIX-008","FIX-009","FIX-010","FIX-011",
+  "FIX-012","FIX-013","FIX-014","FIX-015","FIX-016","FIX-017","FIX-018","FIX-019","FIX-020","FIX-021","FIX-022","FIX-023",
+  "FIX-024","FIX-025","FIX-026","FIX-027","FIX-028","FIX-029","FIX-030",
+]);
+
 const categoryScores = [
   { category: "Security",       weight: "20%", score: 82, rationale: "30/43 findings fixed. CSP production config, React state cleanup, menu sync tenant validation, Docker secrets via env_file. Remaining: signature rotation, namespace isolation." },
   { category: "Error Handling",  weight: "15%", score: 85, rationale: "11/16 fixed. LockTimeoutError→HTTP 409 middleware, audit log alerting, KDS broadcast recovery logging, production stack traces. Remaining: sync conflict." },
@@ -153,6 +177,7 @@ const hdrShading = { fill: "1B3A5C", type: ShadingType.CLEAR };
 const altShading = { fill: "F5F7FA", type: ShadingType.CLEAR };
 const critShading = { fill: "FDECEC", type: ShadingType.CLEAR };
 const highShading = { fill: "FFF3E0", type: ShadingType.CLEAR };
+const fixedShading = { fill: "E8F5E9", type: ShadingType.CLEAR };
 
 function hdrCell(text, width) {
   return new TableCell({ borders: cellBorders, width: { size: width, type: WidthType.DXA }, shading: hdrShading, verticalAlign: VerticalAlign.CENTER,
@@ -297,6 +322,30 @@ const doc = new Document({
           ],
         }),
 
+        // Remediation Progress
+        new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun("Remediation Progress")] }),
+        new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: `As of February 1, 2026, ${fixedCount} of ${severityCounts.Total} findings (${Math.round(fixedCount/severityCounts.Total*100)}%) have been remediated across 5 rounds of fixes. All 30 roadmap items (Tier 1 + 2 + 3) are complete.`, size: 22 })] }),
+        new Table({
+          columnWidths: [3120, 3120, 3120],
+          rows: [new TableRow({ children: [
+            new TableCell({ borders: cellBorders, width: { size: 3120, type: WidthType.DXA }, shading: fixedShading, children: [
+              new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 40 }, children: [new TextRun({ text: "Findings Fixed", size: 20, color: "2E7D32", bold: true })] }),
+              new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text: `${fixedCount} / ${severityCounts.Total}`, size: 40, bold: true, color: "2E7D32" })] }),
+            ]}),
+            new TableCell({ borders: cellBorders, width: { size: 3120, type: WidthType.DXA }, shading: fixedShading, children: [
+              new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 40 }, children: [new TextRun({ text: "Roadmap Items", size: 20, color: "2E7D32", bold: true })] }),
+              new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text: "30 / 30", size: 40, bold: true, color: "2E7D32" })] }),
+            ]}),
+            new TableCell({ borders: cellBorders, width: { size: 3120, type: WidthType.DXA }, shading: { fill: "FFF3E0", type: ShadingType.CLEAR }, children: [
+              new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 200, after: 40 }, children: [new TextRun({ text: "Remaining", size: 20, color: "E65100", bold: true })] }),
+              new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200 }, children: [new TextRun({ text: `${remainingCount}`, size: 40, bold: true, color: "E65100" })] }),
+            ]}),
+          ]})]
+        }),
+        new Paragraph({ spacing: { before: 100, after: 200 }, children: [
+          new TextRun({ text: "Remaining items are primarily Low/Info severity: API versioning docs, OpenAPI annotations, type strictness, infrastructure logging, and cosmetic improvements.", size: 20, color: "546E7A", italics: true }),
+        ]}),
+
         // ===== 3. SCORING BREAKDOWN =====
         new Paragraph({ children: [new PageBreak()] }),
         new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Scoring Breakdown")] }),
@@ -328,19 +377,22 @@ const doc = new Document({
         ...Object.entries(findings).flatMap(([category, items]) => [
           new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(category)] }),
           new Table({
-            columnWidths: [900, 900, 2100, 1800, 1800, 1860],
+            columnWidths: [800, 700, 1900, 1500, 1500, 1660, 1300],
             rows: [
-              new TableRow({ children: [hdrCell("ID", 900), hdrCell("Sev", 900), hdrCell("Issue", 2100), hdrCell("File", 1800), hdrCell("Impact", 1800), hdrCell("Fix", 1860)] }),
-              ...items.map((f, i) =>
-                new TableRow({ children: [
-                  cell(f.id, 900, { shading: sevShading(f.sev) || (i % 2 ? altShading : undefined) }),
-                  cell(f.sev, 900, { color: sevColor(f.sev), bold: true, shading: sevShading(f.sev) || (i % 2 ? altShading : undefined) }),
-                  cell(f.title, 2100, { shading: sevShading(f.sev) || (i % 2 ? altShading : undefined) }),
-                  cell(f.file, 1800, { shading: sevShading(f.sev) || (i % 2 ? altShading : undefined) }),
-                  cell(f.impact, 1800, { shading: sevShading(f.sev) || (i % 2 ? altShading : undefined) }),
-                  cell(f.fix, 1860, { shading: sevShading(f.sev) || (i % 2 ? altShading : undefined) }),
-                ]})
-              ),
+              new TableRow({ children: [hdrCell("ID", 800), hdrCell("Sev", 700), hdrCell("Issue", 1900), hdrCell("File", 1500), hdrCell("Impact", 1500), hdrCell("Fix", 1660), hdrCell("Status", 1300)] }),
+              ...items.map((f, i) => {
+                const isFixed = fixedIds.has(f.id);
+                const rowShading = isFixed ? fixedShading : (sevShading(f.sev) || (i % 2 ? altShading : undefined));
+                return new TableRow({ children: [
+                  cell(f.id, 800, { shading: rowShading }),
+                  cell(f.sev, 700, { color: sevColor(f.sev), bold: true, shading: rowShading }),
+                  cell(f.title, 1900, { shading: rowShading }),
+                  cell(f.file, 1500, { shading: rowShading }),
+                  cell(f.impact, 1500, { shading: rowShading }),
+                  cell(f.fix, 1660, { shading: rowShading }),
+                  cell(isFixed ? "FIXED" : "OPEN", 1300, { bold: true, color: isFixed ? "2E7D32" : "CC0000", shading: rowShading }),
+                ]});
+              }),
             ],
           }),
         ]),
@@ -350,24 +402,33 @@ const doc = new Document({
         new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Implementation Roadmap")] }),
         new Paragraph({ spacing: { after: 200 }, children: [new TextRun({ text: "Fixes are organized into three tiers based on risk and urgency. Each tier can be implemented incrementally without breaking the live API. Tier 1 should be completed before any new feature work.", size: 22 })] }),
 
-        ...roadmap.flatMap(tier => [
+        ...roadmap.flatMap(tier => {
+          const tierFixed = tier.items.filter(i => fixedFixes.has(i.fix)).length;
+          const tierTotal = tier.items.length;
+          return [
           new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun(tier.tier)] }),
-          new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: tier.desc, size: 22, italics: true, color: "546E7A" })] }),
+          new Paragraph({ spacing: { after: 100 }, children: [
+            new TextRun({ text: tier.desc, size: 22, italics: true, color: "546E7A" }),
+            new TextRun({ text: `  [${tierFixed}/${tierTotal} completed]`, size: 22, bold: true, color: tierFixed === tierTotal ? "2E7D32" : "E65100" }),
+          ]}),
           new Table({
-            columnWidths: [1200, 4060, 1200, 2900],
+            columnWidths: [1000, 3560, 1000, 2500, 1300],
             rows: [
-              new TableRow({ children: [hdrCell("Fix #", 1200), hdrCell("Description", 4060), hdrCell("Effort", 1200), hdrCell("Dependency", 2900)] }),
-              ...tier.items.map((item, i) =>
-                new TableRow({ children: [
-                  cell(item.fix, 1200, { bold: true, shading: i % 2 ? altShading : undefined }),
-                  cell(item.title, 4060, { shading: i % 2 ? altShading : undefined }),
-                  cell(item.effort, 1200, { shading: i % 2 ? altShading : undefined }),
-                  cell(item.dep, 2900, { shading: i % 2 ? altShading : undefined }),
-                ]})
-              ),
+              new TableRow({ children: [hdrCell("Fix #", 1000), hdrCell("Description", 3560), hdrCell("Effort", 1000), hdrCell("Dependency", 2500), hdrCell("Status", 1300)] }),
+              ...tier.items.map((item, i) => {
+                const isFixed = fixedFixes.has(item.fix);
+                const rowShading = isFixed ? fixedShading : (i % 2 ? altShading : undefined);
+                return new TableRow({ children: [
+                  cell(item.fix, 1000, { bold: true, shading: rowShading }),
+                  cell(item.title, 3560, { shading: rowShading }),
+                  cell(item.effort, 1000, { shading: rowShading }),
+                  cell(item.dep, 2500, { shading: rowShading }),
+                  cell(isFixed ? "FIXED" : "OPEN", 1300, { bold: true, color: isFixed ? "2E7D32" : "CC0000", shading: rowShading }),
+                ]});
+              }),
             ],
           }),
-        ]),
+        ]}),
 
         // ===== 6. APPENDIX =====
         new Paragraph({ children: [new PageBreak()] }),
@@ -375,18 +436,21 @@ const doc = new Document({
 
         new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun("A. Full Issue Table")] }),
         new Table({
-          columnWidths: [1200, 1000, 2800, 4360],
+          columnWidths: [1000, 900, 2500, 3660, 1300],
           rows: [
-            new TableRow({ children: [hdrCell("ID", 1200), hdrCell("Severity", 1000), hdrCell("Title", 2800), hdrCell("File", 4360)] }),
+            new TableRow({ children: [hdrCell("ID", 1000), hdrCell("Severity", 900), hdrCell("Title", 2500), hdrCell("File", 3660), hdrCell("Status", 1300)] }),
             ...Object.entries(findings).flatMap(([, items]) =>
-              items.map((f, i) =>
-                new TableRow({ children: [
-                  cell(f.id, 1200, { shading: i % 2 ? altShading : undefined }),
-                  cell(f.sev, 1000, { color: sevColor(f.sev), bold: true, shading: i % 2 ? altShading : undefined }),
-                  cell(f.title, 2800, { shading: i % 2 ? altShading : undefined }),
-                  cell(f.file, 4360, { shading: i % 2 ? altShading : undefined }),
-                ]})
-              )
+              items.map((f, i) => {
+                const isFixed = fixedIds.has(f.id);
+                const rowShading = isFixed ? fixedShading : (i % 2 ? altShading : undefined);
+                return new TableRow({ children: [
+                  cell(f.id, 1000, { shading: rowShading }),
+                  cell(f.sev, 900, { color: sevColor(f.sev), bold: true, shading: rowShading }),
+                  cell(f.title, 2500, { shading: rowShading }),
+                  cell(f.file, 3660, { shading: rowShading }),
+                  cell(isFixed ? "FIXED" : "OPEN", 1300, { bold: true, color: isFixed ? "2E7D32" : "CC0000", shading: rowShading }),
+                ]});
+              })
             ),
           ],
         }),
