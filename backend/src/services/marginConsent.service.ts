@@ -1,57 +1,57 @@
 /**
  * @fileoverview Margin Consent Service (Safety Lock Protocol)
- * 
- * Implementa el protocolo de consentimiento de margen para plataformas de delivery.
- * El usuario DEBE aceptar explícitamente el riesgo de usar precios base antes de activar
- * fallback pricing en cualquier plataforma.
- * 
+ *
+ * Implements the margin consent protocol for delivery platforms.
+ * The user MUST explicitly accept the risk of using base prices before activating
+ * fallback pricing on any platform.
+ *
  * RATIONALE:
- * - Rappi/Glovo cobran 20-30% de comisión
- * - Si el restaurante sube precios sin ajustar, pierde dinero en cada venta
- * - Este servicio actúa como "Safety Lock" legal para proteger al negocio
- * 
+ * - Rappi/Glovo charge 20-30% commission
+ * - If the restaurant uploads prices without adjusting, it loses money on each sale
+ * - This service acts as a legal "Safety Lock" to protect the business
+ *
  * @module services/marginConsent.service
  */
 
 import { prisma } from '../lib/prisma';
 import { BadRequestError, NotFoundError } from '../utils/errors';
-import type { DeliveryPlatform } from '@prisma/client';
+import type { DeliveryPlatform, TenantPlatformConfig } from '@prisma/client';
 
 // ============================================================================
-// CONSTANTES Y TIPOS
+// CONSTANTS AND TYPES
 // ============================================================================
 
 /**
- * Mensaje de error cuando se intenta activar sin consentimiento.
- * Este mensaje será mostrado en el frontend como modal de advertencia.
+ * Error message when attempting to activate without consent.
+ * Displayed in the frontend as a warning modal.
  */
-const MARGIN_CONSENT_REQUIRED_MESSAGE = 
-  'Para activar el pricing automático debe aceptar el riesgo de margen. ' +
-  'Usar precios base sin ajuste puede resultar en pérdida de dinero por comisiones de la plataforma.';
+const MARGIN_CONSENT_REQUIRED_MESSAGE =
+  'To activate automatic pricing you must accept the margin risk. ' +
+  'Using base prices without adjustment may result in loss of money due to platform commissions.';
 
 /**
- * Input para aceptar consentimiento de margen.
+ * Input for accepting margin consent.
  */
 export interface MarginConsentInput {
   platformId: number;
   userId: number;
-  explicitConsent: boolean;  // DEBE ser true
-  defaultMarkup?: number;    // Markup sugerido (ej: 25 = +25%)
+  explicitConsent: boolean;  // MUST be true
+  defaultMarkup?: number;    // Suggested markup (e.g., 25 = +25%)
 }
 
 /**
- * Input para activar/desactivar una plataforma.
+ * Input for enabling/disabling a platform.
  */
 export interface TogglePlatformInput {
   platformId: number;
   enable: boolean;
-  useFallbackPricing?: boolean;  // Si quiere usar fallback
-  consentToken?: string;         // Token de consentimiento previo
+  useFallbackPricing?: boolean;  // Whether to use fallback
+  consentToken?: string;         // Prior consent token
   userId: number;
 }
 
 /**
- * Resultado de la verificación del Safety Lock.
+ * Result of the Safety Lock verification.
  */
 export interface SafetyLockStatus {
   isLocked: boolean;
@@ -64,28 +64,19 @@ export interface SafetyLockStatus {
 }
 
 // ============================================================================
-// SERVICIO PRINCIPAL
+// MAIN SERVICE
 // ============================================================================
 
 class MarginConsentService {
-  
+
   /**
-   * Verifica el estado del Safety Lock para una plataforma.
-   * 
-   * El Safety Lock está BLOQUEADO si:
-   * 1. useFallbackPricing = true (quiere usar precios base)
-   * 2. marginConsentAcceptedAt = null (no hay consentimiento)
-   * 
-   * @returns Estado detallado del lock
-   */
-  /**
-   * Verifica el estado del Safety Lock para una plataforma.
-   * 
-   * El Safety Lock está BLOQUEADO si:
-   * 1. useFallbackPricing = true (quiere usar precios base)
-   * 2. marginConsentAcceptedAt = null (no hay consentimiento)
-   * 
-   * @returns Estado detallado del lock
+   * Check the Safety Lock status for a platform.
+   *
+   * The Safety Lock is BLOCKED if:
+   * 1. useFallbackPricing = true (wants to use base prices)
+   * 2. marginConsentAcceptedAt = null (no consent given)
+   *
+   * @returns Detailed lock status
    */
   async getSafetyLockStatus(tenantId: number, platformId: number): Promise<SafetyLockStatus> {
     const config = await prisma.tenantPlatformConfig.findUnique({
@@ -104,12 +95,12 @@ class MarginConsentService {
     });
 
     if (!config) {
-      throw new NotFoundError(`Configuración de plataforma ${platformId} no encontrada para tenant ${tenantId}`);
+      throw new NotFoundError(`Platform configuration ${platformId} not found for tenant ${tenantId}`);
     }
 
     const hasConsentRecord = config.marginConsentAcceptedAt !== null;
     
-    // El lock está activo si quiere usar fallback PERO no tiene consentimiento
+    // Lock is active if wants fallback BUT has no consent
     const isLocked = config.useFallbackPricing && !hasConsentRecord;
     
     return {
@@ -124,18 +115,18 @@ class MarginConsentService {
   }
 
   /**
-   * Registra el consentimiento explícito del usuario.
-   * 
-   * REQUISITOS LEGALES:
-   * - explicitConsent DEBE ser true (el usuario marcó el checkbox)
-   * - Se registra timestamp y userId para auditoría
-   * 
-   * @throws BadRequestError si explicitConsent !== true
+   * Record the user's explicit consent.
+   *
+   * LEGAL REQUIREMENTS:
+   * - explicitConsent MUST be true (user checked the checkbox)
+   * - Timestamp and userId recorded for auditing
+   *
+   * @throws BadRequestError if explicitConsent !== true
    */
-  async acceptMarginConsent(tenantId: number, input: MarginConsentInput): Promise<any> {
+  async acceptMarginConsent(tenantId: number, input: MarginConsentInput): Promise<TenantPlatformConfig> {
     const { platformId, userId, explicitConsent, defaultMarkup } = input;
 
-    // VALIDACIÓN ESTRICTA: El consentimiento debe ser explícito
+    // STRICT VALIDATION: Consent must be explicit
     if (explicitConsent !== true) {
       throw new BadRequestError(
         'Consent must be explicit. ' +
@@ -147,12 +138,12 @@ class MarginConsentService {
     if (defaultMarkup !== undefined && defaultMarkup !== null) {
       if (defaultMarkup < 0 || defaultMarkup > 200) {
         throw new BadRequestError(
-          `Markup inválido: ${defaultMarkup}%. Debe estar entre 0% y 200%.`
+          `Invalid markup: ${defaultMarkup}%. Must be between 0% and 200%.`
         );
       }
     }
 
-    // Registrar consentimiento con timestamp y usuario
+    // Record consent with timestamp and user
     return prisma.tenantPlatformConfig.update({
         where: {
             tenantId_deliveryPlatformId: {
@@ -164,16 +155,16 @@ class MarginConsentService {
         marginConsentAcceptedAt: new Date(),
         marginConsentAcceptedBy: userId,
         defaultMarkup: defaultMarkup ?? null,
-        useFallbackPricing: true,  // Activar fallback al aceptar
+        useFallbackPricing: true,  // Activate fallback on acceptance
       }
     });
   }
 
   /**
-   * Revoca el consentimiento de margen.
-   * Esto desactiva el fallback pricing automáticamente.
+   * Revoke margin consent.
+   * This automatically deactivates fallback pricing.
    */
-  async revokeMarginConsent(tenantId: number, platformId: number): Promise<any> {
+  async revokeMarginConsent(tenantId: number, platformId: number): Promise<TenantPlatformConfig> {
     return prisma.tenantPlatformConfig.update({
         where: {
             tenantId_deliveryPlatformId: {
@@ -184,22 +175,22 @@ class MarginConsentService {
       data: {
         marginConsentAcceptedAt: null,
         marginConsentAcceptedBy: null,
-        useFallbackPricing: false,  // Desactivar fallback automáticamente
+        useFallbackPricing: false,  // Automatically deactivate fallback
       }
     });
   }
 
   /**
-   * Activa o desactiva una plataforma con validación del Safety Lock.
-   * 
-   * PROTOCOLO:
-   * 1. Si enable=true Y useFallbackPricing=true → Requiere consentimiento previo
-   * 2. Si no hay consentimiento → Lanzar 400 Bad Request
-   * 3. El frontend debe mostrar "Modal de Muerte" antes de llamar
-   * 
-   * @throws BadRequestError si el Safety Lock está bloqueado
+   * Enable or disable a platform with Safety Lock validation.
+   *
+   * PROTOCOL:
+   * 1. If enable=true AND useFallbackPricing=true → Requires prior consent
+   * 2. If no consent → Throw 400 Bad Request
+   * 3. Frontend must show warning modal before calling
+   *
+   * @throws BadRequestError if the Safety Lock is blocked
    */
-  async togglePlatformWithSafetyCheck(tenantId: number, input: TogglePlatformInput): Promise<any> {
+  async togglePlatformWithSafetyCheck(tenantId: number, input: TogglePlatformInput): Promise<TenantPlatformConfig> {
     const { platformId, enable, useFallbackPricing, userId } = input;
 
     const config = await prisma.tenantPlatformConfig.findUnique({
@@ -212,10 +203,10 @@ class MarginConsentService {
     });
 
     if (!config) {
-      throw new NotFoundError(`Configuración de plataforma ${platformId} no encontrada`);
+      throw new NotFoundError(`Platform configuration ${platformId} not found`);
     }
 
-    // Si está deshabilitando, no hay restricciones
+    // If disabling, no restrictions
     if (!enable) {
       return prisma.tenantPlatformConfig.update({
         where: { id: config.id },
@@ -223,13 +214,13 @@ class MarginConsentService {
       });
     }
 
-    // Si está habilitando CON fallback pricing, verificar Safety Lock
+    // If enabling WITH fallback pricing, verify Safety Lock
     const willUseFallback = useFallbackPricing ?? config.useFallbackPricing;
     
     if (willUseFallback && !config.marginConsentAcceptedAt) {
       throw new BadRequestError(
         MARGIN_CONSENT_REQUIRED_MESSAGE +
-        ' Llame primero a POST /delivery/platforms/:id/accept-margin-consent'
+        ' Call POST /delivery/platforms/:id/accept-margin-consent first'
       );
     }
 
@@ -243,21 +234,21 @@ class MarginConsentService {
   }
 
   /**
-   * Calcula el precio efectivo para un producto en una plataforma.
-   * 
-   * ESTRATEGIA DE PRECIO (Smart Fallback):
-   * 1. Si existe ProductChannelPrice → Usar ese precio específico
-   * 2. Si NO existe Y useFallbackPricing = true → Precio base × (1 + defaultMarkup%)
-   * 3. Si NO existe Y useFallbackPricing = false → Precio base (con advertencia)
-   * 
-   * @returns Precio calculado con metadata de origen
+   * Calculate the effective price for a product on a platform.
+   *
+   * PRICING STRATEGY (Smart Fallback):
+   * 1. If ProductChannelPrice exists → Use that specific price
+   * 2. If NOT exists AND useFallbackPricing = true → Base price × (1 + defaultMarkup%)
+   * 3. If NOT exists AND useFallbackPricing = false → Base price (with warning)
+   *
+   * @returns Calculated price with source metadata
    */
   async getEffectivePrice(
     productId: number, 
     platformId: number | null,
     tenantId: number | null = null
   ): Promise<{ price: number; source: 'channel' | 'fallback' | 'base'; markup?: number }> {
-    // Pedido LOCAL → precio base del producto
+    // LOCAL order → product base price
     if (platformId === null) {
       const product = await prisma.product.findFirst({
         where: { id: productId, ...(tenantId ? { tenantId } : {}) },
@@ -267,7 +258,7 @@ class MarginConsentService {
       return { price: Number(product.price), source: 'base' };
     }
 
-    // Buscar precio específico del canal
+    // Search for channel-specific price
     const channelPrice = await prisma.productChannelPrice.findUnique({
       where: { 
         productId_deliveryPlatformId: { productId, deliveryPlatformId: platformId }
@@ -278,12 +269,12 @@ class MarginConsentService {
       return { price: Number(channelPrice.price), source: 'channel' };
     }
 
-    // No hay precio específico → Evaluar fallback
-    // Necesitamos saber si la plataforma (para este tenant) tiene fallback activado
-    
-    // Si no hay tenantId (caso legacy o error), asumimos sin fallback
+    // No specific price → Evaluate fallback
+    // We need to know if the platform (for this tenant) has fallback enabled
+
+    // If no tenantId (legacy case or error), assume no fallback
     if (!tenantId) {
-        // Fallback a comportamiento seguro: precio base
+        // Fallback to safe behavior: base price
         const product = await prisma.product.findFirst({
             where: { id: productId },
             select: { price: true }
@@ -308,15 +299,15 @@ class MarginConsentService {
     ]);
 
     if (!product) throw new NotFoundError(`Product ${productId} not found`);
-    // Si no hay config, actuamos como si no hubiera fallback
+    // If no config, act as if no fallback
     
     const basePrice = Number(product.price);
 
-    // Si tiene fallback pricing activado, aplicar markup
+    // If fallback pricing is active, apply markup
     if (config?.useFallbackPricing && config.defaultMarkup) {
       const markup = Number(config.defaultMarkup) / 100;  // 25 → 0.25
       const adjustedPrice = basePrice * (1 + markup);
-      // Redondear a 2 decimales para precisión financiera
+      // Round to 2 decimals for financial precision
       const finalPrice = Math.round(adjustedPrice * 100) / 100;
       return { 
         price: finalPrice, 
@@ -325,7 +316,7 @@ class MarginConsentService {
       };
     }
 
-    // Sin fallback → usar precio base (potencialmente con pérdida)
+    // No fallback → use base price (potentially at a loss)
     return { price: basePrice, source: 'base' };
   }
 }

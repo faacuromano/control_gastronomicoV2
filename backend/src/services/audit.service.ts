@@ -1,6 +1,6 @@
 import { Request } from 'express';
 import { prisma } from '../lib/prisma';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, Prisma } from '@prisma/client';
 import { logger } from '../utils/logger';
 
 export interface AuditContext {
@@ -45,17 +45,16 @@ export class AuditService {
                 return;
             }
 
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const data: any = {
+            const data: Prisma.AuditLogUncheckedCreateInput = {
                 action,
                 entity,
                 entityId,
-                tenantId: context.tenantId,
+                tenantId: context.tenantId!,
+                ...(context.userId !== undefined && { userId: context.userId }),
+                ...(context.ipAddress !== undefined && { ipAddress: context.ipAddress }),
+                ...(context.userAgent !== undefined && { userAgent: context.userAgent }),
+                ...(details !== undefined && { details: details as Prisma.InputJsonValue }),
             };
-            if (context.userId !== undefined) data.userId = context.userId;
-            if (context.ipAddress !== undefined) data.ipAddress = context.ipAddress;
-            if (context.userAgent !== undefined) data.userAgent = context.userAgent;
-            if (details !== undefined) data.details = details;
 
             await prisma.auditLog.create({ data });
         } catch (error) {
@@ -135,22 +134,19 @@ export class AuditService {
         offset?: number;
     }) {
         // Build where clause dynamically to avoid undefined values
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const where: any = {
-            tenantId: filters.tenantId // Always required
+        const where: Prisma.AuditLogWhereInput = {
+            tenantId: filters.tenantId, // Always required
+            ...(filters.userId !== undefined && { userId: filters.userId }),
+            ...(filters.entity !== undefined && { entity: filters.entity }),
+            ...(filters.entityId !== undefined && { entityId: filters.entityId }),
+            ...(filters.action !== undefined && { action: filters.action }),
+            ...((filters.startDate || filters.endDate) && {
+                createdAt: {
+                    ...(filters.startDate && { gte: filters.startDate }),
+                    ...(filters.endDate && { lte: filters.endDate }),
+                },
+            }),
         };
-
-        if (filters.userId !== undefined) where.userId = filters.userId;
-        if (filters.entity !== undefined) where.entity = filters.entity;
-        if (filters.entityId !== undefined) where.entityId = filters.entityId;
-        if (filters.action !== undefined) where.action = filters.action;
-        // Note: tenantId is set above as required — no conditional needed
-        
-        if (filters.startDate || filters.endDate) {
-            where.createdAt = {};
-            if (filters.startDate) where.createdAt.gte = filters.startDate;
-            if (filters.endDate) where.createdAt.lte = filters.endDate;
-        }
 
         return prisma.auditLog.findMany({
             where,

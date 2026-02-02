@@ -7,6 +7,7 @@
  */
 
 import { Prisma, PaymentMethod, PaymentStatus } from '@prisma/client';
+import { ValidationError } from '../utils/errors';
 
 /**
  * Transaction context type for Prisma interactive transactions.
@@ -90,7 +91,7 @@ export class PaymentService {
             this.validatePaymentAmounts(splitPayments, orderTotal);
             for (const payment of splitPayments) {
                 if (payment.amount <= 0) {
-                    throw new Error(`Invalid payment amount: ${payment.amount}`);
+                    throw new ValidationError(`Invalid payment amount: ${payment.amount}`);
                 }
                 paymentsToCreate.push({
                     amount: payment.amount,
@@ -132,7 +133,7 @@ export class PaymentService {
         // Allow 10% overpayment for rounding, beyond that throw
         const maxAllowed = orderTotal * 1.1;
         if (totalPayments > maxAllowed) {
-            throw new Error(
+            throw new ValidationError(
                 `Payment total (${totalPayments}) exceeds order total (${orderTotal}) by more than 10%`
             );
         }

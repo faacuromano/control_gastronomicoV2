@@ -113,14 +113,14 @@ export async function executeIfEnabled<T>(
  * Accepts either flat fields or a nested { features: {...} } structure from the frontend.
  */
 export async function updateTenantConfig(
-    updates: Record<string, any>,
+    updates: Record<string, unknown>,
     tenantId: number
 ): Promise<TenantConfig> {
     const config = await getTenantConfig(tenantId);
 
     // Flatten nested "features" object into top-level columns
     const { features, ...rest } = updates;
-    const flatUpdates: Record<string, any> = { ...rest };
+    const flatUpdates: Record<string, unknown> = { ...rest };
     if (features && typeof features === 'object') {
         for (const [key, value] of Object.entries(features)) {
             flatUpdates[key] = value;
@@ -133,7 +133,7 @@ export async function updateTenantConfig(
         'enableStock', 'enableDelivery', 'enableKDS', 'enableFiscal', 'enableDigital', 'enableBlindCount',
         'qrMenuEnabled', 'qrMenuMode', 'qrSelfOrderEnabled', 'qrMenuPdfUrl', 'qrMenuBannerUrl', 'qrMenuTheme',
     ]);
-    const safeUpdates: Record<string, any> = {};
+    const safeUpdates: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(flatUpdates)) {
         if (allowedFields.has(key)) {
             safeUpdates[key] = value;

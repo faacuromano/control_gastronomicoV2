@@ -6,8 +6,9 @@
  */
 
 import { prisma } from '../lib/prisma';
+import { Prisma } from '@prisma/client';
 import { nanoid } from 'nanoid';
-import { NotFoundError } from '../utils/errors';
+import { NotFoundError, ConflictError } from '../utils/errors';
 
 export interface QrMenuConfig {
     enabled: boolean;
@@ -15,7 +16,7 @@ export interface QrMenuConfig {
     selfOrderEnabled: boolean;
     pdfUrl: string | null;
     bannerUrl: string | null;
-    theme: any;
+    theme: Prisma.JsonValue;
     businessName: string;
 }
 
@@ -61,22 +62,19 @@ export class QrService {
     /**
      * Update QR menu configuration
      */
-    async updateConfig(tenantId: number, updates: Partial<{
-        qrMenuEnabled: boolean;
-        qrMenuMode: 'INTERACTIVE' | 'STATIC';
-        qrSelfOrderEnabled: boolean;
-        qrMenuPdfUrl: string | null;
-        qrMenuBannerUrl: string | null;
-        qrMenuTheme: any;
-    }>): Promise<QrMenuConfig> {
-        const existingconfig = await prisma.tenantConfig.findFirst({ where: { tenantId } });
-        if (!existingconfig) throw new NotFoundError('Config not found');
+    async updateConfig(tenantId: number, updates: Prisma.TenantConfigUpdateManyMutationInput): Promise<QrMenuConfig> {
+        // SEC-035: Use updateMany with tenantId for defense-in-depth
+        const existingConfig = await prisma.tenantConfig.findFirst({ where: { tenantId } });
+        if (!existingConfig) throw new NotFoundError('Config not found');
 
-        // SAFE: findFirst at L72 verifies tenant ownership before update
-        const config = await prisma.tenantConfig.update({
-            where: { id: existingconfig.id },
+        await prisma.tenantConfig.updateMany({
+            where: { id: existingConfig.id, tenantId },
             data: updates
         });
+
+        // Re-fetch to get updated config
+        const config = await prisma.tenantConfig.findFirst({ where: { tenantId } });
+        if (!config) throw new NotFoundError('Config not found');
 
         return {
             enabled: config.qrMenuEnabled,
@@ -127,15 +125,15 @@ export class QrService {
                     lastScannedAt: qrCode.lastScannedAt,
                     createdAt: qrCode.createdAt
                 };
-            } catch (error: any) {
+            } catch (error: unknown) {
                 // P2002 = unique constraint violation - retry with new code
-                if (error?.code === 'P2002' && attempt < MAX_RETRIES - 1) {
+                if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && attempt < MAX_RETRIES - 1) {
                     continue;
                 }
                 throw error;
             }
         }
-        throw new Error('Failed to generate unique QR code after multiple attempts');
+        throw new ConflictError('Failed to generate unique QR code after multiple attempts');
     }
 
     /**
@@ -187,7 +185,7 @@ export class QrService {
         }
 
         const qrTenantId = qrCode.tenantId;
-        if (!qrTenantId) throw new Error('QR Code has no tenant associated');
+        if (!qrTenantId) throw new NotFoundError('QR Code has no tenant associated');
 
         // Check if the global module is enabled FOR THIS TENANT
         const tenantConfig = await prisma.tenantConfig.findFirst({ where: { tenantId: qrTenantId } });
@@ -236,12 +234,19 @@ export class QrService {
             throw new NotFoundError('QR code not found');
         }
 
-        // SAFE: findFirst L221 verifies tenant ownership
-        const updated = await prisma.qrCode.update({
-            where: { id },
-            data: { isActive: !current.isActive },
+        // SEC-034: Use updateMany with tenantId for defense-in-depth
+        await prisma.qrCode.updateMany({
+            where: { id, tenantId },
+            data: { isActive: !current.isActive }
+        });
+
+        // Re-fetch to get full data with relations
+        const updated = await prisma.qrCode.findFirst({
+            where: { id, tenantId },
             include: { table: { select: { name: true } } }
         });
+
+        if (!updated) throw new NotFoundError('QR code not found');
 
         return {
             id: updated.id,

@@ -15,6 +15,7 @@
 
 import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
+import { NotFoundError } from '../utils/errors';
 
 interface OrderItemForRouting {
     id: number;
@@ -101,7 +102,7 @@ export class PrintRoutingService {
         });
 
         if (!order) {
-            throw new Error(`Order ${orderId} not found`);
+            throw new NotFoundError(`Order ${orderId}`);
         }
 
         // 2. Get area overrides (if order has a table)
@@ -205,7 +206,7 @@ export class PrintRoutingService {
         if (areaId) {
             // Verify area ownership
             const area = await prisma.area.findFirst({ where: { id: areaId, tenantId } });
-            if (!area) throw new Error('Area not found or access denied');
+            if (!area) throw new NotFoundError('Area');
 
             const overrides = await prisma.areaPrinterOverride.findMany({
                 where: { areaId, tenantId },
@@ -342,12 +343,12 @@ export class PrintRoutingService {
     async setCategoryPrinter(tenantId: number, categoryId: number, printerId: number | null) {
         // Verify ownership
         const category = await prisma.category.findFirst({ where: { id: categoryId, tenantId } });
-        if (!category) throw new Error('Category not found');
+        if (!category) throw new NotFoundError('Category');
 
         // SEC-021: Verify printer belongs to same tenant
         if (printerId !== null) {
             const printer = await prisma.printer.findFirst({ where: { id: printerId, tenantId } });
-            if (!printer) throw new Error('Printer not found or belongs to another tenant');
+            if (!printer) throw new NotFoundError('Printer not found or belongs to another tenant');
         }
 
         // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
@@ -364,16 +365,16 @@ export class PrintRoutingService {
     async setAreaOverride(tenantId: number, areaId: number, categoryId: number | null, printerId: number) {
         // Verify ownership of area
         const area = await prisma.area.findFirst({ where: { id: areaId, tenantId } });
-        if (!area) throw new Error('Area not found');
+        if (!area) throw new NotFoundError('Area not found');
 
         // SEC-021: Verify printer belongs to same tenant
         const printer = await prisma.printer.findFirst({ where: { id: printerId, tenantId } });
-        if (!printer) throw new Error('Printer not found or belongs to another tenant');
+        if (!printer) throw new NotFoundError('Printer not found or belongs to another tenant');
 
         // SEC-021: Verify category belongs to same tenant (if specified)
         if (categoryId !== null) {
             const category = await prisma.category.findFirst({ where: { id: categoryId, tenantId } });
-            if (!category) throw new Error('Category not found or belongs to another tenant');
+            if (!category) throw new NotFoundError('Category not found or belongs to another tenant');
         }
 
         // Prisma doesn't generate compound unique for nullable fields correctly
@@ -401,7 +402,7 @@ export class PrintRoutingService {
     async removeAreaOverride(tenantId: number, areaId: number, categoryId: number | null) {
         // Verify ownership
         const area = await prisma.area.findFirst({ where: { id: areaId, tenantId } });
-        if (!area) throw new Error('Area not found');
+        if (!area) throw new NotFoundError('Area not found');
 
         // Find and delete since compound unique with nullable doesn't work directly
         const existing = await prisma.areaPrinterOverride.findFirst({

@@ -1,15 +1,15 @@
 /**
  * @fileoverview HMAC Validation Middleware
- * 
- * Middleware para validar firmas HMAC de webhooks entrantes.
- * CRÍTICO PARA SEGURIDAD: Previene inyección de pedidos falsos.
- * 
- * FLUJO:
- * 1. Leer raw body (buffer, no parseado)
- * 2. Obtener signature del header apropiado según plataforma
- * 3. Validar con el adapter correspondiente
- * 4. Si válido, continuar; si no, 401 Unauthorized
- * 
+ *
+ * Middleware to validate HMAC signatures on incoming webhooks.
+ * CRITICAL FOR SECURITY: Prevents injection of fake orders.
+ *
+ * FLOW:
+ * 1. Read raw body (buffer, not parsed)
+ * 2. Get signature from the appropriate header per platform
+ * 3. Validate with the corresponding adapter
+ * 4. If valid, continue; if not, 401 Unauthorized
+ *
  * @module integrations/delivery/webhooks/hmac.middleware
  */
 
@@ -23,7 +23,7 @@ import { logger } from '../../../utils/logger';
 // ============================================================================
 
 /**
- * Mapeo de plataformas a sus headers de firma.
+ * Platform-to-signature-header mapping.
  */
 const SIGNATURE_HEADERS: Record<string, string> = {
   [DeliveryPlatformCode.RAPPI]: 'x-rappi-signature',
@@ -37,9 +37,9 @@ const SIGNATURE_HEADERS: Record<string, string> = {
 // ============================================================================
 
 /**
- * Crea un middleware de validación HMAC para una plataforma específica.
- * 
- * @param platformCode - Código de la plataforma (RAPPI, GLOVO, etc.)
+ * Creates an HMAC validation middleware for a specific platform.
+ *
+ * @param platformCode - Platform code (RAPPI, GLOVO, etc.)
  * @returns Express middleware
  * 
  * @example
@@ -63,7 +63,7 @@ export function validateHmac(platformCode: string) {
     const startTime = Date.now();
 
     try {
-      // 1. Obtener firma del header
+      // 1. Get signature from header
       const signature = req.headers[headerName] as string | undefined;
 
       if (!signature) {
@@ -78,8 +78,8 @@ export function validateHmac(platformCode: string) {
         });
       }
 
-      // 2. Verificar que tenemos el raw body
-      // IMPORTANTE: Se debe usar express.raw() antes de este middleware
+      // 2. Verify we have the raw body
+      // IMPORTANT: express.raw() must be used before this middleware
       const rawBody = req.body as Buffer;
 
       if (!Buffer.isBuffer(rawBody)) {
@@ -93,7 +93,7 @@ export function validateHmac(platformCode: string) {
         });
       }
 
-      // 3. Obtener adapter para validar
+      // 3. Get adapter for validation
       const adapter = await AdapterFactory.getByPlatformCode(platformCode);
 
       // 4. Validar firma
@@ -111,7 +111,7 @@ export function validateHmac(platformCode: string) {
         });
       }
 
-      // 5. Parsear body para uso posterior con protección contra JSON bombing (IP-003)
+      // 5. Parse body for later use with JSON bombing protection (IP-003)
       const rawString = rawBody.toString('utf-8');
       
       // FIX IP-003: Validate JSON depth before parsing to prevent DoS
@@ -136,7 +136,7 @@ export function validateHmac(platformCode: string) {
       
       req.parsedBody = JSON.parse(rawString);
 
-      // 6. Log de éxito
+      // 6. Log success
       const duration = Date.now() - startTime;
       logger.debug('Webhook signature validated', {
         platform: platformCode,
@@ -159,8 +159,8 @@ export function validateHmac(platformCode: string) {
 }
 
 /**
- * Middleware genérico que detecta la plataforma desde el path.
- * Para rutas como /webhook/:platform
+ * Generic middleware that detects the platform from the path.
+ * For routes like /webhook/:platform
  */
 export async function validateHmacDynamic(
   req: Request,
@@ -189,13 +189,13 @@ export async function validateHmacDynamic(
     });
   }
 
-  // Delegar al middleware específico
+  // Delegate to platform-specific middleware
   return validateHmac(platformCode)(req, res, next);
 }
 
 /**
- * Middleware de bypass para desarrollo local.
- * NUNCA usar en producción.
+ * Bypass middleware for local development.
+ * NEVER use in production.
  */
 export function skipHmacInDevelopment(
   req: Request,
@@ -213,7 +213,7 @@ export function skipHmacInDevelopment(
       path: req.path,
     });
 
-    // Parsear body si es buffer
+    // Parse body if it's a buffer
     if (Buffer.isBuffer(req.body)) {
       req.parsedBody = JSON.parse(req.body.toString('utf-8'));
     } else {

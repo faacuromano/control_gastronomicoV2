@@ -6,7 +6,7 @@
  */
 
 import { prisma } from '../lib/prisma';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, Prisma } from '@prisma/client';
 import { auditService, AuditContext } from './audit.service';
 import { logger } from '../utils/logger';
 import { ValidationError } from '../utils/errors';
@@ -43,15 +43,17 @@ export class BulkPriceUpdateService {
      * Get all products with current prices for the bulk update grid
      */
     async getProductsForPriceGrid(tenantId: number, filters?: { categoryId?: number | undefined }): Promise<ProductPriceChange[]> {
-        const where: any = { isActive: true, tenantId };
+        const where: Prisma.ProductWhereInput = { isActive: true, tenantId };
         if (filters?.categoryId) {
             where.categoryId = filters.categoryId;
         }
 
+        // PERF-012: Add limit to prevent unbounded query for tenants with many products
         const products = await prisma.product.findMany({
             where,
             include: { category: true },
-            orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }]
+            orderBy: [{ category: { name: 'asc' } }, { name: 'asc' }],
+            take: 500
         });
 
         return products.map(p => ({

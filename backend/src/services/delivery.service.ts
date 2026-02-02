@@ -272,7 +272,7 @@ class DeliveryService {
     // ORDER DELIVERY HELPERS
     // ========================================================================
 
-    async getDeliveryOrders(tenantId: number, status?: string): Promise<any[]> {
+    async getDeliveryOrders(tenantId: number, status?: string) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 

@@ -148,7 +148,8 @@ export class OrderService {
       );
 
       // 6. Build order create data (using unchecked create with scalar FKs)
-      const orderData: any = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Dynamic object built conditionally, validated by Prisma at runtime
+      const orderData: Prisma.OrderUncheckedCreateInput & Record<string, any> = {
         tenantId,
         orderNumber,
         channel: data.channel ?? 'POS',

@@ -1,13 +1,13 @@
 /**
  * @fileoverview Rappi Adapter Implementation
- * 
- * Implementación concreta del adapter para la plataforma Rappi.
- * 
- * DOCUMENTACIÓN RAPPI:
- * - Webhooks: Firma HMAC-SHA256 en header X-Rappi-Signature
- * - Timeout: 4 minutos para aceptar/rechazar
+ *
+ * Concrete adapter implementation for the Rappi platform.
+ *
+ * RAPPI DOCS:
+ * - Webhooks: HMAC-SHA256 signature in X-Rappi-Signature header
+ * - Timeout: 4 minutes to accept/reject
  * - API Base: https://services.rappi.com.ar/api/v1
- * 
+ *
  * @module integrations/delivery/adapters/RappiAdapter
  */
 
@@ -15,6 +15,7 @@ import axios, { type AxiosInstance } from 'axios';
 import { z } from 'zod';
 import { AbstractDeliveryAdapter, type AdapterConfig } from './AbstractDeliveryAdapter';
 import type { DeliveryPlatform } from '@prisma/client';
+import { ValidationError } from '../../../utils/errors';
 import {
   DeliveryPlatformCode,
   NormalizedOrder,
@@ -30,11 +31,11 @@ import {
 } from '../types/normalized.types';
 
 // ============================================================================
-// TIPOS ESPECÍFICOS DE RAPPI (Raw Payloads)
+// RAPPI-SPECIFIC TYPES (Raw Payloads)
 // ============================================================================
 
 /**
- * Zod schema para validar el payload del webhook de Rappi.
+ * Zod schema to validate the Rappi webhook payload.
  */
 const RappiToppingSchema = z.object({
   sku: z.string(),
@@ -97,8 +98,8 @@ const RappiOrderPayloadSchema = z.object({
 });
 
 /**
- * Payload raw de nuevo pedido de Rappi.
- * Estructura basada en documentación de Rappi Partners API.
+ * Raw new order payload from Rappi.
+ * Structure based on Rappi Partners API documentation.
  */
 interface RappiOrderPayload {
   order_id: string;
@@ -155,7 +156,7 @@ interface RappiOrderPayload {
 }
 
 /**
- * Mapeo de estados de Rappi → Estados normalizados
+ * Rappi status → Normalized status mapping
  */
 const RAPPI_STATUS_MAP: Record<string, NormalizedOrderStatus> = {
   'NEW': NormalizedOrderStatus.NEW,
@@ -170,7 +171,7 @@ const RAPPI_STATUS_MAP: Record<string, NormalizedOrderStatus> = {
 };
 
 /**
- * Mapeo inverso: Estados normalizados → Estados de Rappi
+ * Reverse mapping: Normalized status → Rappi status
  */
 const NORMALIZED_TO_RAPPI_STATUS: Record<NormalizedOrderStatus, string> = {
   [NormalizedOrderStatus.NEW]: 'NEW',
@@ -204,7 +205,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
       },
     });
 
-    // Log de requests para debugging
+    // Log requests for debugging
     this.httpClient.interceptors.request.use((config) => {
       this.log('debug', 'Outgoing request to Rappi', {
         method: config.method,
@@ -215,7 +216,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   // ============================================================================
-  // IMPLEMENTACIÓN DE MÉTODOS ABSTRACTOS
+  // ABSTRACT METHOD IMPLEMENTATIONS
   // ============================================================================
 
   protected get platformCode(): DeliveryPlatformCode {
@@ -228,8 +229,8 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Valida la firma HMAC del webhook de Rappi.
-   * Rappi usa HMAC-SHA256 con el body raw.
+   * Validates the Rappi webhook HMAC signature.
+   * Rappi uses HMAC-SHA256 with the raw body.
    */
   validateWebhookSignature(signature: string, rawBody: Buffer): boolean {
     if (!this.config.webhookSecret) {
@@ -251,24 +252,24 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Parsea el payload del webhook de Rappi al formato normalizado.
+   * Parses the Rappi webhook payload into normalized format.
    */
   parseWebhookPayload(rawPayload: unknown): ProcessedWebhook {
-    // Validar el payload con Zod
+    // Validate payload with Zod
     const parsed = RappiOrderPayloadSchema.safeParse(rawPayload);
     if (!parsed.success) {
       this.log('error', 'Invalid Rappi webhook payload', {
         issues: parsed.error.issues,
       });
-      throw new Error(`Invalid Rappi webhook payload: ${parsed.error.message}`);
+      throw new ValidationError(`Invalid Rappi webhook payload: ${parsed.error.message}`);
     }
 
     const payload = parsed.data as RappiOrderPayload;
 
-    // Determinar tipo de evento
+    // Determine event type
     const eventType = this.determineEventType(payload);
 
-    // Convertir a formato normalizado
+    // Convert to normalized format
     const order = this.normalizeOrder(payload);
 
     return {
@@ -282,7 +283,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Acepta un pedido en Rappi.
+   * Accepts an order in Rappi.
    */
   async acceptOrder(externalOrderId: string, estimatedPrepTime: number): Promise<void> {
     try {
@@ -301,7 +302,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Rechaza un pedido en Rappi.
+   * Rejects an order in Rappi.
    */
   async rejectOrder(externalOrderId: string, reason: string): Promise<void> {
     try {
@@ -320,7 +321,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Actualiza el estado del pedido en Rappi.
+   * Updates the order status in Rappi.
    */
   async updateOrderStatus(
     externalOrderId: string,
@@ -360,7 +361,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Envía el menú a Rappi.
+   * Pushes the menu to Rappi.
    */
   async pushMenu(products: Array<{
     productId: number;
@@ -375,7 +376,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
     const errors: Array<{ productId: number; error: string }> = [];
     let syncedProducts = 0;
 
-    // Rappi espera el menú en un formato específico
+    // Rappi expects the menu in a specific format
     const rappiMenu = {
       categories: this.groupProductsByCategory(products),
       updated_at: new Date().toISOString(),
@@ -391,7 +392,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
         error: error instanceof Error ? error.message : String(error),
       });
       
-      // Marcar todos como fallidos
+      // Mark all as failed
       products.forEach((p) => {
         errors.push({ productId: p.productId, error: 'Menu sync failed' });
       });
@@ -407,7 +408,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Actualiza disponibilidad de un producto en Rappi.
+   * Updates product availability in Rappi.
    */
   async updateProductAvailability(update: AvailabilityUpdate): Promise<void> {
     try {
@@ -430,7 +431,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
   }
 
   // ============================================================================
-  // MÉTODOS PRIVADOS DE NORMALIZACIÓN
+  // PRIVATE NORMALIZATION METHODS
   // ============================================================================
 
   private determineEventType(payload: RappiOrderPayload): WebhookEventType {
@@ -512,7 +513,7 @@ export class RappiAdapter extends AbstractDeliveryAdapter {
         price: t.price,
         quantity: t.quantity,
       })),
-      removedIngredients: [], // Rappi manda esto en comments normalmente
+      removedIngredients: [], // Rappi sends this in comments normally
     };
   }
 

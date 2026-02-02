@@ -31,6 +31,7 @@ import { executeIfEnabled } from '../../../services/featureFlags.service';
 import { StockMovementService } from '../../../services/stockMovement.service';
 import { orderNumberService } from '../../../services/orderNumber.service';
 import { logger } from '../../../utils/logger';
+import { ValidationError } from '../../../utils/errors';
 import { StockMoveType, OrderStatus } from '@prisma/client';
 import {
   DeliveryPlatformCode,
@@ -166,7 +167,7 @@ async function processNewOrder(
   // FIX P0-SEC: Resolve tenant FIRST via storeId, then find tenant-scoped platform
   // 1. Resolver Tenant (Multi-Tenancy)
   let tenantId: number | null = null;
-  let deliveryPlatform: any = null;
+  let deliveryPlatform: Awaited<ReturnType<typeof prisma.deliveryPlatform.findFirst>> = null;
 
   if (normalizedOrder.storeId) {
     // Find tenant config by storeId + platform code via the platform's tenantConfig
@@ -195,7 +196,7 @@ async function processNewOrder(
   }
 
   if (!tenantId || !deliveryPlatform) {
-    throw new Error(`Cannot create delivery order: tenantId could not be resolved for storeId=${normalizedOrder.storeId}, platform=${normalizedOrder.platform}`);
+    throw new ValidationError(`Cannot create delivery order: tenantId could not be resolved for storeId=${normalizedOrder.storeId}, platform=${normalizedOrder.platform}`);
   }
 
   // 2.1. Mapear productos externos a internos (fuera de transacción - solo lectura)

@@ -9,9 +9,14 @@ const CACHE_MAX_SIZE = 10_000;
 // Cache Interface + Implementations
 // =============================================================================
 
+interface CachedResponse {
+    response: unknown;
+    status: number;
+}
+
 interface IdempotencyCache {
-    get(key: string): Promise<{ response: any; status: number } | null>;
-    set(key: string, value: { response: any; status: number }): Promise<void>;
+    get(key: string): Promise<CachedResponse | null>;
+    set(key: string, value: CachedResponse): Promise<void>;
 }
 
 /**
@@ -19,7 +24,7 @@ interface IdempotencyCache {
  * Used when Redis is not available.
  */
 class MemoryCache implements IdempotencyCache {
-    private cache = new Map<string, { response: any; status: number; expiry: number }>();
+    private cache = new Map<string, CachedResponse & { expiry: number }>();
 
     constructor() {
         // Cleanup expired entries every minute
@@ -31,7 +36,7 @@ class MemoryCache implements IdempotencyCache {
         }, 60 * 1000).unref();
     }
 
-    async get(key: string): Promise<{ response: any; status: number } | null> {
+    async get(key: string): Promise<CachedResponse | null> {
         const entry = this.cache.get(key);
         if (entry && entry.expiry > Date.now()) {
             return { response: entry.response, status: entry.status };
@@ -40,7 +45,7 @@ class MemoryCache implements IdempotencyCache {
         return null;
     }
 
-    async set(key: string, value: { response: any; status: number }): Promise<void> {
+    async set(key: string, value: CachedResponse): Promise<void> {
         if (this.cache.size >= CACHE_MAX_SIZE) {
             const oldestKey = this.cache.keys().next().value;
             if (oldestKey) this.cache.delete(oldestKey);
@@ -56,26 +61,32 @@ class MemoryCache implements IdempotencyCache {
  * Redis-backed cache for multi-pod deployments.
  * Uses SETEX for automatic TTL-based expiration.
  */
+/** Minimal ioredis-compatible interface for idempotency cache */
+interface RedisLike {
+    get(key: string): Promise<string | null>;
+    setex(key: string, seconds: number, value: string): Promise<string>;
+}
+
 class RedisCache implements IdempotencyCache {
-    private redis: any; // ioredis instance
+    private redis: RedisLike;
     private prefix = 'idempotency:';
 
-    constructor(redis: any) {
+    constructor(redis: RedisLike) {
         this.redis = redis;
     }
 
-    async get(key: string): Promise<{ response: any; status: number } | null> {
+    async get(key: string): Promise<CachedResponse | null> {
         try {
             const raw = await this.redis.get(this.prefix + key);
             if (!raw) return null;
-            return JSON.parse(raw);
+            return JSON.parse(raw) as CachedResponse;
         } catch (err) {
             logger.warn('Redis idempotency get failed, skipping cache', { error: (err as Error).message });
             return null;
         }
     }
 
-    async set(key: string, value: { response: any; status: number }): Promise<void> {
+    async set(key: string, value: CachedResponse): Promise<void> {
         try {
             await this.redis.setex(this.prefix + key, CACHE_TTL_SECONDS, JSON.stringify(value));
         } catch (err) {
@@ -165,7 +176,7 @@ export function idempotency(req: Request, res: Response, next: NextFunction): vo
 
         // Intercept the response to cache it
         const originalJson = res.json.bind(res);
-        res.json = (body: any) => {
+        res.json = (body: unknown) => {
             // Only cache successful responses (2xx)
             if (res.statusCode >= 200 && res.statusCode < 300) {
                 store.set(scopedKey, {

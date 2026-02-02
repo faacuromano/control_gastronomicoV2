@@ -277,13 +277,14 @@ export class CashShiftService {
             throw new NotFoundError('User not found');
         }
 
+        // PERF-013: Cap limit to prevent unbounded queries
         return await prisma.cashShift.findMany({
             where: {
                 userId,
                 tenantId: user.tenantId
             },
             orderBy: { startTime: 'desc' },
-            take: limit
+            take: Math.min(limit, 100)
         });
     }
 
@@ -309,7 +310,8 @@ export class CashShiftService {
             orderBy: { startTime: 'desc' },
             include: {
                 user: { select: { name: true } }
-            }
+            },
+            take: 200
         });
     }
 }

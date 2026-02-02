@@ -105,19 +105,20 @@ export class OrderVoidService {
             const totalRemoved = itemPrice + modifiersPrice;
             
             // 4. Reverse stock if product is stockable
+            // PERF-010: Use registerBatch instead of N individual register() calls
             let stockReversed = false;
             if (item.product.isStockable && item.product.ingredients.length > 0) {
-                for (const ing of item.product.ingredients) {
-                    const qtyToRestore = Number(ing.quantity) * item.quantity;
-                    await stockService.register(
-                        ing.ingredientId,
-                        item.order.tenantId!,
-                        StockMoveType.ADJUSTMENT, // Use ADJUSTMENT for reversal
-                        qtyToRestore,
-                        `Void item #${item.id} - ${input.reason}`,
-                        tx
-                    );
-                }
+                const stockUpdates = item.product.ingredients.map(ing => ({
+                    ingredientId: ing.ingredientId,
+                    quantity: Number(ing.quantity) * item.quantity
+                }));
+                await stockService.registerBatch(
+                    stockUpdates,
+                    item.order.tenantId!,
+                    StockMoveType.ADJUSTMENT,
+                    `Void item #${item.id} - ${input.reason}`,
+                    tx
+                );
                 stockReversed = true;
                 logger.info('Stock reversed for voided item', {
                     orderItemId: item.id,
@@ -210,13 +211,13 @@ export class OrderVoidService {
      */
     getVoidReasons(): { code: VoidReason; label: string }[] {
         return [
-            { code: 'CUSTOMER_CHANGED_MIND', label: 'Cliente cambió de opinión' },
-            { code: 'WRONG_ITEM', label: 'Item incorrecto' },
-            { code: 'QUALITY_ISSUE', label: 'Problema de calidad' },
-            { code: 'OUT_OF_STOCK', label: 'Sin stock' },
-            { code: 'KITCHEN_ERROR', label: 'Error de cocina' },
-            { code: 'DUPLICATE_ENTRY', label: 'Entrada duplicada' },
-            { code: 'OTHER', label: 'Otro' }
+            { code: 'CUSTOMER_CHANGED_MIND', label: 'Customer changed mind' },
+            { code: 'WRONG_ITEM', label: 'Wrong item' },
+            { code: 'QUALITY_ISSUE', label: 'Quality issue' },
+            { code: 'OUT_OF_STOCK', label: 'Out of stock' },
+            { code: 'KITCHEN_ERROR', label: 'Kitchen error' },
+            { code: 'DUPLICATE_ENTRY', label: 'Duplicate entry' },
+            { code: 'OTHER', label: 'Other' }
         ];
     }
 }

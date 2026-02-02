@@ -109,8 +109,8 @@ export class InsufficientStockError extends ApiError {
         required: number, 
         available: number
     ) {
-        const message = `No hay suficiente "${ingredientName}" para preparar "${productName}". ` +
-                        `Se necesitan ${required} pero solo hay ${available} disponibles.`;
+        const message = `Insufficient "${ingredientName}" to prepare "${productName}". ` +
+                        `Required: ${required}, available: ${available}.`;
         super('INSUFFICIENT_STOCK', message, 400, {
             productName,
             ingredientName,

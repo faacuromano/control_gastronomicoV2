@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { NotFoundError, ValidationError, ConflictError } from '../utils/errors';
 
@@ -39,7 +40,7 @@ export const getCategoryById = async (id: number, tenantId: number) => {
     return category;
 };
 
-export const createCategory = async (data: any) => {
+export const createCategory = async (data: { tenantId: number; name: string; printerId?: number }) => {
     const validation = CategorySchema.safeParse(data);
     if (!validation.success) {
         throw new ValidationError('Invalid data', validation.error.issues);
@@ -54,7 +55,7 @@ export const createCategory = async (data: any) => {
     });
 };
 
-export const updateCategory = async (id: number, tenantId: number, data: any) => {
+export const updateCategory = async (id: number, tenantId: number, data: { name?: string; printerId?: number }) => {
     const validation = CategorySchema.partial().safeParse(data);
     if (!validation.success) {
         throw new ValidationError('Invalid data', validation.error.issues);
@@ -63,8 +64,9 @@ export const updateCategory = async (id: number, tenantId: number, data: any) =>
     const exists = await prisma.category.findFirst({ where: { id, tenantId } });
     if (!exists) throw new NotFoundError('Category');
 
-    const updateData: any = { ...validation.data };
-    if (validation.data.printerId === undefined) delete updateData.printerId;
+    const updateData: Prisma.CategoryUncheckedUpdateManyInput = {};
+    if (validation.data.name !== undefined) updateData.name = validation.data.name;
+    if (validation.data.printerId !== undefined) updateData.printerId = validation.data.printerId;
 
     // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
     return await prisma.category.updateMany({

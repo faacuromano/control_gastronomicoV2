@@ -1,14 +1,14 @@
 /**
  * @fileoverview BullMQ Queue Service Implementation
- * 
- * Implementación enterprise-grade del servicio de colas usando BullMQ + Redis.
- * 
- * CARACTERÍSTICAS:
- * - 10 reintentos con backoff exponencial
- * - Dead Letter Queue automática
+ *
+ * Enterprise-grade queue service implementation using BullMQ + Redis.
+ *
+ * FEATURES:
+ * - 10 retries with exponential backoff
+ * - Automatic Dead Letter Queue
  * - Graceful shutdown
  * - Health checks
- * 
+ *
  * @module lib/queue/BullMQService
  */
 
@@ -22,9 +22,9 @@ import type { IQueueService, JobOptions, JobResult, JobHandler, DEFAULT_RETRY_CO
 // ============================================================================
 
 /**
- * Configuración de conexión Redis.
- * En producción, usar variables de entorno.
- * 
+ * Redis connection configuration.
+ * In production, use environment variables.
+ *
  * FIX: Redis AUTH - Add authentication configuration
  */
 const REDIS_CONFIG = {
@@ -38,30 +38,30 @@ const REDIS_CONFIG = {
 };
 
 /**
- * Política de reintentos enterprise-grade.
- * 
- * ¿Por qué esta configuración salva el negocio durante un corte de 10 minutos?
- * 
- * Escenario: El servidor de base de datos cae a las 20:00 por mantenimiento.
- * 
- * Con SOLO 3 reintentos (30s, 1m, 2m):
- * - Todos los webhooks fallan definitivamente a las 20:03:30
- * - Pérdida de TODOS los pedidos durante la ventana de mantenimiento
- * - El restaurante pierde dinero
- * 
- * Con 10 reintentos:
- * - Los webhooks siguen reintentando hasta las ~24:00 (4+ horas)
- * - El servidor se recupera a las 20:10
- * - Los pedidos pendientes (en intento 5-6) se procesan automáticamente
- * - CERO pedidos perdidos
- * 
- * El costo de 10 reintentos es mínimo (solo Redis), pero el beneficio es enorme.
+ * Enterprise-grade retry policy.
+ *
+ * Why does this configuration save the business during a 10-minute outage?
+ *
+ * Scenario: The database server goes down at 20:00 for maintenance.
+ *
+ * With ONLY 3 retries (30s, 1m, 2m):
+ * - All webhooks permanently fail by 20:03:30
+ * - ALL orders lost during the maintenance window
+ * - The restaurant loses money
+ *
+ * With 10 retries:
+ * - Webhooks keep retrying until ~24:00 (4+ hours)
+ * - Server recovers at 20:10
+ * - Pending orders (on attempt 5-6) are processed automatically
+ * - ZERO orders lost
+ *
+ * The cost of 10 retries is minimal (only Redis), but the benefit is enormous.
  */
 const ENTERPRISE_RETRY_CONFIG = {
   attempts: 10,
   backoff: {
     type: 'exponential' as const,
-    delay: 30000,  // 30 segundos inicial, luego 1m, 2m, 4m, 8m, 16m, 32m, 64m, 128m
+    delay: 30000,  // 30 seconds initial, then 1m, 2m, 4m, 8m, 16m, 32m, 64m, 128m
   },
 };
 
@@ -76,8 +76,8 @@ class BullMQService implements IQueueService {
   private initialized = false;
 
   /**
-   * Inicializa la conexión a Redis.
-   * Se llama automáticamente en la primera operación.
+   * Initializes the Redis connection.
+   * Called automatically on the first operation.
    */
   private async ensureInitialized(): Promise<void> {
     if (this.initialized) return;
@@ -93,7 +93,7 @@ class BullMQService implements IQueueService {
         logger.info('Redis connected', { host: REDIS_CONFIG.host, port: REDIS_CONFIG.port });
       });
 
-      // Verificar conexión
+      // Verify connection
       await this.redis.ping();
       this.initialized = true;
       logger.info('BullMQ Queue Service initialized');
@@ -104,7 +104,7 @@ class BullMQService implements IQueueService {
   }
 
   /**
-   * Obtiene o crea una cola.
+   * Gets or creates a queue.
    */
   private async getQueue(queueName: string): Promise<Queue> {
     await this.ensureInitialized();
@@ -114,11 +114,11 @@ class BullMQService implements IQueueService {
         connection: REDIS_CONFIG,
         defaultJobOptions: {
           removeOnComplete: {
-            age: 3600,  // Mantener jobs completados por 1 hora
-            count: 1000, // Máximo 1000 jobs completados
+            age: 3600,  // Keep completed jobs for 1 hour
+            count: 1000, // Max 1000 completed jobs
           },
           removeOnFail: {
-            age: 86400 * 7,  // Mantener jobs fallidos por 7 días (auditoría)
+            age: 86400 * 7,  // Keep failed jobs for 7 days (audit)
           },
         },
       });
@@ -131,7 +131,7 @@ class BullMQService implements IQueueService {
   }
 
   /**
-   * Encola un job para procesamiento asíncrono.
+   * Enqueues a job for async processing.
    */
   async enqueue<T>(queueName: string, data: T, options?: JobOptions): Promise<string> {
     const queue = await this.getQueue(queueName);
@@ -158,7 +158,7 @@ class BullMQService implements IQueueService {
   }
 
   /**
-   * Registra un processor para una cola.
+   * Registers a processor for a queue.
    */
   process<T>(queueName: string, handler: JobHandler<T>): void {
     if (this.workers.has(queueName)) {
@@ -217,7 +217,7 @@ class BullMQService implements IQueueService {
           error: error.message,
           data: job.data,
         });
-        // TODO: Aquí se podría notificar a un sistema de alertas
+        // TODO: Could notify an alerting system here
       }
     });
 
@@ -230,7 +230,7 @@ class BullMQService implements IQueueService {
   }
 
   /**
-   * Obtiene el estado de un job.
+   * Gets the status of a job.
    */
   async getJob<T>(queueName: string, jobId: string): Promise<JobResult<T> | null> {
     const queue = await this.getQueue(queueName);
@@ -254,7 +254,7 @@ class BullMQService implements IQueueService {
   }
 
   /**
-   * Health check de Redis.
+   * Redis health check.
    */
   async isHealthy(): Promise<boolean> {
     try {
@@ -275,27 +275,27 @@ class BullMQService implements IQueueService {
   }
 
   /**
-   * Cierra todas las conexiones gracefully.
-   * Espera a que los jobs en proceso terminen.
+   * Closes all connections gracefully.
+   * Waits for in-progress jobs to finish.
    */
   async close(): Promise<void> {
     logger.info('Closing BullMQ Queue Service...');
 
-    // Cerrar workers primero (esperar jobs en proceso)
+    // Close workers first (wait for in-progress jobs)
     for (const [name, worker] of this.workers) {
       logger.debug('Closing worker', { queueName: name });
       await worker.close();
     }
     this.workers.clear();
 
-    // Cerrar colas
+    // Close queues
     for (const [name, queue] of this.queues) {
       logger.debug('Closing queue', { queueName: name });
       await queue.close();
     }
     this.queues.clear();
 
-    // Cerrar Redis
+    // Close Redis
     if (this.redis) {
       await this.redis.quit();
       this.redis = null;
@@ -306,5 +306,5 @@ class BullMQService implements IQueueService {
   }
 }
 
-// Singleton para uso en toda la aplicación
+// Singleton for use across the application
 export const bullMQService = new BullMQService();

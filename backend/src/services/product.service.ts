@@ -109,7 +109,7 @@ const prepareProductData = (
     return createData;
 };
 
-export const createProduct = async (data: any) => {
+export const createProduct = async (data: Record<string, unknown> & { tenantId?: number }) => {
     const validation = ProductSchema.safeParse(data);
     if (!validation.success) {
         throw new ValidationError('Invalid data', validation.error.issues);
@@ -148,7 +148,7 @@ export const createProduct = async (data: any) => {
     });
 };
 
-export const updateProduct = async (id: number, tenantId: number, data: any) => {
+export const updateProduct = async (id: number, tenantId: number, data: Record<string, unknown>) => {
     const validation = ProductSchema.partial().safeParse(data);
     if (!validation.success) {
         throw new ValidationError('Invalid data', validation.error.issues);
@@ -163,7 +163,7 @@ export const updateProduct = async (id: number, tenantId: number, data: any) => 
     }
 
     const { ingredients, modifierIds, ...productData } = validation.data;
-    const updateData: any = { ...productData };
+    const updateData: Record<string, unknown> = { ...productData };
     if (productData.description === undefined && data.description === null) updateData.description = null; // Explicit null handling
     if (productData.image === undefined && data.image === null) updateData.image = null;
 

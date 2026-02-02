@@ -1,6 +1,7 @@
 
-import { PrismaClient, StockMoveType } from '@prisma/client';
+import { StockMoveType } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import type { TransactionClient } from '../lib/prisma-extensions';
 import { stockAlertService } from './stockAlert.service';
 import { ValidationError, NotFoundError } from '../utils/errors';
 
@@ -16,7 +17,7 @@ export class StockMovementService {
    *                     For now, we assume quantity is always the amount to ADD or SUBTRACT.
    * @param reason Optional reason string
    */
-  async register(ingredientId: number, tenantId: number, type: StockMoveType, quantity: number, reason?: string, externalTx?: any) {
+  async register(ingredientId: number, tenantId: number, type: StockMoveType, quantity: number, reason?: string, externalTx?: TransactionClient) {
     // If not adjustment, quantity is absolute magnitude
     if (type !== 'ADJUSTMENT' && quantity < 0) {
         throw new ValidationError('Quantity must be positive for PURCHASE, SALE, or WASTE');
@@ -28,7 +29,7 @@ export class StockMovementService {
         throw new ValidationError(`Quantity exceeds maximum allowed (${MAX_STOCK_QUANTITY})`);
     }
 
-    const performMove = async (tx: any) => {
+    const performMove = async (tx: TransactionClient) => {
       // 0. Verify Ingredient Ownership
       const ingredient = await tx.ingredient.findFirst({ where: { id: ingredientId, tenantId } });
       if (!ingredient) throw new NotFoundError(`Ingredient ${ingredientId}`);
@@ -40,7 +41,7 @@ export class StockMovementService {
           ingredientId,
           type,
           quantity, // Record the raw quantity (can be negative for adjustment)
-          reason
+          reason: reason ?? null
         }
       });
 
@@ -93,7 +94,7 @@ export class StockMovementService {
     tenantId: number,
     type: StockMoveType,
     reason: string,
-    externalTx: any
+    externalTx: TransactionClient
   ): Promise<void> {
     if (updates.length === 0) return;
 

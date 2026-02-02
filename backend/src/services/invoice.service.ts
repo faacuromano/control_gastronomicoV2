@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { Prisma } from '@prisma/client';
 import { NotFoundError, ConflictError, ValidationError } from '../utils/errors';
 import { getBusinessDate } from '../utils/businessDate';
 
@@ -88,6 +89,7 @@ export async function generateInvoice(tenantId: number, data: GenerateInvoiceDat
                 const invoiceNumber = `${year}-${nextNumber.toString().padStart(8, '0')}`;
 
                 // Create invoice with generated number
+                // PERF-014: Use select instead of full include for lighter response
                 return await tx.invoice.create({
                     data: {
                         tenantId,
@@ -102,26 +104,37 @@ export async function generateInvoice(tenantId: number, data: GenerateInvoiceDat
                     },
                     include: {
                         order: {
-                            include: {
+                            select: {
+                                id: true,
+                                orderNumber: true,
+                                total: true,
+                                subtotal: true,
                                 items: {
-                                    include: { product: true }
+                                    select: {
+                                        id: true,
+                                        quantity: true,
+                                        unitPrice: true,
+                                        product: { select: { id: true, name: true } }
+                                    }
                                 },
-                                payments: true
+                                payments: {
+                                    select: { id: true, method: true, amount: true }
+                                }
                             }
                         }
                     }
                 });
             });
-        } catch (error: any) {
+        } catch (error: unknown) {
             // Retry on unique constraint violation (P2002)
-            if (error.code === 'P2002' && attempt < MAX_RETRIES - 1) {
+            if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && attempt < MAX_RETRIES - 1) {
                 continue;
             }
             throw error;
         }
     }
 
-    throw new Error('Failed to generate invoice after maximum retries');
+    throw new ConflictError('Failed to generate invoice after maximum retries');
 }
 
 /**
@@ -189,16 +202,17 @@ interface GetAllFilters {
 export async function getAll(tenantId: number, filters: GetAllFilters = {}) {
     const { type, startDate, endDate } = filters;
 
-    const where: any = { tenantId };
+    const where: Prisma.InvoiceWhereInput = { tenantId };
 
     if (type) {
         where.type = type;
     }
 
     if (startDate || endDate) {
-        where.createdAt = {};
-        if (startDate) where.createdAt.gte = startDate;
-        if (endDate) where.createdAt.lte = endDate;
+        where.createdAt = {
+            ...(startDate ? { gte: startDate } : {}),
+            ...(endDate ? { lte: endDate } : {}),
+        };
     }
 
     const invoices = await prisma.invoice.findMany({

@@ -42,15 +42,21 @@ const assignUserDriverSchema = z.object({
 // PLATFORMS
 // ============================================================================
 
+// SEC-038: Strip sensitive credentials from platform API responses
+function sanitizePlatform<T extends Record<string, unknown>>(platform: T): Omit<T, 'apiKey' | 'webhookSecret'> {
+    const { apiKey, webhookSecret, ...safe } = platform;
+    return safe as Omit<T, 'apiKey' | 'webhookSecret'>;
+}
+
 export const getAllPlatforms = asyncHandler(async (req: Request, res: Response) => {
     const platforms = await deliveryService.getAllPlatforms(req.user!.tenantId!);
-    sendSuccess(res, platforms);
+    sendSuccess(res, platforms.map(sanitizePlatform));
 });
 
 export const getPlatformById = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
     const platform = await deliveryService.getPlatformById(id, req.user!.tenantId!);
-    sendSuccess(res, platform);
+    sendSuccess(res, sanitizePlatform(platform));
 });
 
 // FIX P0-SEC-001: All platform CRUD scoped by tenantId from authenticated user

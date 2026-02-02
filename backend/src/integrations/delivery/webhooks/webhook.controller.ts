@@ -1,15 +1,15 @@
 /**
  * @fileoverview Webhook Controller
- * 
- * Controller para recibir y procesar webhooks de plataformas de delivery.
- * Implementa procesamiento asíncrono via Queue para resiliencia.
- * 
- * FLUJO:
- * 1. Recibir webhook (validado por HMAC middleware)
- * 2. Encolar para procesamiento asíncrono
- * 3. Responder 200 OK inmediatamente (< 100ms)
- * 4. Worker procesa y crea/actualiza orden
- * 
+ *
+ * Controller to receive and process webhooks from delivery platforms.
+ * Implements async processing via Queue for resilience.
+ *
+ * FLOW:
+ * 1. Receive webhook (validated by HMAC middleware)
+ * 2. Enqueue for async processing
+ * 3. Respond 200 OK immediately (< 100ms)
+ * 4. Worker processes and creates/updates order
+ *
  * @module integrations/delivery/webhooks/webhook.controller
  */
 
@@ -51,8 +51,8 @@ interface WebhookJobData {
 
 class WebhookController {
   /**
-   * Handler genérico para webhooks de cualquier plataforma.
-   * Detecta la plataforma desde el parámetro de la ruta.
+   * Generic handler for webhooks from any platform.
+   * Detects the platform from the route parameter.
    * 
    * @route POST /api/v1/webhooks/:platform
    */
@@ -102,11 +102,11 @@ class WebhookController {
         });
       }
 
-      // Parsear con el adapter para obtener tipo de evento
+      // Parse with adapter to get event type
       const adapter = await AdapterFactory.getByPlatformCode(platformCode);
       const processedWebhook = adapter.parseWebhookPayload(payload);
 
-      // Construir job data
+      // Build job data
       const ip = req.ip ?? req.socket.remoteAddress;
       const userAgent = req.headers['user-agent'];
 
@@ -123,7 +123,7 @@ class WebhookController {
         },
       };
 
-      // Encolar para procesamiento asíncrono
+      // Enqueue for async processing
       const jobId = await queueService.enqueue(
         QUEUE_NAMES.DELIVERY_WEBHOOKS,
         jobData,
@@ -143,7 +143,7 @@ class WebhookController {
         durationMs: duration,
       });
 
-      // Responder inmediatamente
+      // Respond immediately
       return res.status(200).json({
         success: true,
         requestId,
@@ -183,8 +183,8 @@ class WebhookController {
   }
 
   /**
-   * Handler específico para Rappi.
-   * Alias para handleWebhook con platform forzado.
+   * Rappi-specific handler.
+   * Alias for handleWebhook with forced platform.
    * 
    * @route POST /api/v1/webhooks/rappi
    */
@@ -194,7 +194,7 @@ class WebhookController {
   }
 
   /**
-   * Handler específico para Glovo.
+   * Glovo-specific handler.
    * 
    * @route POST /api/v1/webhooks/glovo
    */
@@ -204,7 +204,7 @@ class WebhookController {
   }
 
   /**
-   * Handler específico para PedidosYa.
+   * PedidosYa-specific handler.
    * 
    * @route POST /api/v1/webhooks/pedidosya
    */
@@ -214,8 +214,8 @@ class WebhookController {
   }
 
   /**
-   * Health check para verificar que los webhooks funcionan.
-   * Útil para configurar en las plataformas.
+   * Health check to verify webhooks are working.
+   * Useful for platform configuration.
    * 
    * @route GET /api/v1/webhooks/health
    */

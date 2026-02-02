@@ -23,12 +23,13 @@ export const initSocket = (httpServer: HttpServer) => {
   if (process.env.REDIS_HOST) {
     import('@socket.io/redis-adapter').then(({ createAdapter }) => {
       const { Redis } = require('ioredis');
-      const pubClient = new Redis({ host: process.env.REDIS_HOST, port: Number(process.env.REDIS_PORT || 6379) });
+      const pubClient = new Redis({ host: process.env.REDIS_HOST, port: Number(process.env.REDIS_PORT || 6379), password: process.env.REDIS_PASSWORD || undefined });
       const subClient = pubClient.duplicate();
       io!.adapter(createAdapter(pubClient, subClient));
       logger.info('Socket.IO Redis adapter initialized for horizontal scaling');
-    }).catch((err: any) => {
-      logger.warn('Socket.IO Redis adapter not available, using in-memory adapter', { error: err.message });
+    }).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn('Socket.IO Redis adapter not available, using in-memory adapter', { error: message });
     });
   }
 
@@ -77,8 +78,9 @@ export const initSocket = (httpServer: HttpServer) => {
 
       socket.data.user = decoded;
       next();
-    } catch (err: any) {
-      logger.warn('WebSocket authentication failed', { socketId: socket.id, error: err.message });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.warn('WebSocket authentication failed', { socketId: socket.id, error: message });
       return next(new Error('Authentication failed'));
     }
   });

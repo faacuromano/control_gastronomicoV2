@@ -1,13 +1,14 @@
 import { ThermalPrinter, PrinterTypes, CharacterSet, BreakLine } from 'node-thermal-printer';
 import { prisma } from '../lib/prisma';
 import { NotFoundError, ValidationError } from '../utils/errors';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as crypto from 'crypto';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 import { logger } from '../utils/logger';
 
 interface PrinterConfig {
@@ -84,12 +85,13 @@ export class PrinterService {
      */
     async listSystemPrinters(): Promise<string[]> {
         try {
-            // Use PowerShell to get list of printers
-            const { stdout } = await execAsync(
-                'powershell -NoProfile -Command "Get-Printer | Select-Object -ExpandProperty Name"',
+            // SEC-039: Use execFile with argument array to prevent command injection
+            const { stdout } = await execFileAsync(
+                'powershell',
+                ['-NoProfile', '-Command', 'Get-Printer | Select-Object -ExpandProperty Name'],
                 { encoding: 'utf8', timeout: 5000 }
             );
-            
+
             return stdout
                 .split('\n')
                 .map(name => name.trim())
@@ -106,7 +108,8 @@ export class PrinterService {
      */
     private async printToWindowsPrinter(buffer: Buffer, printerName: string): Promise<void> {
         const tempDir = os.tmpdir();
-        const tempFile = path.join(tempDir, `escpos_${Date.now()}.bin`);
+        // SEC-036: Use crypto-random filename to prevent predictable temp file paths
+        const tempFile = path.join(tempDir, `escpos_${crypto.randomBytes(16).toString('hex')}.bin`);
         
         // Get the path to the RawPrinter.ps1 script
         const scriptPath = path.join(__dirname, '..', '..', 'scripts', 'RawPrinter.ps1');
@@ -114,25 +117,26 @@ export class PrinterService {
         try {
             // Write buffer to temp file
             fs.writeFileSync(tempFile, buffer);
-            
-            // Escape printer name for PowerShell (use double quotes and escape internal quotes)
-            const escapedPrinterName = printerName.replace(/"/g, '`"');
-            const escapedFilePath = tempFile.replace(/\\/g, '\\\\');
-            
-            // Execute the raw printer script - use double quotes for params with spaces
-            const command = `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}" -PrinterName "${escapedPrinterName}" -FilePath "${escapedFilePath}"`;
-            
+
+            // SEC-039: Use execFile with argument array to prevent command injection.
+            // printerName comes from DB but could contain metacharacters; execFile
+            // passes args directly to the process without shell interpolation.
             logger.info('Sending raw data to printer', { printerName });
-            const { stdout, stderr } = await execAsync(command, { timeout: 30000 });
-            
+            const { stdout, stderr } = await execFileAsync(
+                'powershell',
+                ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-PrinterName', printerName, '-FilePath', tempFile],
+                { timeout: 30000 }
+            );
+
             if (stderr && stderr.includes('ERROR')) {
-                throw new Error(stderr);
+                throw new ValidationError(stderr);
             }
-            
+
             logger.info('Print result', { result: stdout.trim() });
-        } catch (error: any) {
+        } catch (error: unknown) {
             logger.error('[PrinterService] Raw print error:', { error });
-            throw new ValidationError(`Failed to print to USB printer '${printerName}': ${error.message || 'Unknown error'}`);
+            const message = error instanceof Error ? error.message : 'Unknown error';
+            throw new ValidationError(`Failed to print to USB printer '${printerName}': ${message}`);
         } finally {
             // Clean up temp file
             try {
@@ -187,9 +191,10 @@ export class PrinterService {
 
                 await printer.execute();
                 return true;
-            } catch (error: any) {
+            } catch (error: unknown) {
                 logger.error('Print error:', { error });
-                throw new ValidationError(`Print failed: ${error.message || 'Unknown error'}`);
+                const message = error instanceof Error ? error.message : 'Unknown error';
+                throw new ValidationError(`Print failed: ${message}`);
             }
         }
     }
@@ -238,9 +243,10 @@ export class PrinterService {
 
                 await printer.execute();
                 return true;
-            } catch (error: any) {
+            } catch (error: unknown) {
                 logger.error('Test print error:', { error });
-                throw new ValidationError(`Test print failed: ${error.message || 'Unknown error'}`);
+                const message = error instanceof Error ? error.message : 'Unknown error';
+                throw new ValidationError(`Test print failed: ${message}`);
             }
         }
     }
@@ -272,7 +278,7 @@ export class PrinterService {
     /**
      * Build the ticket content on a printer instance
      */
-    private async buildTicketContent(printer: ThermalPrinter, order: any, tenantId: number): Promise<void> {
+    private async buildTicketContent(printer: ThermalPrinter, order: Awaited<ReturnType<PrinterService['getOrderForPrint']>>, tenantId: number): Promise<void> {
         // Get business name from config
         const config = await prisma.tenantConfig.findFirst({ where: { tenantId } });
         const businessName = config?.businessName || 'RESTAURANTE';

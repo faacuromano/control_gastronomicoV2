@@ -1,13 +1,13 @@
 /**
  * @fileoverview Queue Service Factory & Exports
- * 
- * Punto de entrada para el sistema de colas.
- * Exporta la implementación apropiada según el entorno.
- * 
+ *
+ * Entry point for the queue system.
+ * Exports the appropriate implementation based on environment.
+ *
  * USAGE:
  *   import { queueService } from '../lib/queue';
  *   await queueService.enqueue('webhooks', { orderId: 123 });
- * 
+ *
  * @module lib/queue
  */
 
@@ -19,14 +19,19 @@ import { DEFAULT_RETRY_CONFIG } from './types';
 // FACTORY
 // ============================================================================
 
+// CFG-010: Supported queue providers
+const SUPPORTED_PROVIDERS = ['bullmq'] as const;
+
 /**
- * Factory function para obtener el servicio de colas apropiado.
- * En testing, se podría retornar InMemoryQueueService.
+ * Factory function to get the appropriate queue service.
+ * In testing, could return InMemoryQueueService.
  */
 function createQueueService(): IQueueService {
-  // En el futuro, aquí se podría elegir entre BullMQ, RabbitMQ, SQS
-  // basándose en variables de entorno
   const provider = process.env.QUEUE_PROVIDER || 'bullmq';
+
+  if (!SUPPORTED_PROVIDERS.includes(provider as typeof SUPPORTED_PROVIDERS[number])) {
+    throw new Error(`Invalid QUEUE_PROVIDER: "${provider}". Supported: ${SUPPORTED_PROVIDERS.join(', ')}`);
+  }
 
   switch (provider) {
     case 'bullmq':
@@ -39,31 +44,31 @@ function createQueueService(): IQueueService {
 // EXPORTS
 // ============================================================================
 
-/** Instancia singleton del servicio de colas */
+/** Singleton queue service instance */
 export const queueService = createQueueService();
 
-/** Re-exportar tipos para conveniencia */
+/** Re-export types for convenience */
 export type { IQueueService, JobOptions, JobResult, JobHandler };
 export { DEFAULT_RETRY_CONFIG };
 
 // ============================================================================
-// NOMBRES DE COLAS PREDEFINIDOS
+// PREDEFINED QUEUE NAMES
 // ============================================================================
 
 /**
- * Nombres de colas estandarizados.
- * Usar estas constantes en lugar de strings hardcoded.
+ * Standardized queue names.
+ * Use these constants instead of hardcoded strings.
  */
 export const QUEUE_NAMES = {
-  /** Procesar webhooks de plataformas de delivery */
+  /** Process webhooks from delivery platforms */
   DELIVERY_WEBHOOKS: 'delivery:webhooks',
-  /** Sincronizar menú a plataformas externas */
+  /** Sync menu to external platforms */
   MENU_SYNC: 'delivery:menu-sync',
-  /** Sincronizar stock a plataformas externas */
+  /** Sync stock to external platforms */
   STOCK_SYNC: 'delivery:stock-sync',
-  /** Notificaciones push a usuarios */
+  /** Push notifications to users */
   NOTIFICATIONS: 'notifications',
-  /** Generación de reportes en background */
+  /** Background report generation */
   REPORTS: 'reports',
 } as const;
 

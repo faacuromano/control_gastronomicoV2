@@ -26,11 +26,11 @@ import { sendSuccess } from '../utils/response';
  * Schema for creating a new user
  */
 const CreateUserSchema = z.object({
-    name: z.string().min(1, 'Nombre es requerido'),
-    email: z.union([z.string().email('Email inválido'), z.literal('')]).optional().transform(v => v || undefined),
-    pinCode: z.string().length(6, 'PIN debe tener 6 dígitos').optional(),
-    password: z.string().min(6, 'Password mínimo 6 caracteres').optional(),
-    roleId: z.number().int().positive('Role ID inválido')
+    name: z.string().min(1, 'Name is required'),
+    email: z.union([z.string().email('Invalid email'), z.literal('')]).optional().transform(v => v || undefined),
+    pinCode: z.string().length(6, 'PIN must be 6 digits').optional(),
+    password: z.string().min(6, 'Password minimum 6 characters').optional(),
+    roleId: z.number().int().positive('Invalid Role ID')
 });
 
 /**
@@ -160,7 +160,7 @@ export const getUsersWithCapability = asyncHandler(async (req: Request, res: Res
 export const getUserById = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) {
-        throw new ValidationError('ID inválido');
+        throw new ValidationError('Invalid ID');
     }
     
     const user = await prisma.user.findFirst({
@@ -181,7 +181,7 @@ export const getUserById = asyncHandler(async (req: Request, res: Response) => {
     });
 
     if (!user) {
-        throw new NotFoundError('Usuario');
+        throw new NotFoundError('User');
     }
 
     sendSuccess(res, user);
@@ -200,7 +200,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
 
     // Verify at least one auth method
     if (!email && !pinCode) {
-        throw new ValidationError('Se requiere email o PIN para autenticación');
+        throw new ValidationError('Email or PIN required for authentication');
     }
 
     // Check for existing user with same email
@@ -223,7 +223,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
         where: { id: roleId, tenantId: req.user!.tenantId! }
     });
     if (!role) {
-        throw new NotFoundError('Rol');
+        throw new NotFoundError('Role');
     }
 
     // Check PIN uniqueness — O(1) via pinLookup index
@@ -238,7 +238,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
             }
         });
         if (existing) {
-            throw new ConflictError('PIN ya en uso por otro usuario');
+            throw new ConflictError('PIN already in use by another user');
         }
         pinHash = await bcrypt.hash(pinCode, BCRYPT_SALT_ROUNDS);
     }
@@ -291,7 +291,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
 export const updateUser = asyncHandler(async (req: Request, res: Response) => {
     const userId = parseInt(req.params.id as string, 10);
     if (isNaN(userId)) {
-        throw new ValidationError('ID inválido');
+        throw new ValidationError('Invalid ID');
     }
 
     const data = UpdateUserSchema.parse(req.body);
@@ -302,7 +302,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
         where: { id: userId, tenantId: req.user!.tenantId! } 
     });
     if (!existingUser) {
-        throw new NotFoundError('Usuario');
+        throw new NotFoundError('User');
     }
 
     // Check for email conflict
@@ -315,7 +315,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
             }
         });
         if (emailConflict) {
-            throw new ConflictError('Email ya en uso por otro usuario');
+            throw new ConflictError('Email already in use by another user');
         }
     }
 
@@ -325,7 +325,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
             where: { id: roleId, tenantId: req.user!.tenantId! }
         });
         if (!roleExists) {
-            throw new NotFoundError('Rol');
+            throw new NotFoundError('Role');
         }
     }
 
@@ -348,7 +348,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
             }
         });
         if (existing) {
-            throw new ConflictError('PIN ya en uso por otro usuario');
+            throw new ConflictError('PIN already in use by another user');
         }
         updateData.pinHash = await bcrypt.hash(pinCode, BCRYPT_SALT_ROUNDS);
         updateData.pinLookup = pinLookup;
@@ -361,7 +361,7 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
     });
 
     if (result.count === 0) {
-        throw new NotFoundError('Usuario');
+        throw new NotFoundError('User');
     }
 
     // Fetch updated user for response
@@ -402,19 +402,19 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
 export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
     const userId = parseInt(req.params.id as string, 10);
     if (isNaN(userId)) {
-        throw new ValidationError('ID inválido');
+        throw new ValidationError('Invalid ID');
     }
 
     // Prevent self-deletion
     if (req.user?.id === userId) {
-        throw new ApiError('SELF_DELETE', 'No puedes eliminar tu propio usuario', 400);
+        throw new ApiError('SELF_DELETE', 'Cannot delete your own user account', 400);
     }
 
     const user = await prisma.user.findFirst({ 
         where: { id: userId, tenantId: req.user!.tenantId! } 
     });
     if (!user) {
-        throw new NotFoundError('Usuario');
+        throw new NotFoundError('User');
     }
 
     // SAFE: Defense-in-depth — soft delete with tenantId in WHERE
@@ -437,5 +437,5 @@ export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
         { userName: user.name, userEmail: user.email }
     );
 
-    sendSuccess(res, { message: 'Usuario desactivado correctamente' });
+    sendSuccess(res, { message: 'User deactivated successfully' });
 });

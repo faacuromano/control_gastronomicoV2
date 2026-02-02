@@ -1,11 +1,22 @@
 import { getIO } from '../lib/socket';
 import { logger } from '../utils/logger';
 
+/** Minimal order shape needed for KDS broadcasting */
+interface KDSOrder {
+    id: number;
+    tenantId: number;
+    orderNumber: number;
+    status?: string;
+    tableId?: number | null;
+    items?: unknown[];
+    [key: string]: unknown;
+}
+
 export class KDSService {
     /**
      * Calculate estimated preparation time (in minutes)
      */
-    calculatePrepTime(items: any[]): number {
+    calculatePrepTime(items: unknown[]): number {
         // Base time (10m) + 2m per item
         // Future: Fetch specific times from DB
         return 10 + (items.length * 2);
@@ -15,7 +26,7 @@ export class KDSService {
      * Broadcasts a new order to the Kitchen (tenant-scoped).
      * The order object MUST include tenantId.
      */
-    broadcastNewOrder(order: any) {
+    broadcastNewOrder(order: KDSOrder) {
         try {
             const io = getIO();
             if (!io) return;
@@ -61,7 +72,7 @@ export class KDSService {
      * Broadcasts an order update (tenant-scoped).
      * The order object MUST include tenantId.
      */
-    broadcastOrderUpdate(order: any) {
+    broadcastOrderUpdate(order: KDSOrder) {
         try {
             const io = getIO();
             if (!io) return;

@@ -10,7 +10,7 @@ export class ClientService {
     const take = Math.min(Math.max(1, limit), 200);
     const skip = (Math.max(1, page) - 1) * take;
 
-    const where: any = { tenantId };
+    const where: Prisma.ClientWhereInput = { tenantId };
     if (query && query.trim()) {
       where.OR = [
         { name: { contains: query } },

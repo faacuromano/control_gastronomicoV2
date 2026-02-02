@@ -7,7 +7,7 @@
  */
 
 import { Prisma } from '@prisma/client';
-import { InsufficientStockError } from '../utils/errors';
+import { InsufficientStockError, NotFoundError, ValidationError } from '../utils/errors';
 import type { 
     OrderItemInput, 
     OrderItemData, 
@@ -76,10 +76,10 @@ export class OrderItemService {
             const product = productMap.get(item.productId);
 
             if (!product) {
-                throw new Error(`Product ID ${item.productId} not found`);
+                throw new NotFoundError(`Product ID ${item.productId}`);
             }
             if (!product.isActive) {
-                throw new Error(`Product ${product.name} is not active`);
+                throw new ValidationError(`Product ${product.name} is not active`);
             }
 
             const price = Number(product.price);
@@ -93,7 +93,7 @@ export class OrderItemService {
             const sanitizedModifiers = item.modifiers?.map(m => {
                 const dbPrice = modifierPriceMap.get(m.id);
                 if (dbPrice === undefined) {
-                    throw new Error(`Modifier ID ${m.id} not found`);
+                    throw new NotFoundError(`Modifier ID ${m.id}`);
                 }
                 return { id: m.id, price: dbPrice };
             });
@@ -154,14 +154,14 @@ export class OrderItemService {
      */
     private calculateStockUpdates(
         item: OrderItemInput,
-        product: { 
-            name: string; 
-            isStockable: boolean; 
-            ingredients: { 
-                ingredientId: number; 
-                quantity: any;
-                ingredient: { name: string; stock: any } 
-            }[] 
+        product: {
+            name: string;
+            isStockable: boolean;
+            ingredients: {
+                ingredientId: number;
+                quantity: Prisma.Decimal | number;
+                ingredient: { name: string; stock: Prisma.Decimal | number }
+            }[]
         },
         stockUpdates: StockUpdate[],
         stockEnabled: boolean

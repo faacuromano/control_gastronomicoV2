@@ -148,7 +148,7 @@ app.use('/api/v1/qr', qrPublicRouter);        // Public: /api/v1/qr/:code
 app.use('/api/v1/admin/qr', qrAdminRouter);   // Admin: /api/v1/admin/qr/...
 
 // Delivery Platform Webhooks (Rappi, Glovo, PedidosYa)
-// NOTA: Estas rutas usan express.raw() internamente para validación HMAC
+// NOTE: These routes use express.raw() internally for HMAC validation
 import { webhookRoutes } from './integrations/delivery';
 app.use('/api/v1/webhooks', webhookRoutes);
 

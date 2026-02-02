@@ -92,12 +92,13 @@ export class SyncService {
                 if (result.warnings.length > 0) {
                     warnings.push(...result.warnings);
                 }
-            } catch (error: any) {
-                logger.error('Sync order failed', { tempId: pendingOrder.tempId, error: error.message });
+            } catch (error: unknown) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                logger.error('Sync order failed', { tempId: pendingOrder.tempId, error: errorMessage });
                 errors.push({
                     tempId: pendingOrder.tempId,
                     code: 'ORDER_SYNC_FAILED',
-                    message: error.message
+                    message: errorMessage
                 });
                 orderMappings.push({
                     tempId: pendingOrder.tempId,
@@ -120,15 +121,16 @@ export class SyncService {
         for (const pendingPayment of request.pendingPayments) {
             try {
                 await this.processOfflinePayment(pendingPayment, tenantId, tempToRealId, context);
-            } catch (error: any) {
+            } catch (error: unknown) {
+                const errorMessage = error instanceof Error ? error.message : String(error);
                 logger.error('Sync payment failed', {
                     tempOrderId: pendingPayment.tempOrderId,
-                    error: error.message
+                    error: errorMessage
                 });
                 errors.push({
                     tempId: pendingPayment.tempOrderId,
                     code: 'PAYMENT_SYNC_FAILED',
-                    message: error.message
+                    message: errorMessage
                 });
             }
         }
@@ -139,10 +141,11 @@ export class SyncService {
             if (mapping.status === 'SYNCED' && mapping.realId) {
                 try {
                     await this.reconcileOrderPaymentStatus(mapping.realId, tenantId);
-                } catch (error: any) {
+                } catch (error: unknown) {
+                    const errorMessage = error instanceof Error ? error.message : String(error);
                     logger.warn('Payment status reconciliation failed', {
                         orderId: mapping.realId,
-                        error: error.message,
+                        error: errorMessage,
                     });
                 }
             }
@@ -421,13 +424,15 @@ export class SyncService {
 
         const lastSyncDate = new Date(lastSyncTime);
 
-        // Check if any orders were created by OTHER users since last sync
-        const recentOrders = await prisma.order.count({
-            where: {
-                tenantId,
-                createdAt: { gt: lastSyncDate },
-            },
-        });
+        // PERF-019: Parallelize conflict detection queries
+        const [recentOrders, recentProductChanges] = await Promise.all([
+            prisma.order.count({
+                where: { tenantId, createdAt: { gt: lastSyncDate } },
+            }),
+            prisma.product.count({
+                where: { tenantId, updatedAt: { gt: lastSyncDate } },
+            }),
+        ]);
 
         if (recentOrders > 0) {
             warnings.push({
@@ -436,14 +441,6 @@ export class SyncService {
                 message: `${recentOrders} order(s) created since last sync at ${lastSyncDate.toISOString()}. Review for conflicts.`,
             });
         }
-
-        // Check if products/prices changed since last sync
-        const recentProductChanges = await prisma.product.count({
-            where: {
-                tenantId,
-                updatedAt: { gt: lastSyncDate },
-            },
-        });
 
         if (recentProductChanges > 0) {
             warnings.push({

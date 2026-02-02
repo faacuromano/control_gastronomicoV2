@@ -1,17 +1,18 @@
 /**
  * @fileoverview Status Update Service
- * 
- * Servicio para enviar actualizaciones de estado de pedidos a plataformas de delivery.
- * 
- * Cuando el restaurante actualiza el estado de un pedido (ej: listo para recoger),
- * este servicio notifica a la plataforma correspondiente.
- * 
+ *
+ * Service to send order status updates to delivery platforms.
+ *
+ * When the restaurant updates an order's status (e.g., ready for pickup),
+ * this service notifies the corresponding platform.
+ *
  * @module integrations/delivery/sync/statusUpdate.service
  */
 
 import { prisma } from '../../../lib/prisma';
 import { AdapterFactory } from '../adapters/AdapterFactory';
 import { logger } from '../../../utils/logger';
+import { NotFoundError } from '../../../utils/errors';
 import { NormalizedOrderStatus, type StatusUpdateResult } from '../types/normalized.types';
 
 // ============================================================================
@@ -19,7 +20,7 @@ import { NormalizedOrderStatus, type StatusUpdateResult } from '../types/normali
 // ============================================================================
 
 /**
- * Mapeo de estados internos a estados normalizados de delivery.
+ * Internal status to normalized delivery status mapping.
  */
 const INTERNAL_TO_NORMALIZED_STATUS: Record<string, NormalizedOrderStatus> = {
   'OPEN': NormalizedOrderStatus.NEW,
@@ -37,11 +38,11 @@ const INTERNAL_TO_NORMALIZED_STATUS: Record<string, NormalizedOrderStatus> = {
 
 class StatusUpdateService {
   /**
-   * Notifica a la plataforma externa sobre un cambio de estado.
-   * 
-   * @param orderId - ID del pedido interno
-   * @param newStatus - Nuevo estado interno
-   * @returns Resultado de la actualización
+   * Notifies the external platform about a status change.
+   *
+   * @param orderId - Internal order ID
+   * @param newStatus - New internal status
+   * @returns Update result
    */
   async notifyStatusChange(
     orderId: number,
@@ -54,12 +55,12 @@ class StatusUpdateService {
       },
     });
 
-    // Si no es un pedido de delivery externo, no hay nada que hacer
+    // If not an external delivery order, nothing to do
     if (!order || !order.deliveryPlatformId || !order.externalId) {
       return null;
     }
 
-    // Mapear estado interno a normalizado
+    // Map internal status to normalized
     const normalizedStatus = INTERNAL_TO_NORMALIZED_STATUS[newStatus];
 
     if (!normalizedStatus) {
@@ -106,7 +107,7 @@ class StatusUpdateService {
   }
 
   /**
-   * Marca un pedido como listo para recoger y notifica a la plataforma.
+   * Marks an order as ready for pickup and notifies the platform.
    */
   async markAsReady(orderId: number): Promise<StatusUpdateResult | null> {
     await prisma.order.update({
@@ -118,7 +119,7 @@ class StatusUpdateService {
   }
 
   /**
-   * Marca un pedido como en preparación y notifica a la plataforma.
+   * Marks an order as in preparation and notifies the platform.
    */
   async markAsInPreparation(orderId: number): Promise<StatusUpdateResult | null> {
     await prisma.order.update({
@@ -130,7 +131,7 @@ class StatusUpdateService {
   }
 
   /**
-   * Cancela un pedido y notifica a la plataforma.
+   * Cancels an order and notifies the platform.
    */
   async cancelOrder(orderId: number, reason?: string): Promise<StatusUpdateResult | null> {
     const order = await prisma.order.findUnique({
@@ -139,10 +140,10 @@ class StatusUpdateService {
     });
 
     if (!order) {
-      throw new Error(`Order ${orderId} not found`);
+      throw new NotFoundError(`Order ${orderId}`);
     }
 
-    // Actualizar en DB
+    // Update in DB
     await prisma.order.update({
       where: { id: orderId },
       data: {
@@ -151,7 +152,7 @@ class StatusUpdateService {
       },
     });
 
-    // Si es pedido externo, notificar a la plataforma
+    // If external order, notify the platform
     if (order.externalId && order.deliveryPlatformId) {
       try {
         const adapter = await AdapterFactory.getByPlatformId(order.deliveryPlatformId);

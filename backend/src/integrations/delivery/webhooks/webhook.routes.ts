@@ -1,11 +1,11 @@
 /**
  * @fileoverview Webhook Routes
- * 
- * Rutas para recibir webhooks de plataformas de delivery.
- * 
- * IMPORTANTE: Los webhooks deben usar express.raw() para preservar
- * el body original para validación HMAC.
- * 
+ *
+ * Routes for receiving webhooks from delivery platforms.
+ *
+ * IMPORTANT: Webhooks must use express.raw() to preserve
+ * the original body for HMAC validation.
+ *
  * @module integrations/delivery/webhooks/webhook.routes
  */
 
@@ -20,11 +20,11 @@ const router = Router();
 router.use(webhookRateLimiter);
 
 // ============================================================================
-// IMPORTANTE: Webhooks requieren raw body para HMAC
+// IMPORTANT: Webhooks require raw body for HMAC
 // ============================================================================
 
 /**
- * Ruta genérica para cualquier plataforma.
+ * Generic route for any platform.
  * 
  * @route POST /api/v1/webhooks/:platform
  * @example POST /api/v1/webhooks/rappi
@@ -37,14 +37,14 @@ router.post(
 );
 
 /**
- * Health check para webhooks.
+ * Health check for webhooks.
  * 
  * @route GET /api/v1/webhooks/health
  */
 router.get('/health', webhookController.healthCheck.bind(webhookController));
 
 // ============================================================================
-// RUTAS ESPECÍFICAS POR PLATAFORMA (Opcional, para mayor claridad)
+// PLATFORM-SPECIFIC ROUTES (Optional, for clarity)
 // ============================================================================
 
 /**

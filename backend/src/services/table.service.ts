@@ -15,7 +15,8 @@ export class TableService {
                     orderBy: { id: 'asc' }
                 }
             },
-            orderBy: { id: 'asc' }
+            orderBy: { id: 'asc' },
+            take: 100
         });
     }
 

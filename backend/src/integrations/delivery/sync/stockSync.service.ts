@@ -1,11 +1,11 @@
 /**
  * @fileoverview Stock Sync Service
- * 
- * Servicio para sincronizar disponibilidad de productos con plataformas de delivery.
- * 
- * Cuando un producto se queda sin stock o se marca como no disponible,
- * este servicio notifica a todas las plataformas configuradas.
- * 
+ *
+ * Service to synchronize product availability with delivery platforms.
+ *
+ * When a product runs out of stock or is marked as unavailable,
+ * this service notifies all configured platforms.
+ *
  * @module integrations/delivery/sync/stockSync.service
  */
 
@@ -13,6 +13,7 @@ import { prisma } from '../../../lib/prisma';
 import { AdapterFactory } from '../adapters/AdapterFactory';
 import { queueService, QUEUE_NAMES } from '../../../lib/queue';
 import { logger } from '../../../utils/logger';
+import { NotFoundError } from '../../../utils/errors';
 import type { AvailabilityUpdate } from '../types/normalized.types';
 
 // ============================================================================
@@ -46,7 +47,7 @@ class StockSyncService {
 
     const results = new Map<number, boolean>();
 
-    // Obtener todos los precios de canal para este producto
+    // Get all channel prices for this product
     const channelPrices = await prisma.productChannelPrice.findMany({
       where: { productId },
       include: {
@@ -60,13 +61,13 @@ class StockSyncService {
       }
 
       try {
-        // Actualizar en DB
+        // Update in DB
         await prisma.productChannelPrice.update({
           where: { id: channelPrice.id },
           data: { isAvailable },
         });
 
-        // Notificar a la plataforma
+        // Notify the platform
         if (channelPrice.externalSku) {
           const adapter = await AdapterFactory.getByPlatformId(
             channelPrice.deliveryPlatformId
@@ -105,8 +106,8 @@ class StockSyncService {
   }
 
   /**
-   * Marca un producto como fuera de stock en todas las plataformas.
-   * Útil cuando se detecta falta de ingredientes.
+   * Marks a product as out of stock on all platforms.
+   * Useful when ingredient shortage is detected.
    */
   async markOutOfStock(
     productId: number,
@@ -117,7 +118,7 @@ class StockSyncService {
     });
 
     if (!product) {
-      throw new Error(`Product ${productId} not found`);
+      throw new NotFoundError(`Product ${productId}`);
     }
 
     logger.info('Marking product as out of stock', {
@@ -130,7 +131,7 @@ class StockSyncService {
   }
 
   /**
-   * Restaura la disponibilidad de un producto.
+   * Restores product availability.
    */
   async markInStock(productId: number): Promise<void> {
     const product = await prisma.product.findUnique({
@@ -138,7 +139,7 @@ class StockSyncService {
     });
 
     if (!product) {
-      throw new Error(`Product ${productId} not found`);
+      throw new NotFoundError(`Product ${productId}`);
     }
 
     logger.info('Restoring product availability', {
@@ -150,8 +151,8 @@ class StockSyncService {
   }
 
   /**
-   * Encola una actualización de stock para procesamiento asíncrono.
-   * Útil para actualizaciones masivas.
+   * Enqueues a stock update for async processing.
+   * Useful for bulk updates.
    */
   async enqueueStockUpdate(
     productId: number,
@@ -163,7 +164,7 @@ class StockSyncService {
     });
 
     if (!product) {
-      throw new Error(`Product ${productId} not found`);
+      throw new NotFoundError(`Product ${productId}`);
     }
 
     const jobData: StockSyncJobData = {
@@ -193,8 +194,8 @@ class StockSyncService {
   }
 
   /**
-   * Sincroniza disponibilidad de todos los productos con una plataforma.
-   * Útil después de reconectar con una plataforma.
+   * Syncs availability of all products with a platform.
+   * Useful after reconnecting with a platform.
    */
   async fullSyncToPlatform(platformId: number): Promise<number> {
     const channelPrices = await prisma.productChannelPrice.findMany({

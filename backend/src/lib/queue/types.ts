@@ -1,9 +1,9 @@
 /**
  * @fileoverview Queue Service Interface and Types
- * 
- * Capa de abstracción para el sistema de colas.
- * Permite cambiar de BullMQ a RabbitMQ/SQS sin modificar el código de la aplicación.
- * 
+ *
+ * Abstraction layer for the queue system.
+ * Allows switching from BullMQ to RabbitMQ/SQS without modifying application code.
+ *
  * @module lib/queue/types
  */
 
@@ -12,11 +12,11 @@
 // ============================================================================
 
 /**
- * Configuración de política de reintentos.
- * 
- * RATIONALE: 10 intentos con backoff exponencial
- * 
- * | Intento | Delay    | Tiempo Acumulado |
+ * Retry policy configuration.
+ *
+ * RATIONALE: 10 attempts with exponential backoff
+ *
+ * | Attempt | Delay    | Cumulative Time  |
  * |---------|----------|------------------|
  * | 1       | 0s       | 0s               |
  * | 2       | 30s      | 30s              |
@@ -29,41 +29,41 @@
  * | 9       | 64m      | 127.5m (~2h)     |
  * | 10      | 128m     | 255.5m (~4h)     |
  * | FAIL    | -        | Dead Letter      |
- * 
- * ¿Por qué 10 intentos?
- * - Durante un corte de 10 minutos, los primeros 5 intentos cubren hasta 7.5 min
- * - Esto permite recuperarse de la mayoría de cortes de infraestructura
- * - Si después de 4+ horas sigue fallando, es un problema real que requiere intervención
+ *
+ * Why 10 attempts?
+ * - During a 10-minute outage, the first 5 attempts cover up to 7.5 min
+ * - This allows recovery from most infrastructure outages
+ * - If still failing after 4+ hours, it's a real problem requiring intervention
  */
 export const DEFAULT_RETRY_CONFIG = {
   attempts: 10,
   backoff: {
     type: 'exponential' as const,
-    delay: 30000,  // 30 segundos inicial
+    delay: 30000,  // 30 seconds initial
   },
 } as const;
 
 /**
- * Opciones para encolar un job.
+ * Options for enqueuing a job.
  */
 export interface JobOptions {
-  /** Retrasar ejecución (ms) */
+  /** Delay execution (ms) */
   delay?: number;
-  /** Prioridad: 1 = más urgente */
+  /** Priority: 1 = most urgent */
   priority?: number;
-  /** Override de número de reintentos */
+  /** Override retry count */
   attempts?: number;
-  /** Configuración de backoff */
+  /** Backoff configuration */
   backoff?: {
     type: 'exponential' | 'fixed';
     delay: number;
   };
-  /** ID único del job (para deduplicación) */
+  /** Unique job ID (for deduplication) */
   jobId?: string;
 }
 
 /**
- * Resultado de un job.
+ * Job result.
  */
 export interface JobResult<T = unknown> {
   id: string;
@@ -78,37 +78,37 @@ export interface JobResult<T = unknown> {
 }
 
 /**
- * Handler para procesar jobs.
+ * Handler for processing jobs.
  */
 export type JobHandler<T> = (job: { id: string; data: T; attemptsMade: number }) => Promise<void>;
 
 /**
- * Interfaz abstracta del servicio de colas.
- * Implementaciones: BullMQService, InMemoryQueueService (testing)
+ * Abstract queue service interface.
+ * Implementations: BullMQService, InMemoryQueueService (testing)
  */
 export interface IQueueService {
   /**
-   * Encolar un job para procesamiento asíncrono.
-   * @param queueName - Nombre de la cola
-   * @param data - Datos del job
-   * @param options - Opciones opcionales
-   * @returns ID del job encolado
+   * Enqueue a job for async processing.
+   * @param queueName - Queue name
+   * @param data - Job data
+   * @param options - Optional options
+   * @returns Enqueued job ID
    */
   enqueue<T>(queueName: string, data: T, options?: JobOptions): Promise<string>;
 
   /**
-   * Registrar un processor para una cola.
-   * El handler se ejecutará para cada job de esa cola.
+   * Register a processor for a queue.
+   * The handler will execute for each job in that queue.
    */
   process<T>(queueName: string, handler: JobHandler<T>): void;
 
   /**
-   * Obtener estado de un job.
+   * Get job status.
    */
   getJob<T>(queueName: string, jobId: string): Promise<JobResult<T> | null>;
 
   /**
-   * Health check de la conexión a Redis.
+   * Redis connection health check.
    */
   isHealthy(): Promise<boolean>;
 
@@ -118,7 +118,7 @@ export interface IQueueService {
   hasActiveWorkers(): boolean;
 
   /**
-   * Cerrar conexiones gracefully.
+   * Close connections gracefully.
    */
   close(): Promise<void>;
 }

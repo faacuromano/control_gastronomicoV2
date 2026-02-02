@@ -6,7 +6,7 @@ interface ApiResponse<T> {
     error?: {
         code: string;
         message: string;
-        details?: Record<string, unknown> | any[] | null | undefined;
+        details?: Record<string, unknown> | readonly Record<string, unknown>[] | object[] | null | undefined;
     } | undefined;
     meta?: {
         page: number;
@@ -25,7 +25,7 @@ export const sendSuccess = <T>(res: Response, data: T, meta?: ApiResponse<T>['me
     return res.status(statusCode).json(response);
 };
 
-export const sendError = (res: Response, code: string, message: string, details?: Record<string, unknown> | any[] | null, statusCode = 400) => {
+export const sendError = (res: Response, code: string, message: string, details?: Record<string, unknown> | readonly Record<string, unknown>[] | object[] | null, statusCode = 400) => {
     const response: ApiResponse<null> = {
         success: false,
         error: {

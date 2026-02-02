@@ -1,14 +1,14 @@
 /**
  * @fileoverview PedidosYa Adapter Implementation
- * 
- * Implementación concreta del adapter para la plataforma PedidosYa.
- * 
- * DOCUMENTACIÓN PEDIDOSYA:
+ *
+ * Concrete adapter implementation for the PedidosYa platform.
+ *
+ * PEDIDOSYA DOCS:
  * - API: Partner API (https://developers.pedidosya.com)
  * - Auth: OAuth 2.0 Client Credentials Flow
- * - Webhooks: HMAC-SHA256 en header X-PeYa-Signature
- * - Eventos: ORDER_DISPATCH (nuevo pedido), ORDER_STATUS_UPDATE
- * 
+ * - Webhooks: HMAC-SHA256 in X-PeYa-Signature header
+ * - Events: ORDER_DISPATCH (new order), ORDER_STATUS_UPDATE
+ *
  * @module integrations/delivery/adapters/PedidosYaAdapter
  */
 
@@ -16,6 +16,7 @@ import axios, { type AxiosInstance } from 'axios';
 import { z } from 'zod';
 import { AbstractDeliveryAdapter, type AdapterConfig } from './AbstractDeliveryAdapter';
 import type { DeliveryPlatform } from '@prisma/client';
+import { ValidationError } from '../../../utils/errors';
 import {
   DeliveryPlatformCode,
   NormalizedOrder,
@@ -31,11 +32,11 @@ import {
 } from '../types/normalized.types';
 
 // ============================================================================
-// TIPOS ESPECÍFICOS DE PEDIDOSYA (Raw Payloads)
+// PEDIDOSYA-SPECIFIC TYPES (Raw Payloads)
 // ============================================================================
 
 /**
- * Zod schemas para validar el payload del webhook de PedidosYa.
+ * Zod schemas to validate the PedidosYa webhook payload.
  */
 const PedidosYaCoordinatesSchema = z.object({
   latitude: z.number(),
@@ -134,12 +135,12 @@ const PedidosYaWebhookPayloadSchema = z.object({
 });
 
 /**
- * Payload raw de nuevo pedido de PedidosYa.
- * Estructura basada en documentación de PedidosYa Partner API.
+ * Raw new order payload from PedidosYa.
+ * Structure based on PedidosYa Partner API documentation.
  */
 interface PedidosYaOrderPayload {
   id: string;
-  code: string;  // Número visible para el cliente
+  code: string;  // Customer-visible number
   state: string;
   registeredDate: string;
   deliveryDate?: string;
@@ -170,7 +171,7 @@ interface PedidosYaOrderPayload {
   details: Array<{
     product: {
       id: string;
-      integrationCode?: string;  // SKU externo
+      integrationCode?: string;  // External SKU
       name: string;
       unitPrice: number;
     };
@@ -216,7 +217,7 @@ interface PedidosYaOrderPayload {
 }
 
 /**
- * Estructura del webhook de PedidosYa
+ * PedidosYa webhook structure
  */
 interface PedidosYaWebhookPayload {
   event: 'ORDER_DISPATCH' | 'ORDER_STATUS_UPDATE' | 'ORDER_CANCEL';
@@ -225,7 +226,7 @@ interface PedidosYaWebhookPayload {
 }
 
 /**
- * Mapeo de estados de PedidosYa → Estados normalizados
+ * PedidosYa status → Normalized status mapping
  */
 const PEDIDOSYA_STATUS_MAP: Record<string, NormalizedOrderStatus> = {
   'PENDING': NormalizedOrderStatus.NEW,
@@ -239,7 +240,7 @@ const PEDIDOSYA_STATUS_MAP: Record<string, NormalizedOrderStatus> = {
 };
 
 /**
- * Mapeo inverso: Estados normalizados → Estados de PedidosYa
+ * Reverse mapping: Normalized status → PedidosYa status
  */
 const NORMALIZED_TO_PEDIDOSYA_STATUS: Record<NormalizedOrderStatus, string> = {
   [NormalizedOrderStatus.NEW]: 'PENDING',
@@ -273,7 +274,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
       },
     });
 
-    // Interceptor para agregar token y refrescarlo si es necesario
+    // Interceptor to add token and refresh if needed
     this.httpClient.interceptors.request.use(async (config) => {
       await this.ensureValidToken();
       config.headers.Authorization = `Bearer ${this.accessToken}`;
@@ -287,7 +288,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
   }
 
   // ============================================================================
-  // IMPLEMENTACIÓN DE MÉTODOS ABSTRACTOS
+  // ABSTRACT METHOD IMPLEMENTATIONS
   // ============================================================================
 
   protected get platformCode(): DeliveryPlatformCode {
@@ -300,8 +301,8 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Valida la firma HMAC del webhook de PedidosYa.
-   * PedidosYa usa HMAC-SHA256 con el body raw.
+   * Validates the PedidosYa webhook HMAC signature.
+   * PedidosYa uses HMAC-SHA256 with the raw body.
    * Header: X-PeYa-Signature
    */
   validateWebhookSignature(signature: string, rawBody: Buffer): boolean {
@@ -310,7 +311,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
       return false;
     }
 
-    // PedidosYa envía la firma como "sha256=xxxx"
+    // PedidosYa sends the signature as "sha256=xxxx"
     const signatureParts = signature.split('=');
     const actualSignature = signatureParts.length > 1 ? signatureParts[1] : signature;
     
@@ -333,36 +334,36 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Parsea el payload del webhook de PedidosYa al formato normalizado.
+   * Parses the PedidosYa webhook payload into normalized format.
    */
   parseWebhookPayload(rawPayload: unknown): ProcessedWebhook {
-    // Validar el payload con Zod - intentar primero como webhook wrapper, luego como orden directa
+    // Validate payload with Zod - try webhook wrapper first, then direct order
     let webhookData: Partial<PedidosYaWebhookPayload>;
     let payload: PedidosYaOrderPayload;
 
     const webhookParsed = PedidosYaWebhookPayloadSchema.safeParse(rawPayload);
     if (webhookParsed.success && webhookParsed.data.order) {
-      // Es un webhook envuelto con evento
+      // It's a webhook wrapped with event
       webhookData = webhookParsed.data as PedidosYaWebhookPayload;
       payload = webhookParsed.data.order as PedidosYaOrderPayload;
     } else {
-      // Intentar parsear como orden directa
+      // Try parsing as direct order
       const orderParsed = PedidosYaOrderPayloadSchema.safeParse(rawPayload);
       if (!orderParsed.success) {
         this.log('error', 'Invalid PedidosYa webhook payload', {
           webhookIssues: webhookParsed.error?.issues || [],
           orderIssues: orderParsed.error.issues,
         });
-        throw new Error(`Invalid PedidosYa webhook payload: ${orderParsed.error.message}`);
+        throw new ValidationError(`Invalid PedidosYa webhook payload: ${orderParsed.error.message}`);
       }
       webhookData = {};
       payload = orderParsed.data as PedidosYaOrderPayload;
     }
 
-    // Determinar tipo de evento
+    // Determine event type
     const eventType = this.determineEventType(webhookData);
 
-    // Convertir a formato normalizado
+    // Convert to normalized format
     const order = this.normalizeOrder(payload);
 
     return {
@@ -376,7 +377,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Acepta un pedido en PedidosYa.
+   * Accepts an order in PedidosYa.
    */
   async acceptOrder(externalOrderId: string, estimatedPrepTime: number): Promise<void> {
     try {
@@ -396,7 +397,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Rechaza un pedido en PedidosYa.
+   * Rejects an order in PedidosYa.
    */
   async rejectOrder(externalOrderId: string, reason: string): Promise<void> {
     try {
@@ -416,7 +417,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Marca el pedido como listo para recoger.
+   * Marks the order as ready for pickup.
    */
   async markReady(externalOrderId: string): Promise<void> {
     try {
@@ -435,7 +436,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Actualiza el estado del pedido en PedidosYa.
+   * Updates the order status in PedidosYa.
    */
   async updateOrderStatus(
     externalOrderId: string,
@@ -453,7 +454,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
     }
 
     try {
-      // PedidosYa usa diferentes endpoints según el estado
+      // PedidosYa uses different endpoints per status
       if (status === NormalizedOrderStatus.READY) {
         await this.markReady(externalOrderId);
       } else {
@@ -480,7 +481,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Envía el menú a PedidosYa.
+   * Pushes the menu to PedidosYa.
    */
   async pushMenu(products: Array<{
     productId: number;
@@ -495,7 +496,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
     const errors: Array<{ productId: number; error: string }> = [];
     let syncedProducts = 0;
 
-    // PedidosYa espera el menú en un formato específico (categories -> sections -> products)
+    // PedidosYa expects the menu in a specific format (categories -> sections -> products)
     const peyaMenu = {
       name: 'Menu',
       sections: this.groupProductsByCategory(products),
@@ -514,7 +515,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
         error: error instanceof Error ? error.message : String(error),
       });
       
-      // Marcar todos como fallidos
+      // Mark all as failed
       products.forEach((p) => {
         errors.push({ productId: p.productId, error: 'Menu sync failed' });
       });
@@ -530,7 +531,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
   }
 
   /**
-   * Actualiza disponibilidad de un producto en PedidosYa.
+   * Updates product availability in PedidosYa.
    */
   async updateProductAvailability(update: AvailabilityUpdate): Promise<void> {
     try {
@@ -557,20 +558,20 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
   // ============================================================================
 
   /**
-   * Asegura que tenemos un token válido para la API.
+   * Ensures we have a valid API token.
    */
   private async ensureValidToken(): Promise<void> {
-    // Si el token es válido y no ha expirado, no hacer nada
+    // If token is valid and hasn't expired, do nothing
     if (this.accessToken && this.tokenExpiry && new Date() < this.tokenExpiry) {
       return;
     }
 
-    // Obtener nuevo token
+    // Get new token
     await this.refreshAccessToken();
   }
 
   /**
-   * Obtiene un nuevo access token usando client credentials.
+   * Gets a new access token using client credentials.
    */
   private async refreshAccessToken(): Promise<void> {
     try {
@@ -587,7 +588,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
       );
 
       this.accessToken = response.data.access_token;
-      // Expira en 1 hora menos 5 minutos de margen
+      // Expires in 1 hour minus 5 minutes safety margin
       this.tokenExpiry = new Date(Date.now() + (response.data.expires_in - 300) * 1000);
 
       this.log('info', 'PedidosYa access token refreshed', {
@@ -602,7 +603,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
   }
 
   // ============================================================================
-  // MÉTODOS PRIVADOS DE NORMALIZACIÓN
+  // PRIVATE NORMALIZATION METHODS
   // ============================================================================
 
   private determineEventType(webhookData: Partial<PedidosYaWebhookPayload>): WebhookEventType {
@@ -694,7 +695,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
     // SKU: usar integrationCode si existe, sino usar ID del producto
     const externalSku = detail.product.integrationCode || detail.product.id;
     
-    // Aplanar los modificadores de los optionGroups
+    // Flatten modifiers from optionGroups
     const modifiers = (detail.optionGroups || []).flatMap(group =>
       group.options.map(opt => ({
         externalSku: opt.id,
@@ -711,7 +712,7 @@ export class PedidosYaAdapter extends AbstractDeliveryAdapter {
       unitPrice: detail.product.unitPrice,
       notes: detail.notes,
       modifiers,
-      removedIngredients: [], // PedidosYa manda esto en notes normalmente
+      removedIngredients: [], // PedidosYa sends this in notes normally
     };
   }
 

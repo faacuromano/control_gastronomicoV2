@@ -16,6 +16,7 @@ import { prisma } from '../../../lib/prisma';
 import { AdapterFactory } from '../adapters/AdapterFactory';
 import { queueService, QUEUE_NAMES } from '../../../lib/queue';
 import { logger } from '../../../utils/logger';
+import { NotFoundError } from '../../../utils/errors';
 import type { MenuSyncResult } from '../types/normalized.types';
 
 // ============================================================================
@@ -63,7 +64,7 @@ class MenuSyncService {
         where: { id: platformId, tenantId },
       });
       if (!platformOwnership) {
-        throw new Error(`Platform ${platformId} not found or does not belong to tenant ${tenantId}`);
+        throw new NotFoundError(`Platform ${platformId} not found or does not belong to tenant ${tenantId}`);
       }
 
       // 1. Obtener configuración del tenant para esta plataforma
@@ -80,7 +81,7 @@ class MenuSyncService {
       });
 
       if (!config) {
-        throw new Error(`Configuração não encontrada para tenant ${tenantId} plataforma ${platformId}`);
+        throw new NotFoundError(`Configuration not found for tenant ${tenantId} platform ${platformId}`);
       }
       
       const platform = config.deliveryPlatform;
@@ -115,11 +116,11 @@ class MenuSyncService {
         };
       }
 
-      // 3. Obtener adapter con credenciales del tenant (overrides)
+      // 3. Get adapter with tenant credentials (overrides)
       const adapter = await AdapterFactory.getAdapterForTenant(platformId, {
-        apiKey: config.apiKey,
-        webhookSecret: config.webhookSecret,
-        storeId: config.storeId
+        ...(config.apiKey && { apiKey: config.apiKey }),
+        ...(config.webhookSecret && { webhookSecret: config.webhookSecret }),
+        ...(config.storeId && { storeId: config.storeId }),
       });
       
       const result = await adapter.pushMenu(products);
@@ -209,7 +210,7 @@ class MenuSyncService {
     });
 
     if (!platform) {
-      throw new Error(`Platform ${platformId} not found for tenant ${tenantId}`);
+      throw new NotFoundError(`Platform ${platformId} not found for tenant ${tenantId}`);
     }
 
     const jobData: MenuSyncJobData = {

@@ -12,7 +12,7 @@ const dateRangeSchema = z.object({
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD format').optional()
 });
 
-function parseDateRange(query: any): { startDate: Date; endDate: Date } | undefined {
+function parseDateRange(query: Record<string, unknown>): { startDate: Date; endDate: Date } | undefined {
   const { startDate, endDate } = dateRangeSchema.parse(query);
 
   if (!startDate || !endDate) {
@@ -59,7 +59,7 @@ export const getSalesSummary = asyncHandler(async (req: Request, res: Response) 
  * Get top products
  */
 export const getTopProducts = asyncHandler(async (req: Request, res: Response) => {
-  const limit = parseInt(req.query.limit as string) || 10;
+  const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 10, 1), 100);
   const range = parseDateRange(req.query);
   const products = await analyticsService.getTopProducts(req.user!.tenantId!, limit, range);
   sendSuccess(res, products );

@@ -25,15 +25,20 @@ import { logger } from '../utils/logger';
  * 
  * @constant
  */
-const LOCK_TIMEOUT_MS = parseInt(process.env.LOCK_TIMEOUT_MS || '5000', 10);
+// CFG-007: Validate timeout ranges to prevent misconfiguration
+const LOCK_TIMEOUT_MS = Math.max(1000, Math.min(30000, parseInt(process.env.LOCK_TIMEOUT_MS || '5000', 10) || 5000));
 
 /**
  * Maximum transaction duration before timeout.
  * Prevents runaway transactions from holding locks.
- * 
+ * Must be larger than lock timeout.
+ *
  * @constant
  */
-const TRANSACTION_TIMEOUT_MS = parseInt(process.env.TRANSACTION_TIMEOUT_MS || '10000', 10);
+const TRANSACTION_TIMEOUT_MS = Math.max(
+  LOCK_TIMEOUT_MS + 2000,
+  Math.min(60000, parseInt(process.env.TRANSACTION_TIMEOUT_MS || '10000', 10) || 10000)
+);
 
 // ============================================================================
 // ERROR TYPES

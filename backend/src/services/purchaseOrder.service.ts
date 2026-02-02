@@ -84,7 +84,7 @@ export class PurchaseOrderService {
       where: { id: { in: ingredientIds }, tenantId }
     });
     if (ingredients.length !== ingredientIds.length) {
-      throw new ValidationError('Uno o más ingredientes no existen');
+      throw new ValidationError('One or more ingredients do not exist');
     }
 
     // Validate item bounds
@@ -145,15 +145,15 @@ export class PurchaseOrderService {
             }
           });
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Retry on unique constraint violation (P2002) for orderNumber
-        if (error.code === 'P2002' && attempt < MAX_RETRIES - 1) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' && attempt < MAX_RETRIES - 1) {
           continue;
         }
         throw error;
       }
     }
-    throw new Error('Failed to create purchase order after maximum retries');
+    throw new ConflictError('Failed to create purchase order after maximum retries');
   }
 
   /**
@@ -208,16 +208,18 @@ export class PurchaseOrderService {
       }
 
       // 2. Create stock movements for each item
-      for (const item of order.items) {
-        await stockService.register(
-          item.ingredientId,
-          tenantId,
-          StockMoveType.PURCHASE,
-          Number(item.quantity),
-          `Orden de Compra #${order.orderNumber}`,
-          tx
-        );
-      }
+      // PERF-011: Use registerBatch instead of N individual register() calls
+      const stockUpdates = order.items.map(item => ({
+        ingredientId: item.ingredientId,
+        quantity: Number(item.quantity)
+      }));
+      await stockService.registerBatch(
+        stockUpdates,
+        tenantId,
+        StockMoveType.PURCHASE,
+        `Purchase Order #${order.orderNumber}`,
+        tx
+      );
 
       // 3. Mark as received
       // SAFE: tx.findFirst L177 verifies tenant ownership
@@ -270,7 +272,7 @@ export class PurchaseOrderService {
     if (!order) throw new NotFoundError('Purchase Order');
 
     if (order.status !== 'PENDING') {
-      throw new ConflictError('Solo se pueden eliminar órdenes pendientes');
+      throw new ConflictError('Only pending orders can be deleted');
     }
 
     await prisma.purchaseOrder.deleteMany({

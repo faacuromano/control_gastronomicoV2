@@ -78,7 +78,7 @@ export const printPreAccount = asyncHandler(async (req: Request, res: Response) 
     await printerService.printOrderToDevice(orderId, printerId, req.user!.tenantId!);
     
     sendSuccess(res, { 
-        message: 'Pre-cuenta enviada a impresora exitosamente'
+        message: 'Pre-check sent to printer successfully'
     });
 });
 

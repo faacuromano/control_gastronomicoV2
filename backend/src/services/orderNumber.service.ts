@@ -2,6 +2,7 @@
 import { Prisma } from '@prisma/client';
 import { v4 as uuidv4, validate as uuidValidate } from 'uuid';
 import { logger } from '../utils/logger';
+import { ConflictError } from '../utils/errors';
 
 // Utility for strict timeouts
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -85,27 +86,29 @@ export class OrderNumberService {
         currentOrderNumber = sequence.currentValue;
         successful = true;
 
-      } catch (error: any) {
-        const isRetryable = error.code === 'P2034' || 
-                           (error.message && error.message.includes('deadlock')) || 
-                           (error.meta && error.meta.code === '40001');
-        
+      } catch (error: unknown) {
+        const isPrismaError = error instanceof Prisma.PrismaClientKnownRequestError;
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const isRetryable = (isPrismaError && error.code === 'P2034') ||
+                           errorMessage.includes('deadlock') ||
+                           (isPrismaError && (error.meta as Record<string, unknown>)?.code === '40001');
+
         if (isRetryable || attempts < this.MAX_RETRIES) {
           const delay = this.BASE_DELAY_MS * Math.pow(2, attempts - 1);
           logger.warn(`ORDER_SEQUENCE_RETRY`, {
              attempt: attempts,
              delayMs: delay,
              key: sequenceKey,
-             error: error.message
+             error: errorMessage
           });
           await sleep(delay);
         } else {
           logger.error('ORDER_SEQUENCE_FATAL_FAILURE', {
             operationId,
-            error: error.message,
+            error: errorMessage,
             attempts
           });
-          throw new Error(`CRITICAL: Failed to generate order number for Tenant ${tenantId} after ${attempts} attempts.`);
+          throw new ConflictError(`Failed to generate order number for Tenant ${tenantId} after ${attempts} attempts`);
         }
       }
     }
