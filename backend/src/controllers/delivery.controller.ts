@@ -6,7 +6,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { VehicleType } from '@prisma/client';
-import { deliveryService } from '../services/delivery.service';
+import { deliveryService, PlatformCreateData, PlatformUpdateData, DriverCreateData, DriverUpdateData } from '../services/delivery.service';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { sendSuccess } from '../utils/response';
 
@@ -56,14 +56,14 @@ export const getPlatformById = asyncHandler(async (req: Request, res: Response) 
 // FIX P0-SEC-001: All platform CRUD scoped by tenantId from authenticated user
 export const createPlatform = asyncHandler(async (req: Request, res: Response) => {
     const data = createPlatformSchema.parse(req.body);
-    const platform = await deliveryService.createPlatform(req.user!.tenantId!, data as any);
+    const platform = await deliveryService.createPlatform(req.user!.tenantId!, data as PlatformCreateData);
     sendSuccess(res, platform, undefined, 201);
 });
 
 export const updatePlatform = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
     const data = updatePlatformSchema.parse(req.body);
-    const platform = await deliveryService.updatePlatform(id, req.user!.tenantId!, data as any);
+    const platform = await deliveryService.updatePlatform(id, req.user!.tenantId!, data as PlatformUpdateData);
     sendSuccess(res, platform);
 });
 
@@ -101,14 +101,14 @@ export const getDriverById = asyncHandler(async (req: Request, res: Response) =>
 
 export const createDriver = asyncHandler(async (req: Request, res: Response) => {
     const data = createDriverSchema.parse(req.body);
-    const driver = await deliveryService.createDriver(req.user!.tenantId!, data as any);
+    const driver = await deliveryService.createDriver(req.user!.tenantId!, data as DriverCreateData);
     sendSuccess(res, driver, undefined, 201);
 });
 
 export const updateDriver = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
     const data = updateDriverSchema.parse(req.body);
-    const driver = await deliveryService.updateDriver(id, req.user!.tenantId!, data as any);
+    const driver = await deliveryService.updateDriver(id, req.user!.tenantId!, data as DriverUpdateData);
     sendSuccess(res, driver);
 });
 

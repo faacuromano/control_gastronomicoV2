@@ -7,7 +7,7 @@
  */
 
 import { prisma } from '../lib/prisma';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, PaymentStatus } from '@prisma/client';
 import { auditService, AuditContext } from './audit.service';
 import { logger } from '../utils/logger';
 import { NotFoundError, ValidationError } from '../utils/errors';
@@ -122,21 +122,21 @@ export class DiscountService {
 
             // 5. Recalculate paymentStatus — existing payments may now cover the new total
             const totalPaid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-            let newPaymentStatus: string = order.paymentStatus;
+            let newPaymentStatus: PaymentStatus = order.paymentStatus;
             if (totalPaid >= newTotal) {
-                newPaymentStatus = 'PAID';
+                newPaymentStatus = PaymentStatus.PAID;
             } else if (totalPaid > 0) {
-                newPaymentStatus = 'PARTIAL';
+                newPaymentStatus = PaymentStatus.PARTIAL;
             }
 
             // SAFE: tx.order.findFirst verifies tenant ownership
-            const isNowPaid = newPaymentStatus === 'PAID';
+            const isNowPaid = newPaymentStatus === PaymentStatus.PAID;
             await tx.order.update({
                 where: { id: input.orderId },
                 data: {
                     discount: totalDiscount,
                     total: newTotal,
-                    paymentStatus: newPaymentStatus as any,
+                    paymentStatus: newPaymentStatus,
                     ...(isNowPaid && !order.closedAt ? { closedAt: new Date() } : {})
                 }
             });
@@ -217,13 +217,13 @@ export class DiscountService {
 
             // Recalculate paymentStatus with the restored total
             const totalPaid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-            let newPaymentStatus: string = order.paymentStatus;
+            let newPaymentStatus: PaymentStatus = order.paymentStatus;
             if (totalPaid >= newTotal) {
-                newPaymentStatus = 'PAID';
+                newPaymentStatus = PaymentStatus.PAID;
             } else if (totalPaid > 0) {
-                newPaymentStatus = 'PARTIAL';
+                newPaymentStatus = PaymentStatus.PARTIAL;
             } else {
-                newPaymentStatus = 'PENDING';
+                newPaymentStatus = PaymentStatus.PENDING;
             }
 
             // SAFE: tx.order.findFirst verifies tenant ownership
@@ -232,7 +232,7 @@ export class DiscountService {
                 data: {
                     discount: 0,
                     total: newTotal,
-                    paymentStatus: newPaymentStatus as any
+                    paymentStatus: newPaymentStatus
                 }
             });
 

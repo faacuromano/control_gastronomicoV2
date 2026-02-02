@@ -150,7 +150,7 @@ export class SyncService {
 
         // 5. Log sync operation
         await auditService.log(
-            AuditAction.CONFIG_CHANGED, // TODO: Add SYNC_COMPLETED to enum
+            AuditAction.SYNC_COMPLETED,
             'Sync',
             null,
             context,

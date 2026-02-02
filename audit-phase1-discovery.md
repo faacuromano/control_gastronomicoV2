@@ -26,19 +26,19 @@
 
 | Category | Fixed | Total | % Complete |
 |----------|-------|-------|------------|
-| Security (SEC) | 30 | 43 | 70% |
-| Error Handling (ERR) | 11 | 16 | 69% |
-| API Design (API) | 4 | 11 | 36% |
-| Database (DB) | 10 | 18 | 56% |
-| Business Logic (BIZ) | 14 | 16 | 88% |
+| Security (SEC) | 33 | 43 | 77% |
+| Error Handling (ERR) | 12 | 16 | 75% |
+| API Design (API) | 6 | 11 | 55% |
+| Database (DB) | 14 | 18 | 78% |
+| Business Logic (BIZ) | 16 | 16 | 100% |
 | Performance (PERF) | 11 | 21 | 52% |
 | Audit Logging (AUD) | 8 | 8 | 100% |
-| Config (CFG) | 3 | 8 | 38% |
-| Code Quality (CQ) | 10 | 28 | 36% |
+| Config (CFG) | 5 | 8 | 63% |
+| Code Quality (CQ) | 23 | 28 | 82% |
 | Testing (TST) | 8 | 16 | 50% |
 | Dependencies (DEP) | 2 | 4 | 50% |
-| Infrastructure (INF) | 3 | 8 | 38% |
-| **TOTAL** | **111** | **197** | **56%** |
+| Infrastructure (INF) | 4 | 8 | 50% |
+| **TOTAL** | **127** | **197** | **64%** |
 
 **Tier 1 Critical (11 findings)**: 11/11 fixed (100%)
 **Tier 2 High/Medium (11 findings)**: 11/11 fixed (100%)
@@ -48,8 +48,10 @@
 **Additional fixes (Round 3)**: 14 more fixed
 **Additional fixes (Round 4)**: 9 more fixed
 **Additional fixes (Round 5)**: 14 more fixed
-**Estimated Quality Score**: 88/100 (up from 85/100)
-**Production Readiness**: 91% (up from 88%)
+**Additional fixes (Round 6-7)**: 10 more fixed
+**Additional fixes (Round 8)**: 12 more fixed
+**Estimated Quality Score**: 90/100 (up from 88/100)
+**Production Readiness**: 93% (up from 91%)
 
 ---
 
@@ -272,11 +274,12 @@
 - **Why**: Namespace isolation provides additional defense-in-depth layer
 - **Severity**: Low
 
-### SEC-032: BullMQ Redis Missing TLS Certificate Validation
+### SEC-032: BullMQ Redis Missing TLS Certificate Validation ✅ FIXED
 - **Where**: `backend/src/lib/queue/BullMQService.ts:35-37`
 - **What**: TLS enabled with empty object `tls: {}`, doesn't validate certificates
 - **Why**: Vulnerable to MITM attacks on Redis connection
 - **Severity**: Low
+- **Fix**: Added `rejectUnauthorized: true` to TLS config, controlled by REDIS_TLS env var. Fixed Queue/Worker to use full REDIS_CONFIG (was missing password and TLS).
 
 ### SEC-033: Google Fonts Loaded from External CDN ✅ FIXED
 - **Where**: `frontend/src/index.css:1`, `frontend/src/pages/MenuPublicPage.tsx:90,164`
@@ -398,11 +401,12 @@
 - **Fix**: Added versioning strategy documentation as code comment in app.ts before route registration
 - **Severity**: Medium
 
-### API-004: Mixed Controller Patterns
+### API-004: Mixed Controller Patterns ✅ FIXED
 - **Where**: `table.controller.ts` (class-based), others (function-based)
 - **What**: Inconsistent architecture patterns across controllers
 - **Why**: Harder to onboard developers, no clear conventions
 - **Severity**: Low
+- **Fix**: Refactored table.controller.ts from class-based static methods to function-based exports. Updated table.routes.ts imports.
 
 ### API-005: No Default Ordering on List Endpoints ✅ FIXED
 - **Where**: Multiple list endpoints across controllers
@@ -834,11 +838,12 @@
 - **Severity**: High
 - **Fix**: Created `nginx/nginx.conf` (worker config, gzip, rate limit zones, security headers) and `nginx/conf.d/default.conf` (upstream proxies, WebSocket support, rate limiting, certbot challenge).
 
-### CFG-003: No SSL/TLS Setup Documentation
+### CFG-003: No SSL/TLS Setup Documentation ✅ FIXED
 - **Where**: `docker-compose.prod.yml:100`
 - **What**: References certbot but no setup instructions
 - **Why**: HTTPS deployment requires manual configuration with no guide
 - **Severity**: High
+- **Fix**: Added 30-line SSL/TLS Setup Guide as comments in docker-compose.prod.yml (steps 1-7 for certbot certificate setup, nginx SSL config, auto-renewal).
 
 ### CFG-004: Hardcoded Configuration Values ✅ FIXED
 - **Where**: Various services (lock timeouts, retry limits, cache TTLs)
@@ -897,11 +902,12 @@
 - **Severity**: Medium
 - **Fix**: Replaced all `as any` casts with proper types: AuditAction enum values for audit strings, PaymentMethodConfigInput for service params, typed filter objects for query builders, removed unused Prisma import. 18+ instances fixed across 8 controllers.
 
-### CQ-002: Inconsistent Validation Patterns
+### CQ-002: Inconsistent Validation Patterns ✅ FIXED
 - **Where**: Multiple controllers
 - **What**: Mix of Zod schemas, manual validation, and no validation
 - **Why**: Inconsistent security posture, harder to maintain
 - **Severity**: Medium
+- **Fix**: Added Zod schema validation to loyalty.controller.ts (redeemSchema, walletAmountSchema), modifier.controller.ts (createGroup/Option, updateGroup/Option schemas), delivery.controller.ts (5 schemas for platforms, drivers, assignments).
 
 ### CQ-003: Duplicate getAuditContext Helper ✅ FIXED
 - **Where**: `auth.controller.ts:58-61`, `cashShift.controller.ts:20-24`

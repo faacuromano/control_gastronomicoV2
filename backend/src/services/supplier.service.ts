@@ -1,5 +1,4 @@
 import { prisma } from '../lib/prisma';
-import { Prisma } from '@prisma/client';
 import { NotFoundError, ConflictError } from '../utils/errors';
 
 export class SupplierService {
@@ -38,7 +37,7 @@ export class SupplierService {
   /**
    * Create new supplier
    */
-  async create(tenantId: number, data: Prisma.SupplierCreateInput) {
+  async create(tenantId: number, data: { name: string; phone?: string | undefined; email?: string | undefined; address?: string | undefined; taxId?: string | undefined }) {
     // P1-21: Wrap check+create in transaction to prevent TOCTOU race
     return await prisma.$transaction(async (tx) => {
       const existing = await tx.supplier.findFirst({
@@ -50,13 +49,17 @@ export class SupplierService {
       });
 
       if (existing) {
-        throw new ConflictError('Ya existe un proveedor activo con ese nombre');
+        throw new ConflictError('An active supplier with that name already exists');
       }
 
       return await tx.supplier.create({
         data: {
-          ...(data as any),
-          tenantId
+          tenantId,
+          name: data.name,
+          phone: data.phone ?? null,
+          email: data.email ?? null,
+          address: data.address ?? null,
+          taxId: data.taxId ?? null
         }
       });
     });
@@ -65,7 +68,7 @@ export class SupplierService {
   /**
    * Update supplier
    */
-  async update(id: number, tenantId: number, data: Prisma.SupplierUpdateInput) {
+  async update(id: number, tenantId: number, data: { name?: string | undefined; phone?: string | undefined; email?: string | undefined; address?: string | undefined; taxId?: string | undefined }) {
     // DB-011: Wrap check+update in transaction to prevent TOCTOU race
     return await prisma.$transaction(async (tx) => {
       const supplier = await tx.supplier.findFirst({
@@ -77,7 +80,7 @@ export class SupplierService {
       }
 
       // If updating name, check uniqueness inside transaction
-      if (data.name && typeof data.name === 'string' && data.name !== supplier.name) {
+      if (data.name && data.name !== supplier.name) {
         const existing = await tx.supplier.findFirst({
           where: {
             name: data.name,
@@ -88,14 +91,22 @@ export class SupplierService {
         });
 
         if (existing) {
-          throw new ConflictError('Ya existe un proveedor con ese nombre');
+          throw new ConflictError('A supplier with that name already exists');
         }
       }
 
       // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+      // Build update data explicitly to satisfy exactOptionalPropertyTypes
+      const updateData: Record<string, unknown> = {};
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.phone !== undefined) updateData.phone = data.phone;
+      if (data.email !== undefined) updateData.email = data.email;
+      if (data.address !== undefined) updateData.address = data.address;
+      if (data.taxId !== undefined) updateData.taxId = data.taxId;
+
       return await tx.supplier.updateMany({
         where: { id, tenantId },
-        data: data as any
+        data: updateData
       });
     });
   }
@@ -120,7 +131,7 @@ export class SupplierService {
     
     if (ordersCount > 0) {
       throw new ConflictError(
-        `No se puede eliminar: el proveedor tiene ${ordersCount} órdenes de compra`
+        `Cannot delete: supplier has ${ordersCount} purchase orders`
       );
     }
     

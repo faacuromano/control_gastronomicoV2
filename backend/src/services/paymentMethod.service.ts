@@ -64,7 +64,7 @@ export class PaymentMethodService {
       where: { code: data.code, tenantId }
     });
     if (existing) {
-      throw new ConflictError(`El código "${data.code}" ya existe`);
+      throw new ConflictError(`Code "${data.code}" already exists`);
     }
 
     return await prisma.paymentMethodConfig.create({
@@ -92,7 +92,7 @@ export class PaymentMethodService {
         where: { code: data.code, tenantId }
       });
       if (existing) {
-        throw new ConflictError(`El código "${data.code}" ya existe`);
+        throw new ConflictError(`Code "${data.code}" already exists`);
       }
     }
 

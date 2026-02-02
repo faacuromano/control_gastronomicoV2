@@ -531,7 +531,7 @@ export const registerTenant = async (data: RegisterTenantData) => {
                 name: data.businessName,
                 code,
                 activeSubscription: true
-            } as any // Cast to any to avoid type error if schema not regenerated
+            }
         });
 
         // Create TenantConfig
@@ -611,7 +611,7 @@ export const registerTenant = async (data: RegisterTenantData) => {
         tenant: {
             id: result.tenant.id,
             name: result.tenant.name,
-            activeSubscription: (result.tenant as any).activeSubscription
+            activeSubscription: result.tenant.activeSubscription
         },
         user: {
             id: result.user.id,

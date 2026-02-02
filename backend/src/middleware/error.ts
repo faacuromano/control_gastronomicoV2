@@ -73,12 +73,10 @@ export const errorHandler = (
     }
 
     // TST-007 FIX: Handle errors with statusCode property (LockTimeoutError, InvalidStateTransitionError)
-    if ('statusCode' in err && typeof (err as any).statusCode === 'number') {
-        const statusCode = (err as any).statusCode as number;
-        const code = ('code' in err && typeof (err as any).code === 'string')
-            ? (err as any).code as string
-            : 'ERROR';
-        return sendError(res, code, err.message, null, statusCode);
+    const errWithStatus = err as Error & { statusCode?: number; code?: string };
+    if (typeof errWithStatus.statusCode === 'number') {
+        const code = typeof errWithStatus.code === 'string' ? errWithStatus.code : 'ERROR';
+        return sendError(res, code, err.message, null, errWithStatus.statusCode);
     }
 
     // Handle JSON parsing errors

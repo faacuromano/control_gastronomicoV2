@@ -186,7 +186,7 @@ export class QrService {
             throw new NotFoundError('QR code not found or inactive');
         }
 
-        const qrTenantId = (qrCode as any).tenantId; // Cast as any if types not updated yet
+        const qrTenantId = qrCode.tenantId;
         if (!qrTenantId) throw new Error('QR Code has no tenant associated');
 
         // Check if the global module is enabled FOR THIS TENANT

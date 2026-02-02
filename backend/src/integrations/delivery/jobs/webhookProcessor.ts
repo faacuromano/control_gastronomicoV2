@@ -31,7 +31,7 @@ import { executeIfEnabled } from '../../../services/featureFlags.service';
 import { StockMovementService } from '../../../services/stockMovement.service';
 import { orderNumberService } from '../../../services/orderNumber.service';
 import { logger } from '../../../utils/logger';
-import { StockMoveType } from '@prisma/client';
+import { StockMoveType, OrderStatus } from '@prisma/client';
 import {
   DeliveryPlatformCode,
   WebhookEventType,
@@ -613,7 +613,7 @@ async function processStatusUpdate(
         // Step 4: Update with lock held
         await tx.order.update({
           where: { id: order.id },
-          data: { status: internalStatus as any },
+          data: { status: internalStatus },
         });
 
         return { orderId: order.id, orderNumber: order.orderNumber, newStatus: internalStatus };
@@ -758,15 +758,15 @@ async function mapExternalItemsToInternal(
 /**
  * Mapea estado normalizado a estado interno de Order.
  */
-function mapNormalizedStatusToInternal(status: string): string | null {
-  const statusMap: Record<string, string> = {
-    NEW: 'OPEN',
-    ACCEPTED: 'CONFIRMED',
-    IN_PREPARATION: 'IN_PREPARATION',
-    READY: 'PREPARED',
-    ON_ROUTE: 'ON_ROUTE',
-    DELIVERED: 'DELIVERED',
-    CANCELLED: 'CANCELLED',
+function mapNormalizedStatusToInternal(status: string): OrderStatus | null {
+  const statusMap: Record<string, OrderStatus> = {
+    NEW: OrderStatus.OPEN,
+    ACCEPTED: OrderStatus.CONFIRMED,
+    IN_PREPARATION: OrderStatus.IN_PREPARATION,
+    READY: OrderStatus.PREPARED,
+    ON_ROUTE: OrderStatus.ON_ROUTE,
+    DELIVERED: OrderStatus.DELIVERED,
+    CANCELLED: OrderStatus.CANCELLED,
   };
   return statusMap[status] ?? null;
 }

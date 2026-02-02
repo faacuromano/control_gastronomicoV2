@@ -4,29 +4,29 @@ import { NotFoundError, ConflictError, ValidationError } from '../utils/errors';
 
 export interface CreateGroupInput {
   name: string;
-  minSelection?: number;
-  maxSelection?: number;
+  minSelection?: number | undefined;
+  maxSelection?: number | undefined;
   tenantId: number;
 }
 
 export interface UpdateGroupInput {
-  name?: string;
-  minSelection?: number;
-  maxSelection?: number;
+  name?: string | undefined;
+  minSelection?: number | undefined;
+  maxSelection?: number | undefined;
 }
 
 export interface CreateOptionInput {
   name: string;
-  priceOverlay?: number;
-  ingredientId?: number;
-  qtyUsed?: number;
+  priceOverlay?: number | undefined;
+  ingredientId?: number | undefined;
+  qtyUsed?: number | undefined;
 }
 
 export interface UpdateOptionInput {
-  name?: string;
-  priceOverlay?: number;
-  ingredientId?: number;
-  qtyUsed?: number;
+  name?: string | undefined;
+  priceOverlay?: number | undefined;
+  ingredientId?: number | undefined;
+  qtyUsed?: number | undefined;
 }
 
 export const modifierService = {
@@ -89,9 +89,15 @@ export const modifierService = {
     if (!group) throw new NotFoundError('Modifier Group');
 
     // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
+    // Build update data explicitly to satisfy exactOptionalPropertyTypes
+    const updateData: Record<string, unknown> = {};
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.minSelection !== undefined) updateData.minSelection = data.minSelection;
+    if (data.maxSelection !== undefined) updateData.maxSelection = data.maxSelection;
+
     return prisma.modifierGroup.updateMany({
       where: { id, tenantId },
-      data
+      data: updateData
     });
   },
 
@@ -159,7 +165,12 @@ export const modifierService = {
     // defense-in-depth: updateMany ensures tenantId is in the WHERE clause
     return prisma.modifierOption.updateMany({
       where: { id: optionId, tenantId },
-      data: data as any
+      data: {
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.priceOverlay !== undefined && { priceOverlay: data.priceOverlay }),
+        ...(data.ingredientId !== undefined && { ingredientId: data.ingredientId }),
+        ...(data.qtyUsed !== undefined && { qtyUsed: data.qtyUsed })
+      }
     });
   },
 

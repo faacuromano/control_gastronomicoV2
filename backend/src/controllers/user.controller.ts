@@ -214,7 +214,7 @@ export const createUser = asyncHandler(async (req: Request, res: Response) => {
             } 
         });
         if (existingEmail) {
-            throw new ConflictError('Ya existe un usuario con ese email');
+            throw new ConflictError('A user with that email already exists');
         }
     }
 

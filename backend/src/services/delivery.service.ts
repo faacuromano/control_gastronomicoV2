@@ -27,7 +27,24 @@ export interface PlatformUpdateData {
     webhookSecret?: string;
     storeId?: string;
     menuSyncEnabled?: boolean;
-    config?: any;
+    config?: Record<string, unknown>;
+}
+
+export interface DriverCreateData {
+    name: string;
+    phone: string;
+    email?: string;
+    vehicleType?: VehicleType;
+    licensePlate?: string;
+}
+
+export interface DriverUpdateData {
+    name?: string;
+    phone?: string;
+    email?: string;
+    vehicleType?: VehicleType;
+    licensePlate?: string;
+    isActive?: boolean;
 }
 
 class DeliveryService {
@@ -163,13 +180,7 @@ class DeliveryService {
         });
     }
 
-    async createDriver(tenantId: number, data: {
-        name: string;
-        phone: string;
-        email?: string;
-        vehicleType?: VehicleType;
-        licensePlate?: string;
-    }): Promise<DeliveryDriver> {
+    async createDriver(tenantId: number, data: DriverCreateData): Promise<DeliveryDriver> {
         return prisma.deliveryDriver.create({
             data: {
                 tenantId,
@@ -182,14 +193,7 @@ class DeliveryService {
         });
     }
 
-    async updateDriver(id: number, tenantId: number, data: {
-        name?: string;
-        phone?: string;
-        email?: string;
-        vehicleType?: VehicleType;
-        licensePlate?: string;
-        isActive?: boolean;
-    }): Promise<DeliveryDriver> {
+    async updateDriver(id: number, tenantId: number, data: DriverUpdateData): Promise<DeliveryDriver> {
         // Verify tenant ownership and get current state
         await this.getDriverById(id, tenantId);
 

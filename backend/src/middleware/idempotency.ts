@@ -150,7 +150,7 @@ export function idempotency(req: Request, res: Response, next: NextFunction): vo
     }
 
     // Scope the key to the authenticated user + tenant to prevent cross-tenant collisions
-    const user = (req as any).user;
+    const user = req.user;
     const scopedKey = user ? `${user.tenantId}:${user.id}:${key}` : key;
 
     const store = getCache();

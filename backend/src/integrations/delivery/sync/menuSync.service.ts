@@ -23,6 +23,7 @@ import type { MenuSyncResult } from '../types/normalized.types';
 // ============================================================================
 
 interface MenuSyncJobData {
+  tenantId: number;
   platformId: number;
   platformCode: string;
   triggeredBy: 'MANUAL' | 'SCHEDULE' | 'PRODUCT_UPDATE';
@@ -211,7 +212,7 @@ class MenuSyncService {
       throw new Error(`Platform ${platformId} not found for tenant ${tenantId}`);
     }
 
-    const jobData: any = { // TODO: Update MenuSyncJobData type
+    const jobData: MenuSyncJobData = {
       tenantId,
       platformId,
       platformCode: platform.code,

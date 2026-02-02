@@ -263,7 +263,7 @@ class MarginConsentService {
         where: { id: productId, ...(tenantId ? { tenantId } : {}) },
         select: { price: true }
       });
-      if (!product) throw new NotFoundError(`Producto ${productId} no encontrado`);
+      if (!product) throw new NotFoundError(`Product ${productId} not found`);
       return { price: Number(product.price), source: 'base' };
     }
 
@@ -307,7 +307,7 @@ class MarginConsentService {
       })
     ]);
 
-    if (!product) throw new NotFoundError(`Producto ${productId} no encontrado`);
+    if (!product) throw new NotFoundError(`Product ${productId} not found`);
     // Si no hay config, actuamos como si no hubiera fallback
     
     const basePrice = Number(product.price);
