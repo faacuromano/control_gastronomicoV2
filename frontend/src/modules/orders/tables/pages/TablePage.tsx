@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { TableMap, type Table } from '../components/TableMap';
 import { TableDetailModal } from '../components/TableDetailModal';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { tableService, type Area } from '../../../../services/tableService';
 import { AlertCircle } from 'lucide-react';
+import { useQrOrderNotifications, type QrOrderPlacedEvent } from '../../../../hooks/useQrOrderNotifications';
 
 // Mock data for fallback or when DB is empty
 const MOCK_AREAS: Area[] = [
@@ -41,6 +42,19 @@ export const TablePage = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+
+    // Callback para refrescar áreas cuando llega un pedido QR
+    const handleQrOrderReceived = useCallback((event: QrOrderPlacedEvent) => {
+        // Refrescar las áreas para actualizar la vista de mesas
+        loadAreas();
+        console.log('QR order received:', event);
+    }, []);
+
+    // Escuchar notificaciones de pedidos QR
+    useQrOrderNotifications({
+        playSound: true,
+        onOrderReceived: handleQrOrderReceived
+    });
 
     useEffect(() => {
         loadAreas();

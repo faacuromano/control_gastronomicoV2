@@ -5,13 +5,20 @@
 
 import api from '../lib/api';
 
+export interface QrMenuTheme {
+    primaryColor?: string;
+    backgroundColor?: string;
+    fontFamily?: string;
+    [key: string]: string | undefined;
+}
+
 export interface QrMenuConfig {
     enabled: boolean;
     mode: 'INTERACTIVE' | 'STATIC';
     selfOrderEnabled: boolean;
     pdfUrl: string | null;
     bannerUrl: string | null;
-    theme: any;
+    theme: QrMenuTheme | null;
     businessName: string;
 }
 
@@ -33,6 +40,22 @@ export interface QrValidation {
     config: QrMenuConfig;
 }
 
+export interface PublicMenuCategory {
+    id: number;
+    name: string;
+    sortOrder?: number;
+}
+
+export interface PublicMenuProduct {
+    id: number;
+    name: string;
+    description?: string | null;
+    price: string | number;
+    image?: string | null;
+    categoryId?: number;
+    category?: { id: number; name: string };
+}
+
 export interface PublicMenu {
     mode: 'INTERACTIVE' | 'STATIC';
     businessName: string;
@@ -40,10 +63,34 @@ export interface PublicMenu {
     selfOrderEnabled?: boolean;
     tableId?: number | null;
     tableName?: string | null;
+    tableStatus?: 'FREE' | 'OCCUPIED' | 'RESERVED' | 'CLEANING' | null;
+    currentOrderId?: number | null;
     pdfUrl?: string;
-    theme?: any;
-    categories?: any[];
-    products?: any[];
+    theme?: QrMenuTheme | null;
+    categories?: PublicMenuCategory[];
+    products?: PublicMenuProduct[];
+}
+
+/**
+ * Item para pedido QR (enviado al backend)
+ */
+export interface QrOrderItemInput {
+    productId: number;
+    quantity: number;
+    notes?: string;
+    modifierIds?: number[];
+    removedIngredientIds?: number[];
+}
+
+/**
+ * Resultado del pedido QR
+ */
+export interface QrOrderResult {
+    orderId: number;
+    orderNumber: number;
+    itemCount: number;
+    total: number;
+    tableName: string;
 }
 
 class QrService {
@@ -64,6 +111,15 @@ class QrService {
      */
     async getPublicMenu(code: string): Promise<PublicMenu> {
         const response = await api.get(`/qr/${code}/menu`);
+        return response.data.data;
+    }
+
+    /**
+     * Place order from QR menu (public, no auth)
+     * Adds items to the existing order on the table
+     */
+    async placeOrder(code: string, items: QrOrderItemInput[]): Promise<QrOrderResult> {
+        const response = await api.post(`/qr/${code}/order`, { items });
         return response.data.data;
     }
 
@@ -88,7 +144,7 @@ class QrService {
         qrSelfOrderEnabled: boolean;
         qrMenuPdfUrl: string | null;
         qrMenuBannerUrl: string | null;
-        qrMenuTheme: any;
+        qrMenuTheme: QrMenuTheme | null;
     }>): Promise<QrMenuConfig> {
         const response = await api.patch('/admin/qr/config', updates);
         return response.data.data;

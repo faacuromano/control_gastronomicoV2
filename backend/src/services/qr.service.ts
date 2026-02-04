@@ -184,12 +184,14 @@ export class QrService {
      * 1. Busca el QR por codigo (unico global)
      * 2. Verifica que el tenant tenga el modulo digital habilitado
      * 3. Incrementa contador de escaneos
-     * 4. Retorna la configuracion del menu y datos de mesa
+     * 4. Retorna la configuracion del menu y datos de mesa (incluyendo estado de mesa y orderId)
      */
     async validateAndScan(code: string): Promise<{
         valid: boolean;
         tableId: number | null;
         tableName: string | null;
+        tableStatus: 'FREE' | 'OCCUPIED' | 'RESERVED' | 'CLEANING' | null;
+        currentOrderId: number | null;
         config: QrMenuConfig;
         tenantId: number;
     }> {
@@ -197,7 +199,7 @@ export class QrService {
         const qrCode = await prisma.qrCode.findUnique({
             where: { code },
             include: {
-                table: { select: { id: true, name: true } }
+                table: { select: { id: true, name: true, status: true, currentOrderId: true } }
             }
         });
 
@@ -229,6 +231,8 @@ export class QrService {
             valid: true,
             tableId: qrCode.tableId,
             tableName: qrCode.table?.name || null,
+            tableStatus: qrCode.table?.status || null,
+            currentOrderId: qrCode.table?.currentOrderId || null,
             config,
             tenantId: qrTenantId
         };

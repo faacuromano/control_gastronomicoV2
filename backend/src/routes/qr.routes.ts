@@ -34,6 +34,10 @@ router.get('/:code', qrController.validateQr);
 // Obtener el menú público asociado al código QR (categorías y productos activos)
 router.get('/:code/menu', qrController.getPublicMenu);
 
+// Colocar un pedido desde el menú QR (self-order)
+// El cliente envía los items del carrito y se agregan a la orden existente de la mesa
+router.post('/:code/order', qrController.placeQrOrder);
+
 // ============================================================================
 // RUTAS ADMINISTRATIVAS (Requieren autenticación)
 // Usadas desde el panel de administración para gestionar códigos QR.

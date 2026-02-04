@@ -14,8 +14,10 @@
 
 import { Request, Response } from 'express';
 import { qrService } from '../services/qr.service';
+import { qrOrderService, type QrOrderItemInput } from '../services/qrOrder.service';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { sendSuccess } from '../utils/response';
+import { ValidationError } from '../utils/errors';
 
 // ============================================================================
 // ENDPOINTS PUBLICOS (Sin autenticación requerida)
@@ -69,9 +71,31 @@ export const getPublicMenu = asyncHandler(async (req: Request, res: Response) =>
         selfOrderEnabled: qr.config.selfOrderEnabled,
         tableId: qr.tableId,
         tableName: qr.tableName,
+        tableStatus: qr.tableStatus,
+        currentOrderId: qr.currentOrderId,
         theme: qr.config.theme,
         ...menu
     });
+});
+
+/**
+ * Coloca un pedido desde el menú QR.
+ * POST /api/v1/qr/:code/order
+ * El cliente envía su carrito y se agregan los items a la orden existente de la mesa.
+ * Requiere que la mesa esté OCUPADA y con selfOrderEnabled.
+ */
+export const placeQrOrder = asyncHandler(async (req: Request, res: Response) => {
+    const code = req.params.code as string;
+    const { items } = req.body as { items?: QrOrderItemInput[] };
+
+    // Validar estructura básica del request
+    if (!items || !Array.isArray(items)) {
+        throw new ValidationError('Se requiere un array de items');
+    }
+
+    const result = await qrOrderService.placeOrder(code, items);
+
+    sendSuccess(res, result, undefined, 201);
 });
 
 // ============================================================================
@@ -136,5 +160,5 @@ export const toggleCode = asyncHandler(async (req: Request, res: Response) => {
 export const deleteCode = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
     await qrService.deleteQrCode(id, req.user!.tenantId!);
-    sendSuccess(res, { message: 'QR code deleted' });
+    sendSuccess(res, { message: 'Código QR eliminado' });
 });

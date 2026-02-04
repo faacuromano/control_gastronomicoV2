@@ -6,8 +6,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { qrService, type PublicMenu, type PublicMenuProduct, type PublicMenuCategory } from '../services/qrService';
-import { Loader2, AlertCircle, ShoppingCart, Plus, Minus } from 'lucide-react';
+import { qrService, type PublicMenu, type PublicMenuProduct, type PublicMenuCategory, type QrOrderItemInput } from '../services/qrService';
+import { Loader2, AlertCircle, ShoppingCart, Plus, Minus, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { getErrorMessage } from '../lib/errorUtils';
 
@@ -26,6 +26,8 @@ export const MenuPublicPage: React.FC = () => {
     const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
     const [cart, setCart] = useState<CartItem[]>([]);
     const [showCart, setShowCart] = useState(false);
+    const [orderLoading, setOrderLoading] = useState(false);
+    const [orderSuccess, setOrderSuccess] = useState(false);
 
     useEffect(() => {
         if (code) {
@@ -84,6 +86,44 @@ export const MenuPublicPage: React.FC = () => {
 
     const cartTotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+    // Determinar si el cliente puede hacer pedidos
+    // Requiere: selfOrderEnabled + mesa en estado OCCUPIED
+    const canOrder = menu?.selfOrderEnabled && menu?.tableStatus === 'OCCUPIED';
+
+    // Manejar el envío del pedido
+    const handlePlaceOrder = async () => {
+        if (!code || cart.length === 0) return;
+
+        setOrderLoading(true);
+        try {
+            // Convertir carrito a formato de items QR
+            const orderItems: QrOrderItemInput[] = cart.map(item => ({
+                productId: item.productId,
+                quantity: item.quantity
+            }));
+
+            const result = await qrService.placeOrder(code, orderItems);
+
+            // Mostrar éxito
+            setOrderSuccess(true);
+            setCart([]);
+
+            toast.success(`¡Pedido #${result.orderNumber} registrado!`, {
+                description: `${result.itemCount} items • $${result.total.toFixed(0)}`
+            });
+
+            // Cerrar el carrito después de un momento
+            setTimeout(() => {
+                setShowCart(false);
+                setOrderSuccess(false);
+            }, 3000);
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, 'No se pudo enviar el pedido'));
+        } finally {
+            setOrderLoading(false);
+        }
+    };
 
     if (loading) {
         return (
@@ -317,7 +357,7 @@ export const MenuPublicPage: React.FC = () => {
                                     </div>
 
                                     {/* Action Buttons for Self-Order */}
-                                    {menu?.selfOrderEnabled && (
+                                    {canOrder && (
                                         <div className="shrink-0">
                                             {inCart ? (
                                                 <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full p-1">
@@ -386,8 +426,18 @@ export const MenuPublicPage: React.FC = () => {
                 <p className="mt-4">{menu?.businessName}</p>
             </div>
 
+            {/* Message when self-order is enabled but table not open */}
+            {menu?.selfOrderEnabled && !canOrder && menu?.tableId && (
+                <div className="fixed bottom-6 left-6 right-6 z-[60]">
+                    <div className="bg-amber-900/80 backdrop-blur-md text-amber-100 p-4 rounded-2xl text-center">
+                        <p className="font-bold uppercase text-sm">Mesa no habilitada</p>
+                        <p className="text-xs opacity-80 mt-1">Solicita al mesero que abra la mesa para realizar tu pedido</p>
+                    </div>
+                </div>
+            )}
+
             {/* Cart Floating Button */}
-            {menu?.selfOrderEnabled && cartCount > 0 && (
+            {canOrder && cartCount > 0 && (
                 <div className="fixed bottom-6 left-6 right-6 z-[60] animate-in slide-in-from-bottom-5 duration-300">
                     <button
                         onClick={() => setShowCart(true)}
@@ -449,29 +499,47 @@ export const MenuPublicPage: React.FC = () => {
                         </div>
 
                         <div className="mt-8 pt-8 border-t border-white/10 shrink-0">
-                            <div className="flex justify-between items-end mb-8">
-                                <div>
-                                    <p className="text-secondary text-[10px] font-black uppercase tracking-[0.2em] mb-1">Total a pagar</p>
-                                    <p className="text-4xl font-black text-primary tracking-tighter">${cartTotal.toFixed(0)}</p>
+                            {orderSuccess ? (
+                                // Success state
+                                <div className="text-center py-8">
+                                    <CheckCircle className="w-16 h-16 text-green-400 mx-auto mb-4" />
+                                    <h3 className="text-2xl font-black text-primary uppercase mb-2">¡Pedido Enviado!</h3>
+                                    <p className="text-secondary text-sm">Tu pedido ha sido enviado a la cocina</p>
+                                    <p className="text-secondary/60 text-xs mt-2 uppercase tracking-widest">El mesero será notificado</p>
                                 </div>
-                                <div className="text-right">
-                                    <p className="text-primary font-bold text-sm">Caja / Mostrador</p>
-                                    <p className="text-secondary text-[10px] uppercase font-bold">Lugar de Pago</p>
-                                </div>
-                            </div>
-                            
-                            <button
-                                onClick={() => {
-                                    toast.success('¡Pedido Iniciado! Por favor confirma con el personal.');
-                                    setShowCart(false);
-                                }}
-                                className="w-full bg-white hover:bg-amber-50 text-[#1a1c1a] py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all active:scale-95"
-                            >
-                                Confirmar Pedido
-                            </button>
-                            <p className="text-center text-amber-100/20 text-[10px] uppercase font-bold mt-4 tracking-widest">
-                                El personal acudirá a tu mesa en breve
-                            </p>
+                            ) : (
+                                // Normal checkout state
+                                <>
+                                    <div className="flex justify-between items-end mb-8">
+                                        <div>
+                                            <p className="text-secondary text-[10px] font-black uppercase tracking-[0.2em] mb-1">Total a pagar</p>
+                                            <p className="text-4xl font-black text-primary tracking-tighter">${cartTotal.toFixed(0)}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-primary font-bold text-sm">Caja / Mostrador</p>
+                                            <p className="text-secondary text-[10px] uppercase font-bold">Lugar de Pago</p>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={handlePlaceOrder}
+                                        disabled={orderLoading}
+                                        className="w-full bg-white hover:bg-amber-50 text-[#1a1c1a] py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                                    >
+                                        {orderLoading ? (
+                                            <>
+                                                <Loader2 className="w-5 h-5 animate-spin" />
+                                                Enviando...
+                                            </>
+                                        ) : (
+                                            'Confirmar Pedido'
+                                        )}
+                                    </button>
+                                    <p className="text-center text-amber-100/20 text-[10px] uppercase font-bold mt-4 tracking-widest">
+                                        El pedido será enviado directamente a la cocina
+                                    </p>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>

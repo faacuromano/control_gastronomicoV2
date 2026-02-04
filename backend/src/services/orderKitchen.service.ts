@@ -89,6 +89,7 @@ export class OrderKitchenService {
      *
      * Solo incluye items que aun no han sido servidos (status != SERVED)
      * y ordenes creadas desde hoy para no mostrar historial antiguo.
+     * Excluye ordenes vacias (sin items) que se crean al abrir mesas.
      */
     async getActiveOrders(tenantId: number) {
         return await prisma.order.findMany({
@@ -97,6 +98,13 @@ export class OrderKitchenService {
                 status: { in: ['OPEN', 'CONFIRMED', 'IN_PREPARATION', 'PREPARED'] as OrderStatus[] },
                 createdAt: {
                     gte: new Date(new Date().setHours(0, 0, 0, 0)) // Desde el inicio del dia
+                },
+                // Solo mostrar ordenes que tienen al menos un item pendiente de servir
+                // Esto excluye ordenes vacias creadas al abrir mesas
+                items: {
+                    some: {
+                        status: { not: 'SERVED' }
+                    }
                 }
             },
             include: {
