@@ -91,8 +91,7 @@ model OrderSequence {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  @@unique([tenantId, sequenceKey]) // Tenant scoped sequence
-  @@index([tenantId])
+  @@unique([tenantId, sequenceKey]) // Tenant scoped sequence — unique index covers tenantId queries (DB-005)
 }
 
 model Role {
@@ -103,8 +102,7 @@ model Role {
   permissions Json
   users       User[]
 
-  @@unique([tenantId, name]) // Unique per tenant
-  @@index([tenantId])
+  @@unique([tenantId, name]) // Unique per tenant — unique index covers tenantId queries (DB-005)
 }
 
 model User {
@@ -129,8 +127,7 @@ model User {
   createdAt           DateTime    @default(now())
   updatedAt           DateTime    @updatedAt
 
-  @@unique([tenantId, email])
-  @@index([tenantId])
+  @@unique([tenantId, email]) // Unique index covers tenantId queries (DB-005)
   @@index([roleId])
   @@index([tenantId, pinLookup]) // FIX P0-PERF-001: O(1) PIN lookup
 }
@@ -162,8 +159,7 @@ model Category {
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
-  @@unique([tenantId, name])
-  @@index([tenantId])
+  @@unique([tenantId, name]) // Unique index covers tenantId queries (DB-005)
   @@index([printerId])
 }
 
@@ -180,8 +176,7 @@ model Printer {
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
 
-  @@unique([tenantId, name])
-  @@index([tenantId])
+  @@unique([tenantId, name]) // Unique index covers tenantId queries (DB-005)
 }
 
 enum PrinterConnection {
@@ -209,9 +204,8 @@ model Product {
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
 
-  @@unique([tenantId, name])
+  @@unique([tenantId, name]) // Unique index covers tenantId queries (DB-005)
   @@index([tenantId, isActive, categoryId])
-  @@index([tenantId])
   @@index([categoryId])
 }
 
@@ -233,8 +227,7 @@ model ModifierGroup {
   createdAt    DateTime               @default(now())
   updatedAt    DateTime               @updatedAt
 
-  @@unique([tenantId, name])
-  @@index([tenantId])
+  @@unique([tenantId, name]) // Unique index covers tenantId queries (DB-005)
 }
 
 model ProductModifierGroup {
@@ -286,8 +279,7 @@ model Ingredient {
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
-  @@unique([tenantId, name])
-  @@index([tenantId])
+  @@unique([tenantId, name]) // Unique index covers tenantId queries (DB-005)
 }
 
 model ProductIngredient {
@@ -373,11 +365,10 @@ model PurchaseOrder {
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
 
-  @@unique([tenantId, orderNumber])
+  @@unique([tenantId, orderNumber]) // Unique index covers tenantId queries (DB-005)
   @@index([supplierId])
   @@index([status])
   @@index([orderedAt])
-  @@index([tenantId])
 }
 
 model PurchaseOrderItem {
@@ -413,8 +404,7 @@ model Invoice {
   total         Decimal     @db.Decimal(10, 2)
   createdAt     DateTime    @default(now())
 
-  @@unique([tenantId, invoiceNumber])
-  @@index([tenantId])
+  @@unique([tenantId, invoiceNumber]) // Unique index covers tenantId queries (DB-005)
 }
 
 enum InvoiceType {
@@ -432,8 +422,7 @@ model TaxRate {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  @@unique([tenantId, name])
-  @@index([tenantId])
+  @@unique([tenantId, name]) // Unique index covers tenantId queries (DB-005)
 }
 
 model Order {
@@ -481,8 +470,7 @@ model Order {
   currentTable        Table?            @relation("TableCurrentOrder") // FIX P0-DATA-003
   currentDriver       DeliveryDriver?   @relation("DriverCurrentOrder") // FIX P0-DATA-003
 
-  @@unique([tenantId, businessDate, orderNumber]) // Unique per Tenant per Day
-  @@index([tenantId])
+  @@unique([tenantId, businessDate, orderNumber]) // Unique per Tenant per Day — unique index covers tenantId queries (DB-005)
   @@index([tableId])
   @@index([clientId])
   @@index([serverId])
@@ -497,6 +485,7 @@ model Order {
   @@index([tenantId, paymentStatus])
   @@index([tenantId, channel])
   @@index([tenantId, deletedAt])
+  @@index([tenantId, closedAt]) // DB-004: Optimiza consultas de órdenes cerradas por fecha
 }
 
 enum OrderChannel {
@@ -571,13 +560,13 @@ model Area {
   tenantId         Int
   tenant           Tenant                @relation(fields: [tenantId], references: [id])
   name             String
+  isActive         Boolean               @default(true) // DB-002: Soft-delete para preservar historial
   tables           Table[]
   printerOverrides AreaPrinterOverride[]
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
 
-  @@unique([tenantId, name])
-  @@index([tenantId])
+  @@unique([tenantId, name]) // Unique index covers tenantId queries (DB-005)
 }
 
 // Print Routing Override per Area (Toast-style)
@@ -612,6 +601,7 @@ model Table {
   name           String
   x              Int?
   y              Int?
+  isActive       Boolean     @default(true) // DB-002: Soft-delete para preservar historial de órdenes
   status         TableStatus @default(FREE)
   currentOrderId Int?        @unique // FIX P0-DATA-003: FK constraint prevents stale pointers
   currentOrder   Order?      @relation("TableCurrentOrder", fields: [currentOrderId], references: [id], onDelete: SetNull)
@@ -620,8 +610,7 @@ model Table {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  @@unique([tenantId, name])
-  @@index([tenantId])
+  @@unique([tenantId, name]) // Unique index covers tenantId queries (DB-005)
   @@index([areaId])
 }
 
@@ -641,15 +630,15 @@ model Client {
   email         String?
   address       String?
   taxId         String?
+  isActive      Boolean  @default(true) // DB-002: Soft-delete para preservar historial de facturación
   points        Int      @default(0)
   walletBalance Decimal  @default(0) @db.Decimal(10, 2)
   orders        Order[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  @@unique([tenantId, phone]) // Unique per tenant
+  @@unique([tenantId, phone]) // Unique per tenant — unique index covers tenantId queries (DB-005)
   @@unique([tenantId, email])
-  @@index([tenantId])
 }
 
 model CashShift {
@@ -716,8 +705,7 @@ model PaymentMethodConfig {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([tenantId, code])
-  @@index([tenantId])
+  @@unique([tenantId, code]) // Unique index covers tenantId queries (DB-005)
 }
 
 // Audit log for tracking critical actions
@@ -858,8 +846,7 @@ model DeliveryPlatform {
   createdAt     DateTime               @default(now())
   updatedAt     DateTime               @updatedAt
 
-  @@unique([tenantId, code])
-  @@index([tenantId])
+  @@unique([tenantId, code]) // Unique index covers tenantId queries (DB-005)
 }
 
 // 2. TENANT-SPECIFIC CONFIGURATION
@@ -891,8 +878,7 @@ model TenantPlatformConfig {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([tenantId, deliveryPlatformId]) // One config per platform per tenant
-  @@index([tenantId])
+  @@unique([tenantId, deliveryPlatformId]) // One config per platform per tenant — unique index covers tenantId queries (DB-005)
 }
 
 model DeliveryDriver {
@@ -912,8 +898,7 @@ model DeliveryDriver {
   updatedAt      DateTime    @updatedAt
   orders         Order[]     @relation("DeliveryDriverOrders")
 
-  @@unique([tenantId, phone])
-  @@index([tenantId])
+  @@unique([tenantId, phone]) // Unique index covers tenantId queries (DB-005)
 }
 
 enum VehicleType {

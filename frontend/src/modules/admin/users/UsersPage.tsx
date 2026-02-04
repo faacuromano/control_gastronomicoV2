@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Search, User as UserIcon, Shield, Key, Edit, Trash2 } from 'lucide-react';
 import { userService, type User } from '../../../services/userService';
 import { roleService, type Role } from '../../../services/roleService';
+import { toast } from 'sonner';
+import { getErrorMessage } from '../../../lib/errorUtils';
+import { confirmDelete } from '../../../lib/confirmDialog';
 
 export const UsersPage: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
@@ -68,18 +71,18 @@ export const UsersPage: React.FC = () => {
             loadData();
         } catch (error) {
             console.error("Failed to save user", error);
-            alert("Error al guardar usuario");
+            toast.error("Error al guardar usuario");
         }
     };
 
     const handleDelete = async (userId: number) => {
-        if (!confirm('¿Estás seguro de eliminar este usuario?')) return;
+        if (!await confirmDelete('este usuario')) return;
         try {
             await userService.delete(userId);
             loadData();
         } catch (error) {
             console.error("Failed to delete user", error);
-            alert("Error al eliminar usuario");
+            toast.error("Error al eliminar usuario");
         }
     };
 
@@ -111,20 +114,20 @@ export const UsersPage: React.FC = () => {
             await roleService.create(newRoleName.trim());
             setNewRoleName('');
             loadData(); // Reload to get new role
-        } catch (error: any) {
-            console.error("Failed to create role", error);  
-            alert(error.response?.data?.error || "Error al crear rol");
+        } catch (error: unknown) {
+            console.error("Failed to create role", error);
+            toast.error(getErrorMessage(error, "Error al crear rol"));
         }
     };
 
     const handleDeleteRole = async (roleId: number) => {
-        if (!confirm('¿Estás seguro de eliminar este rol?')) return;
+        if (!await confirmDelete('este rol')) return;
         try {
             await roleService.delete(roleId);
             loadData();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Failed to delete role", error);
-            alert(error.response?.data?.error || "Error al eliminar rol");
+            toast.error(getErrorMessage(error, "Error al eliminar rol"));
         }
     };
 

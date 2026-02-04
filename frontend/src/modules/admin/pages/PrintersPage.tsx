@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Loader2, Save, X, Trash2, Printer as PrinterIcon, TestTube, CheckCircle, XCircle, Wifi, Usb, RefreshCw } from 'lucide-react';
 import { printerService, type Printer, type PrinterConnectionType } from '../../../services/printerService';
+import { toast } from 'sonner';
+import { getErrorMessage } from '../../../lib/errorUtils';
+import { confirmDelete } from '../../../lib/confirmDialog';
 
 export const PrintersPage: React.FC = () => {
     const [printers, setPrinters] = useState<Printer[]>([]);
@@ -87,19 +90,19 @@ export const PrintersPage: React.FC = () => {
             setIsModalOpen(false);
             resetForm();
             loadData();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Failed to save', error);
-            alert(error?.response?.data?.error?.message || 'Error al guardar');
+            toast.error(getErrorMessage(error, 'Error al guardar'));
         }
     };
 
     const handleDelete = async (id: number) => {
-        if (!confirm('¿Eliminar esta impresora?')) return;
+        if (!await confirmDelete('esta impresora')) return;
         try {
             await printerService.delete(id);
             loadData();
-        } catch (error: any) {
-            alert(error?.response?.data?.error?.message || 'Error al eliminar');
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, 'Error al eliminar'));
         }
     };
 
@@ -109,11 +112,11 @@ export const PrintersPage: React.FC = () => {
         try {
             await printerService.printTestPage(id);
             setTestResult({ id, success: true, message: 'Página de prueba enviada' });
-        } catch (error: any) {
-            setTestResult({ 
-                id, 
-                success: false, 
-                message: error?.response?.data?.error?.message || 'Error de conexión' 
+        } catch (error: unknown) {
+            setTestResult({
+                id,
+                success: false,
+                message: getErrorMessage(error, 'Error de conexión')
             });
         } finally {
             setTestingId(null);

@@ -4,11 +4,12 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { qrService, type QrCodeData, type QrMenuConfig } from '../services/qrService';
-import { tableService } from '../services/tableService';
+import { qrService, type QrCodeData, type QrMenuConfig, type QrMenuTheme } from '../services/qrService';
+import { tableService, type Area, type Table } from '../services/tableService';
 import { useFeatureFlags } from '../hooks/useFeatureFlags';
-import { 
-    QrCode, Settings, Plus, Trash2, ToggleLeft, ToggleRight, 
+import { confirmDelete } from '../lib/confirmDialog';
+import {
+    QrCode, Settings, Plus, Trash2, ToggleLeft, ToggleRight,
     Loader2, Copy, ExternalLink, FileText, Image, Palette,
     ChevronDown, ChevronUp, AlertTriangle
 } from 'lucide-react';
@@ -49,8 +50,8 @@ export const QrAdminPage: React.FC = () => {
             
             // Flatten tables from areas
             const allTables: TableOption[] = [];
-            areasData.forEach((area: any) => {
-                area.tables.forEach((table: any) => {
+            areasData.forEach((area: Area) => {
+                area.tables.forEach((table: Table) => {
                     allTables.push({
                         id: table.id,
                         name: table.name,
@@ -66,7 +67,14 @@ export const QrAdminPage: React.FC = () => {
         }
     };
 
-    const handleUpdateConfig = async (updates: any) => {
+    const handleUpdateConfig = async (updates: Partial<{
+        qrMenuEnabled: boolean;
+        qrMenuMode: 'INTERACTIVE' | 'STATIC';
+        qrSelfOrderEnabled: boolean;
+        qrMenuPdfUrl: string | null;
+        qrMenuBannerUrl: string | null;
+        qrMenuTheme: QrMenuTheme | null;
+    }>) => {
         try {
             const updated = await qrService.updateConfig(updates);
             setConfig(updated);
@@ -104,7 +112,7 @@ export const QrAdminPage: React.FC = () => {
     };
 
     const handleDeleteCode = async (id: number) => {
-        if (!confirm('¿Eliminar este código QR?')) return;
+        if (!await confirmDelete('este código QR')) return;
         try {
             await qrService.deleteCode(id);
             setCodes(codes.filter(c => c.id !== id));

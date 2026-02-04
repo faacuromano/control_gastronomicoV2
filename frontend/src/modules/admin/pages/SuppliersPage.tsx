@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Phone, Mail, MapPin, Loader2 } from 'lucide-react';
 import { supplierService, type Supplier, type CreateSupplierData } from '../../../services/supplierService';
+import { toast } from 'sonner';
+import { getErrorMessage } from '../../../lib/errorUtils';
+import { confirmDelete } from '../../../lib/confirmDialog';
 
 export const SuppliersPage: React.FC = () => {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -48,10 +51,9 @@ export const SuppliersPage: React.FC = () => {
             setIsModalOpen(false);
             resetForm();
             loadSuppliers();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error saving supplier", error);
-            const msg = error?.response?.data?.error?.message || "Error al guardar proveedor";
-            alert(msg);
+            toast.error(getErrorMessage(error, "Error al guardar proveedor"));
         }
     };
 
@@ -68,14 +70,13 @@ export const SuppliersPage: React.FC = () => {
     };
 
     const handleDelete = async (id: number) => {
-        if (!confirm('¿Eliminar este proveedor?')) return;
+        if (!await confirmDelete('este proveedor')) return;
         try {
             await supplierService.delete(id);
             loadSuppliers();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error deleting supplier", error);
-            const msg = error?.response?.data?.error?.message || "Error al eliminar proveedor";
-            alert(msg);
+            toast.error(getErrorMessage(error, "Error al eliminar proveedor"));
         }
     };
 

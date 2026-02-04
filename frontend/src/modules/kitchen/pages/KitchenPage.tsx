@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useSocket } from '../../../context/SocketContext';
-import { TicketCard } from './components/TicketCard';
+import { TicketCard, type KitchenOrder, type KitchenOrderItem } from './components/TicketCard';
 import { orderService } from '../../../services/orderService';
 import { useKitchenStore } from '../../../store/kitchen.store';
 import { BellOff, RefreshCw, Volume2 } from 'lucide-react';
 
 export const KitchenPage: React.FC = () => {
   const { socket, isConnected } = useSocket();
-  const [orders, setOrders] = useState<any[]>([]);
+  const [orders, setOrders] = useState<KitchenOrder[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Store
@@ -88,7 +88,7 @@ export const KitchenPage: React.FC = () => {
       // Optimistic update: reflect item status change immediately
       setOrders(prev => prev.map(order => ({
           ...order,
-          items: order.items.map((item: any) =>
+          items: order.items.map((item: KitchenOrderItem) =>
               item.id === itemId ? { ...item, status } : item
           )
       })));

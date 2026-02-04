@@ -17,7 +17,7 @@
  */
 
 import { Router } from 'express';
-import { authenticateToken, authorize } from '../middleware/auth';
+import { authenticateToken, requirePermission } from '../middleware/auth';
 import { validateId } from '../middleware/validateId';
 import * as modifierController from '../controllers/modifier.controller';
 
@@ -28,19 +28,19 @@ const router = Router();
 router.get('/groups', authenticateToken, modifierController.getGroups);
 // Obtener detalle de un grupo con sus opciones
 router.get('/groups/:id', authenticateToken, validateId(), modifierController.getGroup);
-// Crear nuevo grupo de modificadores (solo ADMIN/MANAGER)
-router.post('/groups', authenticateToken, authorize(['ADMIN', 'MANAGER']), modifierController.createGroup);
-// Actualizar grupo (nombre, selección mínima/máxima)
-router.put('/groups/:id', authenticateToken, validateId(), authorize(['ADMIN', 'MANAGER']), modifierController.updateGroup);
-// Eliminar grupo y todas sus opciones asociadas
-router.delete('/groups/:id', authenticateToken, validateId(), authorize(['ADMIN', 'MANAGER']), modifierController.deleteGroup);
+// Crear nuevo grupo de modificadores - requiere permiso modifiers:create
+router.post('/groups', authenticateToken, requirePermission('modifiers', 'create'), modifierController.createGroup);
+// Actualizar grupo (nombre, selección mínima/máxima) - requiere permiso modifiers:update
+router.put('/groups/:id', authenticateToken, validateId(), requirePermission('modifiers', 'update'), modifierController.updateGroup);
+// Eliminar grupo y todas sus opciones asociadas - requiere permiso modifiers:delete
+router.delete('/groups/:id', authenticateToken, validateId(), requirePermission('modifiers', 'delete'), modifierController.deleteGroup);
 
 // --- Opciones de Modificadores ---
-// Agregar opción a un grupo existente (ej: agregar "Extra queso" al grupo "Extras")
-router.post('/groups/:groupId/options', authenticateToken, validateId('groupId'), authorize(['ADMIN', 'MANAGER']), modifierController.addOption);
-// Actualizar una opción específica (nombre, precio adicional)
-router.put('/options/:optionId', authenticateToken, validateId('optionId'), authorize(['ADMIN', 'MANAGER']), modifierController.updateOption);
-// Eliminar una opción de modificador
-router.delete('/options/:optionId', authenticateToken, validateId('optionId'), authorize(['ADMIN', 'MANAGER']), modifierController.deleteOption);
+// Agregar opción a un grupo existente - requiere permiso modifiers:create
+router.post('/groups/:groupId/options', authenticateToken, validateId('groupId'), requirePermission('modifiers', 'create'), modifierController.addOption);
+// Actualizar una opción específica - requiere permiso modifiers:update
+router.put('/options/:optionId', authenticateToken, validateId('optionId'), requirePermission('modifiers', 'update'), modifierController.updateOption);
+// Eliminar una opción de modificador - requiere permiso modifiers:delete
+router.delete('/options/:optionId', authenticateToken, validateId('optionId'), requirePermission('modifiers', 'delete'), modifierController.deleteOption);
 
 export default router;

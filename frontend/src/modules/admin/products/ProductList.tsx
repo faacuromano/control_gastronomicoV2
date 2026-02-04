@@ -3,6 +3,7 @@ import { productService, type Product } from '../../../services/productService';
 import { categoryService, type Category } from '../../../services/categoryService';
 import { Plus, Trash2, Edit, Check, X } from 'lucide-react';
 import ProductForm from './components/ProductForm';
+import { confirmDelete } from '../../../lib/confirmDialog';
 
 export default function ProductList() {
     const [products, setProducts] = useState<Product[]>([]);
@@ -46,7 +47,7 @@ export default function ProductList() {
     };
 
     const handleDelete = async (id: number) => {
-        if (!window.confirm('Delete product?')) return;
+        if (!await confirmDelete('este producto')) return;
         try {
             await productService.delete(id);
             loadData();

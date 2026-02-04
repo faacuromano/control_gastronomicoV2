@@ -6,8 +6,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { qrService, type PublicMenu } from '../services/qrService';
+import { qrService, type PublicMenu, type PublicMenuProduct, type PublicMenuCategory } from '../services/qrService';
 import { Loader2, AlertCircle, ShoppingCart, Plus, Minus } from 'lucide-react';
+import { toast } from 'sonner';
+import { getErrorMessage } from '../lib/errorUtils';
 
 interface CartItem {
     productId: number;
@@ -42,14 +44,14 @@ export const MenuPublicPage: React.FC = () => {
             if (data.categories && data.categories.length > 0) {
                 setSelectedCategory(data.categories[0].id);
             }
-        } catch (err: any) {
-            setError(err.response?.data?.error?.message || 'No se pudo cargar el menú');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err, 'No se pudo cargar el menú'));
         } finally {
             setLoading(false);
         }
     };
 
-    const addToCart = (product: any) => {
+    const addToCart = (product: PublicMenuProduct) => {
         const existing = cart.find(item => item.productId === product.id);
         if (existing) {
             setCart(cart.map(item => 
@@ -137,10 +139,10 @@ export const MenuPublicPage: React.FC = () => {
 
     // Interactive Mode
     const filteredProducts = menu?.products?.filter(
-        (p: any) => selectedCategory === null || p.category?.id === selectedCategory
+        (p: PublicMenuProduct) => selectedCategory === null || p.category?.id === selectedCategory
     ) || [];
 
-    const currentCategoryName = menu?.categories?.find((c: any) => c.id === selectedCategory)?.name || 'CARTA';
+    const currentCategoryName = menu?.categories?.find((c: PublicMenuCategory) => c.id === selectedCategory)?.name || 'CARTA';
 
     // Theme values with defaults
     const theme = {
@@ -267,7 +269,7 @@ export const MenuPublicPage: React.FC = () => {
             <div className="sticky top-0 z-50 bg-[#2c2e2c]/95 menu-bg backdrop-blur-md border-b border-white/5 shadow-xl">
                 <div className="overflow-x-auto no-scrollbar">
                     <div className="flex px-4 py-3 gap-6 min-w-max">
-                        {menu?.categories?.map((cat: any) => (
+                        {menu?.categories?.map((cat: PublicMenuCategory) => (
                             <button
                                 key={cat.id}
                                 onClick={() => setSelectedCategory(cat.id)}
@@ -297,7 +299,7 @@ export const MenuPublicPage: React.FC = () => {
 
                 {/* Product List */}
                 <div className="grid gap-10">
-                    {filteredProducts.map((product: any) => {
+                    {filteredProducts.map((product: PublicMenuProduct) => {
                         const inCart = cart.find(i => i.productId === product.id);
                         return (
                             <div key={product.id} className="group">
@@ -460,7 +462,7 @@ export const MenuPublicPage: React.FC = () => {
                             
                             <button
                                 onClick={() => {
-                                    alert('¡Pedido Iniciado! Por favor confirma con el personal.');
+                                    toast.success('¡Pedido Iniciado! Por favor confirma con el personal.');
                                     setShowCart(false);
                                 }}
                                 className="w-full bg-white hover:bg-amber-50 text-[#1a1c1a] py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all active:scale-95"

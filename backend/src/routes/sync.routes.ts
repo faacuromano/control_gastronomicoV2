@@ -17,7 +17,7 @@
  */
 
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requirePermission } from '../middleware/auth';
 import * as syncController from '../controllers/sync.controller';
 
 const router = Router();
@@ -25,13 +25,14 @@ const router = Router();
 // Todas las rutas de sincronización requieren autenticación
 router.use(authenticate);
 
-// GET /api/v1/sync/pull - Descargar datos para caché offline del dispositivo
-router.get('/pull', syncController.pull);
+// SEC-005: GET /api/v1/sync/pull - Descargar datos para caché offline del dispositivo
+router.get('/pull', requirePermission('orders', 'read'), syncController.pull);
 
 // POST /api/v1/sync/push - Enviar operaciones realizadas durante el modo offline
-router.post('/push', syncController.push);
+router.post('/push', requirePermission('orders', 'create'), syncController.push);
 
 // GET /api/v1/sync/status - Verificar estado del servidor y timestamp de última sync
-router.get('/status', syncController.status);
+// SEC-005: Requiere permiso orders:read para ver estado de sincronización
+router.get('/status', requirePermission('orders', 'read'), syncController.status);
 
 export default router;

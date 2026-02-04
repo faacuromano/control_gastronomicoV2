@@ -22,39 +22,39 @@ import {
   createTable, getTable, updateTable, updatePosition, updatePositions, deleteTable,
   openTable, closeTable
 } from '../controllers/table.controller';
-import { authenticateToken as authenticate, authorize } from '../middleware/auth';
+import { authenticateToken as authenticate, requirePermission } from '../middleware/auth';
 import { validateId } from '../middleware/validateId';
 
 const router = Router();
 
 // --- Áreas del restaurante (/api/v1/areas) ---
-// Listar todas las áreas con sus mesas (para el mapa del restaurante)
-router.get('/areas', authenticate, getAreas);
-// Crear nueva área (solo ADMIN)
-router.post('/areas', authenticate, authorize(['ADMIN']), createArea);
-// Actualizar nombre u orden de un área (solo ADMIN)
-router.put('/areas/:id', authenticate, validateId(), authorize(['ADMIN']), updateArea);
-// Eliminar un área y sus mesas (solo ADMIN)
-router.delete('/areas/:id', authenticate, validateId(), authorize(['ADMIN']), deleteArea);
+// Listar todas las áreas con sus mesas (para el mapa del restaurante) - requiere permiso tables:read
+router.get('/areas', authenticate, requirePermission('tables', 'read'), getAreas);
+// Crear nueva área - requiere permiso tables:create
+router.post('/areas', authenticate, requirePermission('tables', 'create'), createArea);
+// Actualizar nombre u orden de un área - requiere permiso tables:update
+router.put('/areas/:id', authenticate, validateId(), requirePermission('tables', 'update'), updateArea);
+// Eliminar un área y sus mesas - requiere permiso tables:delete
+router.delete('/areas/:id', authenticate, validateId(), requirePermission('tables', 'delete'), deleteArea);
 
 // --- Mesas (/api/v1/tables) ---
-// Actualizar posiciones de múltiples mesas a la vez (drag & drop en el mapa, solo ADMIN)
-router.put('/tables/positions', authenticate, authorize(['ADMIN']), updatePositions);
-// Crear nueva mesa en un área (solo ADMIN)
-router.post('/tables', authenticate, authorize(['ADMIN']), createTable);
-// Obtener detalle de una mesa (estado, orden actual, área)
-router.get('/tables/:id', authenticate, validateId(), getTable);
-// Actualizar datos de una mesa (nombre, capacidad, etc., solo ADMIN)
-router.put('/tables/:id', authenticate, validateId(), authorize(['ADMIN']), updateTable);
-// Actualizar posición individual de una mesa en el mapa (solo ADMIN)
-router.put('/tables/:id/position', authenticate, validateId(), authorize(['ADMIN']), updatePosition);
-// Eliminar una mesa (solo ADMIN, falla si tiene orden activa)
-router.delete('/tables/:id', authenticate, validateId(), authorize(['ADMIN']), deleteTable);
+// Actualizar posiciones de múltiples mesas (drag & drop) - requiere permiso tables:update
+router.put('/tables/positions', authenticate, requirePermission('tables', 'update'), updatePositions);
+// Crear nueva mesa en un área - requiere permiso tables:create
+router.post('/tables', authenticate, requirePermission('tables', 'create'), createTable);
+// Obtener detalle de una mesa - requiere permiso tables:read
+router.get('/tables/:id', authenticate, validateId(), requirePermission('tables', 'read'), getTable);
+// Actualizar datos de una mesa - requiere permiso tables:update
+router.put('/tables/:id', authenticate, validateId(), requirePermission('tables', 'update'), updateTable);
+// Actualizar posición individual de una mesa - requiere permiso tables:update
+router.put('/tables/:id/position', authenticate, validateId(), requirePermission('tables', 'update'), updatePosition);
+// Eliminar una mesa - requiere permiso tables:delete
+router.delete('/tables/:id', authenticate, validateId(), requirePermission('tables', 'delete'), deleteTable);
 
 // --- Operaciones de mesa (Mesero/Cajero) ---
-// Abrir mesa: cambia estado a OCCUPIED y puede crear orden automáticamente
-router.post('/tables/:id/open', authenticate, validateId(), openTable);
-// Cerrar mesa: cambia estado a FREE después de cobrar la orden
-router.post('/tables/:id/close', authenticate, validateId(), closeTable);
+// Abrir mesa: crea orden automáticamente - requiere permiso orders:create
+router.post('/tables/:id/open', authenticate, validateId(), requirePermission('orders', 'create'), openTable);
+// Cerrar mesa: procesa pago - requiere permiso orders:update
+router.post('/tables/:id/close', authenticate, validateId(), requirePermission('orders', 'update'), closeTable);
 
 export const tableRouter = router;

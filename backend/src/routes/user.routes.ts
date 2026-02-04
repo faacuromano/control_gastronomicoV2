@@ -18,7 +18,7 @@
 import { Router } from 'express';
 import { getRoles, createRole, deleteRole } from '../controllers/role.controller';
 import { listUsers, getUserById, createUser, updateUser, deleteUser, getUsersWithCapability } from '../controllers/user.controller';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, requirePermission } from '../middleware/auth';
 import { apiRateLimiter } from '../middleware/rateLimit';
 import { validateId } from '../middleware/validateId';
 
@@ -30,16 +30,16 @@ router.get('/with-capability', authenticate, getUsersWithCapability);
 // Listar usuarios - cualquier usuario autenticado (para dropdowns de asignación)
 router.get('/', authenticate, listUsers);
 
-// Obtener detalle de un usuario - solo ADMIN
-router.get('/:id', authenticate, validateId(), authorize(['ADMIN']), getUserById);
+// Obtener detalle de un usuario - requiere permiso users:read
+router.get('/:id', authenticate, validateId(), requirePermission('users', 'read'), getUserById);
 
-// Crear usuario - solo ADMIN (con rate limiting para prevenir enumeración de PINes P1-010)
-router.post('/', authenticate, authorize(['ADMIN']), apiRateLimiter, createUser);
+// Crear usuario - requiere permiso users:create (con rate limiting P1-010)
+router.post('/', authenticate, requirePermission('users', 'create'), apiRateLimiter, createUser);
 
-// Actualizar usuario - solo ADMIN (con rate limiting para prevenir enumeración de PINes P1-010)
-router.put('/:id', authenticate, validateId(), authorize(['ADMIN']), apiRateLimiter, updateUser);
+// Actualizar usuario - requiere permiso users:update (con rate limiting P1-010)
+router.put('/:id', authenticate, validateId(), requirePermission('users', 'update'), apiRateLimiter, updateUser);
 
-// Eliminar (desactivar) usuario - solo ADMIN (soft delete, no se borra de la BD)
-router.delete('/:id', authenticate, validateId(), authorize(['ADMIN']), deleteUser);
+// Eliminar (desactivar) usuario - requiere permiso users:delete (soft delete)
+router.delete('/:id', authenticate, validateId(), requirePermission('users', 'delete'), deleteUser);
 
 export default router;

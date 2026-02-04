@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import { type ShiftReport } from '../../services/cashShiftService';
 import { useCashStore } from '../../store/cash.store';
 import { Loader2, X, AlertTriangle, CheckCircle, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { getErrorMessage } from '../../lib/errorUtils';
+import { confirmAction } from '../../lib/confirmDialog';
 
 interface CloseShiftModalProps {
     isOpen: boolean;
@@ -26,7 +28,8 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({ isOpen, onClos
             return;
         }
 
-        if (!confirm('¿Estás seguro de que deseas cerrar la caja? Esta acción no se puede deshacer.')) {
+        const confirmed = await confirmAction('¿Estás seguro de que deseas cerrar la caja? Esta acción no se puede deshacer.');
+        if (!confirmed) {
             return;
         }
 
@@ -36,8 +39,8 @@ export const CloseShiftModal: React.FC<CloseShiftModalProps> = ({ isOpen, onClos
         try {
             const shiftReport = await useCashStore.getState().closeShiftWithCount(numAmount);
             setReport(shiftReport as ShiftReport);
-        } catch (err: any) {
-            setError(err.response?.data?.error?.message || err.message || 'Error al cerrar caja.');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err, 'Error al cerrar caja.'));
         } finally {
             setLoading(false);
         }

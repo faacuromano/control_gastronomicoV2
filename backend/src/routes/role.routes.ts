@@ -23,7 +23,7 @@ import {
     updateRolePermissions,
     getPermissionOptions
 } from '../controllers/role.controller';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, requirePermission } from '../middleware/auth';
 import { validateId } from '../middleware/validateId';
 
 const router = Router();
@@ -34,16 +34,16 @@ router.get('/', authenticate, getRoles);
 // Obtener catálogo de recursos y acciones disponibles para configurar permisos
 router.get('/permission-options', authenticate, getPermissionOptions);
 
-// Obtener detalle de un rol con sus permisos - solo ADMIN
-router.get('/:id', authenticate, validateId(), authorize(['ADMIN']), getRoleById);
+// Obtener detalle de un rol con sus permisos - requiere permiso roles:read
+router.get('/:id', authenticate, validateId(), requirePermission('roles', 'read'), getRoleById);
 
-// Crear nuevo rol con permisos iniciales - solo ADMIN
-router.post('/', authenticate, authorize(['ADMIN']), createRole);
+// Crear nuevo rol con permisos iniciales - requiere permiso roles:create
+router.post('/', authenticate, requirePermission('roles', 'create'), createRole);
 
-// Actualizar los permisos de un rol existente - solo ADMIN
-router.put('/:id/permissions', authenticate, validateId(), authorize(['ADMIN']), updateRolePermissions);
+// Actualizar los permisos de un rol existente - requiere permiso roles:update
+router.put('/:id/permissions', authenticate, validateId(), requirePermission('roles', 'update'), updateRolePermissions);
 
-// Eliminar un rol (falla si hay usuarios asignados a él) - solo ADMIN
-router.delete('/:id', authenticate, validateId(), authorize(['ADMIN']), deleteRole);
+// Eliminar un rol (falla si hay usuarios asignados) - requiere permiso roles:delete
+router.delete('/:id', authenticate, validateId(), requirePermission('roles', 'delete'), deleteRole);
 
 export default router;

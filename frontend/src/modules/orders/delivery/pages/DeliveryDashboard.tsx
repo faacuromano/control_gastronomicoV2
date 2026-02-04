@@ -5,6 +5,8 @@ import type { OrderResponse } from '../../../../services/orderService';
 import type { OrderWithDeliveryDetails } from '../../../../services/orderTypes';
 import { userService } from '../../../../services/userService';
 import type { User as UserType } from '../../../../services/userService';
+import { toast } from 'sonner';
+import { confirmAction } from '../../../../lib/confirmDialog';
 
 // Simple Status Mapping
 const STATUS_COLUMNS = {
@@ -70,12 +72,12 @@ export const DeliveryDashboard: React.FC = () => {
             fetchData(); // Refresh immediately
         } catch (error) {
             console.error("Failed to assign driver", error);
-            alert("Error al asignar repartidor");
+            toast.error("Error al asignar repartidor");
         }
     };
 
     const handleMarkDelivered = async (orderId: number) => {
-        if (!confirm("¿Marcar pedido como entregado?")) return;
+        if (!await confirmAction('¿Marcar pedido como entregado?')) return;
         try {
             await orderService.updateStatus(orderId, 'DELIVERED');
             fetchData();
@@ -91,7 +93,7 @@ export const DeliveryDashboard: React.FC = () => {
             fetchData();
         } catch (error) {
             console.error("Failed to dispatch", error);
-            alert("Error al despachar");
+            toast.error("Error al despachar");
         }
     };
 

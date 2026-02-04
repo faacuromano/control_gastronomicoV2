@@ -4,6 +4,8 @@ import { Plus, Edit, Trash2, Save } from 'lucide-react';
 import { DndContext, type DragEndEvent, useSensor, useSensors, PointerSensor } from '@dnd-kit/core';
 import { tableService, type Area } from '../../../services/tableService';
 import { DraggableTable } from './components/DraggableTable';
+import { toast } from 'sonner';
+import { confirmDelete } from '../../../lib/confirmDialog';
 
 interface TableFormData {
     name: string;
@@ -91,7 +93,7 @@ export const TablesAdminPage = () => {
             setDeletingAreaId(null);
         } catch (error) {
             console.error('Error deleting area:', error);
-            alert('No se pudo eliminar el área. Verifique que no haya mesas ocupadas.');
+            toast.error('No se pudo eliminar el área. Verifique que no haya mesas ocupadas.');
         }
     };
 
@@ -121,7 +123,7 @@ export const TablesAdminPage = () => {
     };
 
     const handleDeleteTable = async (tableId: number) => {
-        if (!confirm('¿Eliminar esta mesa?')) return;
+        if (!await confirmDelete('esta mesa')) return;
         try {
             await tableService.deleteTable(tableId);
             await loadAreas();
@@ -184,7 +186,7 @@ export const TablesAdminPage = () => {
             // alert('Cambios guardados'); // Optional feedback
         } catch (error) {
             console.error('Error saving positions:', error);
-            alert('Error al guardar cambios');
+            toast.error('Error al guardar cambios');
         }
     };
 

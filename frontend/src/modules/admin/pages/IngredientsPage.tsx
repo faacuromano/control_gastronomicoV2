@@ -3,6 +3,8 @@ import { Plus, Edit, History, AlertTriangle, PowerOff, Loader2 } from 'lucide-re
 import { ingredientService, type Ingredient } from '../../../services/ingredientService';
 import { configService } from '../../../services/configService';
 import StockHistoryModal from './components/StockHistoryModal';
+import { toast } from 'sonner';
+import { confirmAction } from '../../../lib/confirmDialog';
 
 export const IngredientsPage: React.FC = () => {
     const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -60,7 +62,7 @@ export const IngredientsPage: React.FC = () => {
             loadIngredients();
         } catch (error) {
             console.error("Error saving ingredient", error);
-            alert("Error al guardar insumo");
+            toast.error("Error al guardar insumo");
         }
     };
 
@@ -77,15 +79,15 @@ export const IngredientsPage: React.FC = () => {
     };
 
     const handleDisableStock = async () => {
-        if (!confirm('¿Desactivar el módulo de stock? Las ventas dejarán de descontar inventario hasta que lo reactives en Configuración.')) return;
+        if (!await confirmAction('¿Desactivar el módulo de stock? Las ventas dejarán de descontar inventario hasta que lo reactives en Configuración.')) return;
         setDisabling(true);
         try {
-            await configService.updateConfig({ enableStock: false } as any);
-            alert('Módulo de stock desactivado. Serás redirigido al panel de administración.');
+            await configService.updateConfig({ enableStock: false });
+            toast.success('Módulo de stock desactivado. Serás redirigido al panel de administración.');
             window.location.href = '/admin';
         } catch (error) {
             console.error('Error disabling stock:', error);
-            alert('Error al desactivar el módulo');
+            toast.error('Error al desactivar el módulo');
         } finally {
             setDisabling(false);
         }

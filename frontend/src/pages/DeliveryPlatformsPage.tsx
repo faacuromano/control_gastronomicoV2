@@ -5,8 +5,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { deliveryService, type DeliveryPlatform } from '../services/deliveryService';
-import { 
-    Loader2, Plus, Trash2, ToggleLeft, ToggleRight, 
+import { confirmDelete } from '../lib/confirmDialog';
+import {
+    Loader2, Plus, Trash2, ToggleLeft, ToggleRight,
     Edit, Percent
 } from 'lucide-react';
 
@@ -77,7 +78,7 @@ export const DeliveryPlatformsPage: React.FC = () => {
     };
 
     const handleDelete = async (id: number) => {
-        if (!confirm('¿Eliminar esta plataforma?')) return;
+        if (!await confirmDelete('esta plataforma')) return;
         try {
             await deliveryService.deletePlatform(id);
             setPlatforms(platforms.filter(p => p.id !== id));

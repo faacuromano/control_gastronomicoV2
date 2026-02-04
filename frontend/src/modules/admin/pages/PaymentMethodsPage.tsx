@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Loader2, Save, X, ToggleLeft, ToggleRight, Trash2, CreditCard } from 'lucide-react';
 import { paymentMethodService, type PaymentMethodConfig } from '../../../services/paymentMethodService';
+import { toast } from 'sonner';
+import { getErrorMessage } from '../../../lib/errorUtils';
+import { confirmDelete } from '../../../lib/confirmDialog';
 
 export const PaymentMethodsPage: React.FC = () => {
     const [methods, setMethods] = useState<PaymentMethodConfig[]>([]);
@@ -63,9 +66,9 @@ export const PaymentMethodsPage: React.FC = () => {
             setIsModalOpen(false);
             resetForm();
             loadData();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Failed to save', error);
-            alert(error?.response?.data?.error?.message || 'Error al guardar');
+            toast.error(getErrorMessage(error, 'Error al guardar'));
         }
     };
 
@@ -73,18 +76,18 @@ export const PaymentMethodsPage: React.FC = () => {
         try {
             await paymentMethodService.toggleActive(id);
             loadData();
-        } catch (error: any) {
-            alert(error?.response?.data?.error?.message || 'Error al cambiar estado');
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, 'Error al cambiar estado'));
         }
     };
 
     const handleDelete = async (id: number) => {
-        if (!confirm('¿Eliminar este método de pago?')) return;
+        if (!await confirmDelete('este método de pago')) return;
         try {
             await paymentMethodService.delete(id);
             loadData();
-        } catch (error: any) {
-            alert(error?.response?.data?.error?.message || 'Error al eliminar');
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, 'Error al eliminar'));
         }
     };
 
@@ -92,8 +95,8 @@ export const PaymentMethodsPage: React.FC = () => {
         try {
             await paymentMethodService.seedDefaults();
             loadData();
-        } catch (error: any) {
-            alert(error?.response?.data?.error?.message || 'Error al crear métodos por defecto');
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, 'Error al crear métodos por defecto'));
         }
     };
 

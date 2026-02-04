@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { modifierService, type ModifierGroup } from '../../../services/modifierService';
 import { ingredientService, type Ingredient } from '../../../services/ingredientService';
 import { Plus, Trash, Edit, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { getErrorMessage } from '../../../lib/errorUtils';
+import { confirmDelete } from '../../../lib/confirmDialog';
 
 export default function ModifiersPage() {
     const [groups, setGroups] = useState<ModifierGroup[]>([]);
@@ -55,18 +58,18 @@ export default function ModifiersPage() {
             }
             setEditingGroup(null);
             loadData();
-        } catch (err: any) {
-            alert(err.message || 'Error saving group');
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, 'Error saving group'));
         }
     };
 
     const handleDeleteGroup = async (id: number) => {
-        if (!confirm('Delete this group? It will remove all options.')) return;
+        if (!await confirmDelete('este grupo (se eliminarán todas las opciones)')) return;
         try {
             await modifierService.deleteGroup(id);
             loadData();
-        } catch (err: any) {
-            alert(err.message || 'Error deleting group');
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, 'Error deleting group'));
         }
     };
 
@@ -87,18 +90,18 @@ export default function ModifiersPage() {
             }
             setEditingOption(null);
             loadData();
-        } catch (err: any) {
-            alert(err.message || 'Error saving option');
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, 'Error saving option'));
         }
     };
 
     const handleDeleteOption = async (id: number) => {
-        if (!confirm('Delete this option?')) return;
+        if (!await confirmDelete('esta opción')) return;
         try {
             await modifierService.deleteOption(id);
             loadData();
-        } catch (err: any) {
-            alert(err.message || 'Error deleting option');
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, 'Error deleting option'));
         }
     };
 

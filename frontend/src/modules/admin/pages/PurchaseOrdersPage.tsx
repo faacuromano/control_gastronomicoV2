@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Package, CheckCircle, XCircle, Clock, Loader2, Truck } from 'lucide-react';
+import { Plus, Package, CheckCircle, XCircle, Clock, Loader2, Truck, type LucideIcon } from 'lucide-react';
 import { purchaseOrderService, type PurchaseOrderListItem } from '../../../services/purchaseOrderService';
 import { supplierService, type Supplier } from '../../../services/supplierService';
 import { ingredientService, type Ingredient } from '../../../services/ingredientService';
+import { toast } from 'sonner';
+import { getErrorMessage } from '../../../lib/errorUtils';
+import { confirmAction, confirmDelete } from '../../../lib/confirmDialog';
 
 type PurchaseStatus = 'PENDING' | 'ORDERED' | 'PARTIAL' | 'RECEIVED' | 'CANCELLED';
 
-const STATUS_CONFIG: Record<PurchaseStatus, { label: string; color: string; icon: React.ComponentType<any> }> = {
+const STATUS_CONFIG: Record<PurchaseStatus, { label: string; color: string; icon: LucideIcon }> = {
     PENDING: { label: 'Pendiente', color: 'bg-yellow-100 text-yellow-700', icon: Clock },
     ORDERED: { label: 'Ordenada', color: 'bg-blue-100 text-blue-700', icon: Truck },
     PARTIAL: { label: 'Parcial', color: 'bg-orange-100 text-orange-700', icon: Package },
@@ -58,9 +61,9 @@ export const PurchaseOrdersPage: React.FC = () => {
         setOrderItems([...orderItems, { ingredientId: 0, quantity: 1, unitCost: 0 }]);
     };
 
-    const updateItem = (index: number, field: string, value: any) => {
+    const updateItem = (index: number, field: keyof typeof orderItems[number], value: number) => {
         const newItems = [...orderItems];
-        (newItems[index] as any)[field] = value;
+        newItems[index] = { ...newItems[index], [field]: value };
         setOrderItems(newItems);
     };
 
@@ -75,13 +78,13 @@ export const PurchaseOrdersPage: React.FC = () => {
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedSupplier || orderItems.length === 0) {
-            alert('Debe seleccionar un proveedor y agregar al menos un item');
+            toast.warning('Debe seleccionar un proveedor y agregar al menos un item');
             return;
         }
 
         const validItems = orderItems.filter(item => item.ingredientId > 0 && item.quantity > 0);
         if (validItems.length === 0) {
-            alert('Todos los items deben tener ingrediente y cantidad válidos');
+            toast.warning('Todos los items deben tener ingrediente y cantidad válidos');
             return;
         }
 
@@ -94,30 +97,30 @@ export const PurchaseOrdersPage: React.FC = () => {
             setIsModalOpen(false);
             resetForm();
             loadData();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error creating order", error);
-            alert(error?.response?.data?.error?.message || "Error al crear orden");
+            toast.error(getErrorMessage(error, "Error al crear orden"));
         }
     };
 
     const handleReceive = async (id: number) => {
-        if (!confirm('¿Confirmar recepción de la orden? Esto actualizará el stock de ingredientes.')) return;
+        if (!await confirmAction('¿Confirmar recepción de la orden? Esto actualizará el stock de ingredientes.')) return;
         try {
             await purchaseOrderService.receive(id);
             loadData();
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Error receiving order", error);
-            alert(error?.response?.data?.error?.message || "Error al recibir orden");
+            toast.error(getErrorMessage(error, "Error al recibir orden"));
         }
     };
 
     const handleCancel = async (id: number) => {
-        if (!confirm('¿Cancelar esta orden de compra?')) return;
+        if (!await confirmDelete('esta orden de compra')) return;
         try {
             await purchaseOrderService.cancel(id);
             loadData();
-        } catch (error: any) {
-            alert(error?.response?.data?.error?.message || "Error al cancelar orden");
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, "Error al cancelar orden"));
         }
     };
 

@@ -16,7 +16,7 @@
 
 import { Router } from 'express';
 import * as PaymentMethodController from '../controllers/paymentMethod.controller';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, requirePermission } from '../middleware/auth';
 import { validateId } from '../middleware/validateId';
 
 const router = Router();
@@ -24,21 +24,21 @@ const router = Router();
 // Ruta para el POS: obtener solo los métodos de pago activos (visible para todos los autenticados)
 router.get('/active', authenticate, PaymentMethodController.getActive);
 
-// --- Rutas administrativas (solo rol ADMIN) ---
-// Listar todos los métodos de pago (activos e inactivos)
-router.get('/', authenticate, authorize(['ADMIN']), PaymentMethodController.getAll);
-// Obtener detalle de un método de pago por ID
-router.get('/:id', authenticate, validateId(), authorize(['ADMIN']), PaymentMethodController.getById);
-// Crear nuevo método de pago personalizado
-router.post('/', authenticate, authorize(['ADMIN']), PaymentMethodController.create);
-// Actualizar datos de un método de pago (nombre, ícono, etc.)
-router.put('/:id', authenticate, validateId(), authorize(['ADMIN']), PaymentMethodController.update);
-// Activar/desactivar un método de pago (sin eliminarlo)
-router.patch('/:id/toggle', authenticate, validateId(), authorize(['ADMIN']), PaymentMethodController.toggleActive);
-// Eliminar permanentemente un método de pago
-router.delete('/:id', authenticate, validateId(), authorize(['ADMIN']), PaymentMethodController.remove);
+// --- Rutas administrativas ---
+// Listar todos los métodos de pago - requiere permiso payment_methods:read
+router.get('/', authenticate, requirePermission('payment_methods', 'read'), PaymentMethodController.getAll);
+// Obtener detalle de un método de pago - requiere permiso payment_methods:read
+router.get('/:id', authenticate, validateId(), requirePermission('payment_methods', 'read'), PaymentMethodController.getById);
+// Crear nuevo método de pago - requiere permiso payment_methods:create
+router.post('/', authenticate, requirePermission('payment_methods', 'create'), PaymentMethodController.create);
+// Actualizar datos de un método de pago - requiere permiso payment_methods:update
+router.put('/:id', authenticate, validateId(), requirePermission('payment_methods', 'update'), PaymentMethodController.update);
+// Activar/desactivar un método de pago - requiere permiso payment_methods:update
+router.patch('/:id/toggle', authenticate, validateId(), requirePermission('payment_methods', 'update'), PaymentMethodController.toggleActive);
+// Eliminar permanentemente un método de pago - requiere permiso payment_methods:delete
+router.delete('/:id', authenticate, validateId(), requirePermission('payment_methods', 'delete'), PaymentMethodController.remove);
 
-// Inicializar métodos de pago por defecto (solo ADMIN, para configuración inicial del tenant)
-router.post('/seed', authenticate, authorize(['ADMIN']), PaymentMethodController.seedDefaults);
+// Inicializar métodos de pago por defecto - requiere permiso payment_methods:create
+router.post('/seed', authenticate, requirePermission('payment_methods', 'create'), PaymentMethodController.seedDefaults);
 
 export default router;

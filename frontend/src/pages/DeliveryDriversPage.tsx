@@ -5,8 +5,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { deliveryService, type DeliveryDriver } from '../services/deliveryService';
-import { 
-    Loader2, Plus, Trash2, ToggleLeft, ToggleRight, 
+import { confirmDelete } from '../lib/confirmDialog';
+import {
+    Loader2, Plus, Trash2, ToggleLeft, ToggleRight,
     Edit, User, Phone, Bike, Car
 } from 'lucide-react';
 
@@ -93,7 +94,7 @@ export const DeliveryDriversPage: React.FC = () => {
     };
 
     const handleDelete = async (id: number) => {
-        if (!confirm('¿Eliminar este conductor?')) return;
+        if (!await confirmDelete('este conductor')) return;
         try {
             await deliveryService.deleteDriver(id);
             setDrivers(drivers.filter(d => d.id !== id));
@@ -277,7 +278,7 @@ export const DeliveryDriversPage: React.FC = () => {
                                 </label>
                                 <select
                                     value={formData.vehicleType}
-                                    onChange={e => setFormData({...formData, vehicleType: e.target.value as any})}
+                                    onChange={e => setFormData({...formData, vehicleType: e.target.value as typeof formData.vehicleType})}
                                     className="w-full p-2 border rounded-lg"
                                 >
                                     <option value="MOTORCYCLE">Moto</option>
