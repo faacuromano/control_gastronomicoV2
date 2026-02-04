@@ -4,6 +4,12 @@ export interface Category {
     id: number;
     name: string;
     printerId?: number | null;
+    kdsStationId?: number | null;
+    kdsStation?: {
+        id: number;
+        name: string;
+        code: string;
+    } | null;
     activeProductsCount?: number;
     totalProductsCount?: number;
 }

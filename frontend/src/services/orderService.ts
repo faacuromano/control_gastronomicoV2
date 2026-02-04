@@ -6,6 +6,13 @@ import { isOnline } from '../lib/connectivity';
 /**
  * Order item as returned from the API
  */
+export interface OrderItemModifier {
+    id: number;
+    modifierOptionId: number;
+    name?: string;
+    priceCharged: string;
+}
+
 export interface OrderItemResponse {
     id: number;
     productId: number;
@@ -17,6 +24,7 @@ export interface OrderItemResponse {
         name: string;
         price: string;
     };
+    modifiers?: OrderItemModifier[];
 }
 
 /**
@@ -73,9 +81,9 @@ export const orderService = {
             try {
                 const response = await api.post('/orders', data);
                 return response.data.data;
-            } catch (error: any) {
+            } catch (error: unknown) {
                 // If network error, fall through to offline mode
-                if (!error.response) {
+                if (!(error && typeof error === 'object' && 'response' in error && (error as Record<string, unknown>).response)) {
                     console.warn('[OrderService] Network error, falling back to offline mode');
                 } else {
                     throw error; // Re-throw API errors (validation, etc.)
@@ -144,8 +152,13 @@ export const orderService = {
         return response.data.data;
     },
 
-    getActiveOrders: async (): Promise<OrderResponse[]> => {
-        const response = await api.get('/orders/kds');
+    /**
+     * Obtiene ordenes activas para el KDS.
+     * @param stationCode - Opcional. Filtrar por estacion KDS (ej: 'KITCHEN', 'BAR')
+     */
+    getActiveOrders: async (stationCode?: string): Promise<OrderResponse[]> => {
+        const params = stationCode ? { station: stationCode } : {};
+        const response = await api.get('/orders/kds', { params });
         return response.data.data;
     },
 
@@ -154,7 +167,7 @@ export const orderService = {
         return response.data.data;
     },
 
-    updateItemStatus: async (itemId: number, status: string): Promise<any> => {
+    updateItemStatus: async (itemId: number, status: string): Promise<OrderItemResponse> => {
         const response = await api.patch(`/orders/items/${itemId}/status`, { status });
         return response.data.data;
     },
@@ -174,7 +187,7 @@ export const orderService = {
      * Add payments to an existing order (used for table checkout).
      * Calls POST /orders/:id/payments
      */
-    addPayments: async (orderId: number, payments: { method: string; amount: number }[], closeOrder = true): Promise<any> => {
+    addPayments: async (orderId: number, payments: { method: string; amount: number }[], closeOrder = true): Promise<OrderResponse> => {
         const response = await api.post(`/orders/${orderId}/payments`, { payments, closeOrder });
         return response.data.data;
     },

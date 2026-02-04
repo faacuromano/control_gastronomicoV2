@@ -1,17 +1,39 @@
 import { useState, useEffect } from 'react';
 import { categoryService, type Category } from '../../../services/categoryService';
-import { Plus, Trash2, Loader2 } from 'lucide-react';
+import * as kdsStationService from '../../../services/kdsStationService';
+import type { KdsStation } from '../../../services/kdsStationService';
+import { Plus, Trash2, Loader2, Pencil, X, Save, MonitorPlay } from 'lucide-react';
+import { useFeatureFlags } from '../../../hooks/useFeatureFlags';
 
 export default function CategoryList() {
     const [categories, setCategories] = useState<Category[]>([]);
+    const [stations, setStations] = useState<KdsStation[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [newCategoryName, setNewCategoryName] = useState('');
     const [creating, setCreating] = useState(false);
+    const { features } = useFeatureFlags();
+
+    // Edit modal state
+    const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+    const [editName, setEditName] = useState('');
+    const [editKdsStationId, setEditKdsStationId] = useState<number | null>(null);
 
     useEffect(() => {
         loadCategories();
-    }, []);
+        if (features?.enableKDS) {
+            loadStations();
+        }
+    }, [features?.enableKDS]);
+
+    const loadStations = async () => {
+        try {
+            const data = await kdsStationService.getStations();
+            setStations(data.filter(s => s.isActive));
+        } catch (err) {
+            console.error('Failed to load KDS stations', err);
+        }
+    };
 
     const loadCategories = async () => {
         try {
@@ -52,6 +74,27 @@ export default function CategoryList() {
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [renamingCategory, setRenamingCategory] = useState<Category | null>(null);
     const [renameValue, setRenameValue] = useState('');
+
+    const openEditModal = (category: Category) => {
+        setEditingCategory(category);
+        setEditName(category.name);
+        setEditKdsStationId(category.kdsStationId ?? null);
+    };
+
+    const handleEditSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingCategory) return;
+        try {
+            await categoryService.update(editingCategory.id, {
+                name: editName,
+                kdsStationId: editKdsStationId
+            });
+            loadCategories();
+            setEditingCategory(null);
+        } catch (err) {
+            setError('Failed to update category');
+        }
+    };
 
     const handleDeleteClick = (category: Category) => {
         setDeletingCategory(category);
@@ -138,8 +181,12 @@ export default function CategoryList() {
                     <thead>
                         <tr className="border-b border-border bg-muted/50">
                             <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground w-[100px]">ID</th>
-                            <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Name</th>
-                            <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Actions</th>
+                            <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Nombre</th>
+                            {features?.enableKDS && (
+                                <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Estación KDS</th>
+                            )}
+                            <th className="h-12 px-4 text-center align-middle font-medium text-muted-foreground">Productos</th>
+                            <th className="h-12 px-4 text-right align-middle font-medium text-muted-foreground">Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -147,10 +194,33 @@ export default function CategoryList() {
                             <tr key={category.id} className="border-b border-border transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
                                 <td className="p-4 align-middle">{category.id}</td>
                                 <td className="p-4 align-middle font-medium">{category.name}</td>
-                                <td className="p-4 align-middle text-right">
+                                {features?.enableKDS && (
+                                    <td className="p-4 align-middle">
+                                        {category.kdsStation ? (
+                                            <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-100 text-indigo-700 rounded-md text-xs font-medium">
+                                                <MonitorPlay className="w-3 h-3" />
+                                                {category.kdsStation.name}
+                                            </span>
+                                        ) : (
+                                            <span className="text-muted-foreground text-xs">Por defecto</span>
+                                        )}
+                                    </td>
+                                )}
+                                <td className="p-4 align-middle text-center text-muted-foreground">
+                                    {category.activeProductsCount ?? 0}
+                                </td>
+                                <td className="p-4 align-middle text-right space-x-2">
+                                    <button
+                                        onClick={() => openEditModal(category)}
+                                        className="p-2 text-primary hover:bg-primary/10 rounded-md transition-colors"
+                                        title="Editar"
+                                    >
+                                        <Pencil className="w-4 h-4" />
+                                    </button>
                                     <button
                                         onClick={() => handleDeleteClick(category)}
                                         className="p-2 text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+                                        title="Eliminar"
                                     >
                                         <Trash2 className="w-4 h-4" />
                                     </button>
@@ -159,7 +229,7 @@ export default function CategoryList() {
                         ))}
                         {categories.length === 0 && (
                             <tr>
-                                <td colSpan={3} className="p-4 text-center text-muted-foreground">No categories found.</td>
+                                <td colSpan={features?.enableKDS ? 5 : 4} className="p-4 text-center text-muted-foreground">No hay categorías.</td>
                             </tr>
                         )}
                     </tbody>
@@ -217,7 +287,7 @@ export default function CategoryList() {
                 </div>
             )}
 
-            {/* Rename Modal */}
+            {/* Rename Modal (legacy) */}
             {renamingCategory && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
                     <div className="bg-background w-full max-w-md p-6 rounded-lg border border-border shadow-lg">
@@ -231,7 +301,7 @@ export default function CategoryList() {
                                 autoFocus
                             />
                              <div className="flex justify-end gap-2">
-                                <button 
+                                <button
                                     type="button"
                                     onClick={() => setRenamingCategory(null)}
                                     className="px-4 py-2 hover:bg-muted rounded-md text-sm font-medium"
@@ -243,6 +313,69 @@ export default function CategoryList() {
                                     className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md text-sm font-medium"
                                 >
                                     Save
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Category Modal */}
+            {editingCategory && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-background w-full max-w-md rounded-xl border border-border shadow-lg">
+                        <div className="p-4 border-b border-border flex justify-between items-center">
+                            <h3 className="text-lg font-bold">Editar Categoría</h3>
+                            <button onClick={() => setEditingCategory(null)} className="text-muted-foreground hover:text-foreground">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <form onSubmit={handleEditSubmit} className="p-4 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium mb-1">Nombre *</label>
+                                <input
+                                    type="text"
+                                    value={editName}
+                                    onChange={(e) => setEditName(e.target.value)}
+                                    className="w-full px-3 py-2 bg-background border border-input rounded-md"
+                                    required
+                                    autoFocus
+                                />
+                            </div>
+                            {features?.enableKDS && stations.length > 0 && (
+                                <div>
+                                    <label className="block text-sm font-medium mb-1">Estación KDS</label>
+                                    <select
+                                        value={editKdsStationId ?? ''}
+                                        onChange={(e) => setEditKdsStationId(e.target.value ? Number(e.target.value) : null)}
+                                        className="w-full px-3 py-2 bg-background border border-input rounded-md"
+                                    >
+                                        <option value="">Por defecto (hereda del sistema)</option>
+                                        {stations.map(station => (
+                                            <option key={station.id} value={station.id}>
+                                                {station.name} ({station.code})
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Los productos de esta categoría irán a esta pantalla KDS
+                                    </p>
+                                </div>
+                            )}
+                            <div className="flex justify-end gap-2 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setEditingCategory(null)}
+                                    className="px-4 py-2 hover:bg-muted rounded-md text-sm font-medium"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md text-sm font-medium flex items-center gap-2"
+                                >
+                                    <Save className="w-4 h-4" />
+                                    Guardar
                                 </button>
                             </div>
                         </form>

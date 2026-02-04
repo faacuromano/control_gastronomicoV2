@@ -16,7 +16,6 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import morgan from 'morgan';
 import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import { prisma } from './lib/prisma';
@@ -110,10 +109,12 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false, // Permitir carga de imagenes externas
 }));
 app.use(correlationId);
-// Morgan registra cada request HTTP en la consola (metodo, ruta, status, tiempo)
-app.use(morgan('dev'));
+// API-004: Logging estructurado de requests en formato JSON con correlation ID
+import { requestLogger } from './middleware/requestLogger';
+app.use(requestLogger);
 // Compresion gzip de las respuestas para reducir el ancho de banda
-app.use(compression());
+// PERF-002: Solo comprimir respuestas mayores a 1KB para evitar overhead en respuestas pequeñas
+app.use(compression({ threshold: 1024 }));
 
 // Proteccion CSRF: exige el header X-Requested-With en peticiones que modifican estado.
 // Esto previene que sitios maliciosos hagan requests POST/PUT/DELETE en nombre del usuario.
@@ -145,6 +146,7 @@ import paymentMethodRoutes from './routes/paymentMethod.routes';
 import invoiceRoutes from './routes/invoice.routes';
 import loyaltyRoutes from './routes/loyalty.routes';
 import printRoutingRoutes from './routes/printRouting.routes';
+import kdsStationRoutes from './routes/kdsStation.routes';
 import stockAlertRoutes from './routes/stockAlert.routes';
 import discountRoutes from './routes/discount.routes';
 
@@ -170,6 +172,7 @@ app.use('/api/v1', configRoutes);       // /config
 app.use('/api/v1', tableRouter);        // /tables, /areas
 app.use('/api/v1/print', printerRoutes); // /print
 app.use('/api/v1/print-routing', printRoutingRoutes); // Configuracion de ruteo de impresion
+app.use('/api/v1/kds-stations', kdsStationRoutes);   // Estaciones KDS para enrutamiento de items
 app.use('/api/v1/modifiers', modifierRoutes);
 app.use('/api/v1', supplierRoutes);      // /suppliers
 app.use('/api/v1', purchaseOrderRoutes); // /purchase-orders
@@ -207,7 +210,7 @@ app.get('/health', async (_req, res) => {
     res.status(healthy ? 200 : 503).json({
         status: healthy ? 'ok' : 'degraded',
         timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
+        // SEC-010: uptime removido — exponer el uptime del proceso facilita ataques de timing
         checks
     });
 });

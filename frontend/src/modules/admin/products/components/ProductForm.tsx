@@ -3,8 +3,12 @@ import { categoryService, type Category } from '../../../../services/categorySer
 import { productService, type Product } from '../../../../services/productService';
 import { modifierService, type ModifierGroup } from '../../../../services/modifierService';
 import { ingredientService, type Ingredient } from '../../../../services/ingredientService';
-import { X, Save, Trash, Loader2 } from 'lucide-react';
+import * as kdsStationService from '../../../../services/kdsStationService';
+import type { KdsStation } from '../../../../services/kdsStationService';
+import { X, Save, Trash, Loader2, MonitorPlay } from 'lucide-react';
 import { cn } from '../../../../lib/utils';
+import { getErrorMessage } from '../../../../lib/errorUtils';
+import { useFeatureFlags } from '../../../../hooks/useFeatureFlags';
 
 interface ProductFormProps {
     isOpen: boolean;
@@ -15,18 +19,21 @@ interface ProductFormProps {
 
 export default function ProductForm({ isOpen, onClose, onSuccess, productToEdit }: ProductFormProps) {
     const [activeTab, setActiveTab] = useState<'info' | 'ingredients' | 'modifiers'>('info');
-    
+    const { features } = useFeatureFlags();
+
     // Data Sources
     const [categories, setCategories] = useState<Category[]>([]);
     const [allIngredients, setAllIngredients] = useState<Ingredient[]>([]);
     const [allModifierGroups, setAllModifierGroups] = useState<ModifierGroup[]>([]);
-    
+    const [kdsStations, setKdsStations] = useState<KdsStation[]>([]);
+
     // Form State
     const [name, setName] = useState('');
     const [price, setPrice] = useState('');
     const [categoryId, setCategoryId] = useState('');
     const [description, setDescription] = useState('');
     const [productType, setProductType] = useState('SIMPLE');
+    const [kdsStationId, setKdsStationId] = useState<number | null>(null);
     
     // Relation State
     const [selectedIngredients, setSelectedIngredients] = useState<{ ingredientId: number, quantity: number, name: string, unit: string }[]>([]);
@@ -45,7 +52,8 @@ export default function ProductForm({ isOpen, onClose, onSuccess, productToEdit 
                 setCategoryId(productToEdit.categoryId.toString());
                 setDescription(productToEdit.description || '');
                 setProductType(productToEdit.productType);
-                
+                setKdsStationId((productToEdit as Product & { kdsStationId?: number | null }).kdsStationId ?? null);
+
                 // Map existing relationships
                 if (productToEdit.ingredients) {
                     setSelectedIngredients(productToEdit.ingredients.map(pi => ({
@@ -55,7 +63,7 @@ export default function ProductForm({ isOpen, onClose, onSuccess, productToEdit 
                         unit: pi.ingredient?.unit || ''
                     })));
                 }
-                
+
                 if (productToEdit.modifiers) {
                     setSelectedModifierIds(productToEdit.modifiers.map(m => m.modifierGroupId));
                 }
@@ -68,14 +76,22 @@ export default function ProductForm({ isOpen, onClose, onSuccess, productToEdit 
     const loadInitialData = async () => {
         try {
             setLoadingData(true);
-            const [cats, ings, mods] = await Promise.all([
+            const promises: Promise<unknown>[] = [
                 categoryService.getAll(),
                 ingredientService.getAll(),
                 modifierService.getAll()
-            ]);
+            ];
+            // Cargar estaciones KDS si el modulo esta habilitado
+            if (features?.enableKDS) {
+                promises.push(kdsStationService.getStations());
+            }
+            const [cats, ings, mods, stations] = await Promise.all(promises) as [Category[], Ingredient[], ModifierGroup[], KdsStation[] | undefined];
             setCategories(cats);
             setAllIngredients(ings);
             setAllModifierGroups(mods);
+            if (stations) {
+                setKdsStations(stations.filter(s => s.isActive));
+            }
         } catch (err) {
             console.error(err);
             setError('Failed to load form data');
@@ -90,6 +106,7 @@ export default function ProductForm({ isOpen, onClose, onSuccess, productToEdit 
         setCategoryId('');
         setDescription('');
         setProductType('SIMPLE');
+        setKdsStationId(null);
         setSelectedIngredients([]);
         setSelectedModifierIds([]);
         setActiveTab('info');
@@ -147,6 +164,7 @@ export default function ProductForm({ isOpen, onClose, onSuccess, productToEdit 
                 productType,
                 isActive: true,
                 isStockable: true,
+                kdsStationId: kdsStationId,
                 ingredients: selectedIngredients.map(si => ({
                     ingredientId: si.ingredientId,
                     quantity: si.quantity
@@ -161,8 +179,8 @@ export default function ProductForm({ isOpen, onClose, onSuccess, productToEdit 
             }
             onSuccess();
             onClose();
-        } catch (err: any) {
-            setError(err.response?.data?.error?.message || 'Failed to save product');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err, 'Failed to save product'));
         } finally {
             setLoading(false);
         }
@@ -239,6 +257,30 @@ export default function ProductForm({ isOpen, onClose, onSuccess, productToEdit 
                                             <label className="text-sm font-medium">Description</label>
                                             <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="w-full px-3 py-2 bg-background border border-input rounded-md min-h-[80px]" />
                                         </div>
+
+                                        {features?.enableKDS && kdsStations.length > 0 && (
+                                            <div className="space-y-2">
+                                                <label className="text-sm font-medium flex items-center gap-2">
+                                                    <MonitorPlay className="w-4 h-4" />
+                                                    Estación KDS
+                                                </label>
+                                                <select
+                                                    value={kdsStationId ?? ''}
+                                                    onChange={(e) => setKdsStationId(e.target.value ? Number(e.target.value) : null)}
+                                                    className="w-full px-3 py-2 bg-background border border-input rounded-md"
+                                                >
+                                                    <option value="">Heredar de categoría</option>
+                                                    {kdsStations.map(station => (
+                                                        <option key={station.id} value={station.id}>
+                                                            {station.name} ({station.code})
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Este producto irá a esta pantalla KDS. Si no se especifica, usará la estación de la categoría.
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 

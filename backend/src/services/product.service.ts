@@ -30,6 +30,7 @@ const ProductSchema = z.object({
     isStockable: z.boolean().optional(),
     image: z.string().url().max(500, "Image URL too long").optional(),
     isActive: z.boolean().optional(),
+    kdsStationId: z.number().nullable().optional(),
     ingredients: z.array(IngredientInput).optional(),
     modifierIds: z.array(z.number()).optional()
 });
@@ -49,6 +50,7 @@ export const getProducts = async (tenantId: number, where: Prisma.ProductWhereIn
             where: filter,
             include: {
                 category: true,
+                kdsStation: { select: { id: true, name: true, code: true } },
                 ingredients: { include: { ingredient: true } },
                 modifiers: {
                     include: {
@@ -76,6 +78,7 @@ export const getProductById = async (id: number, tenantId: number) => {
         where: { id, tenantId },
         include: {
             category: true,
+            kdsStation: { select: { id: true, name: true, code: true } },
             ingredients: { include: { ingredient: true } },
             modifiers: {
                 include: {
@@ -99,7 +102,7 @@ const prepareProductData = (
     data: z.infer<typeof ProductSchema>,
     tenantId: number
 ): Prisma.ProductUncheckedCreateInput => {
-    const { ingredients, modifierIds, ...productData } = data;
+    const { ingredients, modifierIds, kdsStationId, ...productData } = data;
 
     const createData: Prisma.ProductUncheckedCreateInput = {
         ...productData,
@@ -108,7 +111,8 @@ const prepareProductData = (
         description: productData.description ?? null,
         image: productData.image ?? null,
         isStockable: productData.isStockable ?? true,
-        isActive: productData.isActive ?? true
+        isActive: productData.isActive ?? true,
+        kdsStationId: kdsStationId ?? null
     };
 
     // Crear relaciones de ingredientes con tenantId en cada registro anidado

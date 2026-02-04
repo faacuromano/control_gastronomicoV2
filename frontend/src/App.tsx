@@ -11,6 +11,7 @@ import { SocketProvider } from './context/SocketContext';
 import { RouteGuard } from './components/auth/RouteGuard';
 import AdminLayout from './modules/admin/AdminLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { Toaster } from 'sonner';
 import './App.css';
 
 // Lazy-loaded page components for code splitting
@@ -31,6 +32,7 @@ const RolesPage = lazy(() => import('./modules/admin/pages/RolesPage').then(m =>
 const PaymentMethodsPage = lazy(() => import('./modules/admin/pages/PaymentMethodsPage').then(m => ({ default: m.PaymentMethodsPage })));
 const PrintersPage = lazy(() => import('./modules/admin/pages/PrintersPage').then(m => ({ default: m.PrintersPage })));
 const PrintRoutingPage = lazy(() => import('./modules/admin/pages/PrintRoutingPage').then(m => ({ default: m.PrintRoutingPage })));
+const KdsStationsPage = lazy(() => import('./modules/admin/pages/KdsStationsPage').then(m => ({ default: m.KdsStationsPage })));
 const BulkPriceUpdatePage = lazy(() => import('./modules/admin/pages/BulkPriceUpdatePage').then(m => ({ default: m.BulkPriceUpdatePage })));
 const CashPage = lazy(() => import('./pages/CashPage').then(m => ({ default: m.CashPage })));
 const CashShiftHistoryPage = lazy(() => import('./modules/admin/cash/CashShiftHistoryPage').then(m => ({ default: m.CashShiftHistoryPage })));
@@ -47,6 +49,7 @@ const ProtectedRoute = () => {
 function App() {
     return (
         <ErrorBoundary>
+        <Toaster richColors position="top-right" />
         <SocketProvider>
             <BrowserRouter>
                 <Suspense fallback={<div style={{display:'flex',justifyContent:'center',alignItems:'center',height:'100vh'}}>Cargando...</div>}>
@@ -112,6 +115,11 @@ function App() {
                                 <Route path="payment-methods" element={<PaymentMethodsPage />} />
                                 <Route path="printers" element={<PrintersPage />} />
                                 <Route path="print-routing" element={<PrintRoutingPage />} />
+                                <Route path="kds-stations" element={
+                                    <RouteGuard flag="enableKDS" permission={{ resource: 'settings', action: 'update' }}>
+                                        <KdsStationsPage />
+                                    </RouteGuard>
+                                } />
                                 <Route path="clients" element={<ClientsPage />} />
                                 <Route path="cash-shifts" element={
                                     <RouteGuard permission={{ resource: 'cash', action: 'read' }}>

@@ -19,7 +19,8 @@ import { NotFoundError, ValidationError, ConflictError } from '../utils/errors';
 // SEC-023: Validación de longitud máxima en campos de texto para prevenir abuso
 const CategorySchema = z.object({
     name: z.string().min(1, "Name is required").max(100, "Name too long (max 100 characters)"),
-    printerId: z.number().optional(),
+    printerId: z.number().nullable().optional(),
+    kdsStationId: z.number().nullable().optional(),
 });
 
 /**
@@ -33,6 +34,9 @@ export const getCategories = async (tenantId: number) => {
         include: {
             products: {
                 select: { isActive: true }
+            },
+            kdsStation: {
+                select: { id: true, name: true, code: true }
             }
         }
     });
@@ -41,6 +45,8 @@ export const getCategories = async (tenantId: number) => {
         id: category.id,
         name: category.name,
         printerId: category.printerId,
+        kdsStationId: category.kdsStationId,
+        kdsStation: category.kdsStation,
         // Contar productos activos para filtrado en POS (ocultar categorías vacías)
         activeProductsCount: category.products.filter(p => p.isActive).length,
         // Total de productos para uso interno/admin
@@ -84,7 +90,7 @@ export const createCategory = async (data: { tenantId: number; name: string; pri
  * Actualiza una categoría existente.
  * Usa updateMany con tenantId en el WHERE como defensa en profundidad contra acceso cross-tenant.
  */
-export const updateCategory = async (id: number, tenantId: number, data: { name?: string; printerId?: number }) => {
+export const updateCategory = async (id: number, tenantId: number, data: { name?: string; printerId?: number | null; kdsStationId?: number | null }) => {
     const validation = CategorySchema.partial().safeParse(data);
     if (!validation.success) {
         throw new ValidationError('Invalid data', validation.error.issues);
@@ -96,6 +102,7 @@ export const updateCategory = async (id: number, tenantId: number, data: { name?
     const updateData: Prisma.CategoryUncheckedUpdateManyInput = {};
     if (validation.data.name !== undefined) updateData.name = validation.data.name;
     if (validation.data.printerId !== undefined) updateData.printerId = validation.data.printerId;
+    if (validation.data.kdsStationId !== undefined) updateData.kdsStationId = validation.data.kdsStationId;
 
     // Defensa en profundidad: updateMany incluye tenantId en el WHERE
     return await prisma.category.updateMany({

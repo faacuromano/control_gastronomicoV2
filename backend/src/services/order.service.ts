@@ -84,6 +84,34 @@ export class OrderService {
   }
 
   /**
+   * Obtiene una orden con info de estaciones KDS para broadcasting.
+   * Incluye las relaciones de kdsStation en productos y categorias.
+   */
+  async getByIdForKds(id: number, tenantId: number) {
+      return await prisma.order.findFirst({
+          where: { id, tenantId },
+          include: {
+              table: true,
+              items: {
+                  include: {
+                      product: {
+                          include: {
+                              kdsStation: true,
+                              category: {
+                                  include: { kdsStation: true }
+                              }
+                          }
+                      },
+                      modifiers: { include: { modifierOption: true } }
+                  }
+              },
+              payments: true,
+              client: true
+          }
+      });
+  }
+
+  /**
    * Crea una nueva orden con items y pagos opcionales.
    *
    * Flujo completo dentro de una transaccion:
@@ -270,10 +298,11 @@ export class OrderService {
     const order = txResult.order;
 
     // 11. Transmitir al KDS via WebSocket (fuera de la transaccion para no bloquear)
+    // Usa broadcast con ruteo por estacion para enviar items a sus pantallas KDS correspondientes
     if (order.status === 'CONFIRMED' || order.status === 'OPEN') {
-        const fullOrder = await this.getById(order.id, tenantId);
+        const fullOrder = await this.getByIdForKds(order.id, tenantId);
         if (fullOrder) {
-            kdsService.broadcastNewOrder(fullOrder);
+            await kdsService.broadcastNewOrderWithStations(fullOrder);
         }
     }
 
@@ -710,27 +739,27 @@ export class OrderService {
       });
 
       // 5. Descontar stock si el modulo esta habilitado
+      // FIX-011 (DB-003): Usar registerBatch en vez de N llamadas individuales
+      // para evitar el patron N+1 (consistente con createOrder y orderVoid)
       await executeIfEnabled('enableStock', async () => {
         const stockService = new StockMovementService();
-        for (const update of stockUpdates) {
-          await stockService.register(
-            update.ingredientId,
-            tenantId,
-            StockMoveType.SALE,
-            update.quantity,
-            `Order #${order.orderNumber}`,
-            tx
-          );
-        }
+        await stockService.registerBatch(
+          stockUpdates,
+          tenantId,
+          StockMoveType.SALE,
+          `Order #${order.orderNumber}`,
+          tx
+        );
       }, tenantId);
 
       return updatedOrder;
     });
 
     // 6. Notificar al KDS de los nuevos items (fuera de la transaccion)
-    const fullOrder = await this.getById(orderId, tenantId);
+    // Usa broadcast con ruteo por estacion para que cada pantalla KDS reciba sus items
+    const fullOrder = await this.getByIdForKds(orderId, tenantId);
     if (fullOrder) {
-        kdsService.broadcastOrderUpdate(fullOrder);
+        await kdsService.broadcastNewOrderWithStations(fullOrder);
     }
 
     return result;
@@ -751,10 +780,11 @@ export class OrderService {
 
   /**
    * Obtiene ordenes activas para el KDS (Kitchen Display System).
+   * @param stationCode - Opcional. Filtra items por estacion KDS (ej: 'KITCHEN', 'BAR')
    * @delegates orderKitchenService.getActiveOrders
    */
-  async getActiveOrders(tenantId: number) {
-    return orderKitchenService.getActiveOrders(tenantId);
+  async getActiveOrders(tenantId: number, stationCode?: string) {
+    return orderKitchenService.getActiveOrders(tenantId, stationCode);
   }
 
   /**

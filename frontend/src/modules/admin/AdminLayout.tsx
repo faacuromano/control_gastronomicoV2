@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Users, Coffee, Grid, Package, Archive, Settings, ListPlus, Truck, ShoppingCart, BarChart3, ChevronDown, Shield, CreditCard, Wrench, Printer, QrCode, Bike } from 'lucide-react';
+import { Users, Coffee, Grid, Package, Archive, Settings, ListPlus, Truck, ShoppingCart, BarChart3, ChevronDown, Shield, CreditCard, Wrench, Printer, QrCode, Bike, MonitorPlay } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useFeatureFlags, type FeatureFlags } from '../../hooks/useFeatureFlags';
 import { useState } from 'react';
@@ -68,6 +68,7 @@ const sidebarGroups: SidebarGroup[] = [
             { icon: Shield, label: 'Roles y Permisos', href: '/admin/roles', isImplemented: true },
             { icon: Printer, label: 'Impresoras', href: '/admin/printers', isImplemented: true },
             { icon: Printer, label: 'Enrutamiento Impresión', href: '/admin/print-routing', isImplemented: true },
+            { icon: MonitorPlay, label: 'Estaciones KDS', href: '/admin/kds-stations', isImplemented: true, requiredFlag: 'enableKDS' },
             { icon: Wrench, label: 'Ajustes Generales', href: '/admin/settings', isImplemented: true },
         ]
     },

@@ -52,6 +52,7 @@ model Tenant {
   productChannelPrices  ProductChannelPrice[]
   taxRates              TaxRate[]
   refreshTokens         RefreshToken[]
+  kdsStations           KdsStation[]
 }
 
 model TenantConfig {
@@ -154,6 +155,8 @@ model Category {
   name             String
   printerId        Int?
   printer          Printer?              @relation(fields: [printerId], references: [id])
+  kdsStationId     Int?                  // Estación KDS por defecto para productos de esta categoría
+  kdsStation       KdsStation?           @relation(fields: [kdsStationId], references: [id])
   products         Product[]
   printerOverrides AreaPrinterOverride[]
   createdAt        DateTime              @default(now())
@@ -161,6 +164,7 @@ model Category {
 
   @@unique([tenantId, name]) // Unique index covers tenantId queries (DB-005)
   @@index([printerId])
+  @@index([kdsStationId])
 }
 
 model Printer {
@@ -184,12 +188,34 @@ enum PrinterConnection {
   USB // Windows USB printer via printer name
 }
 
+// Estaciones KDS para enrutamiento de items a diferentes pantallas de cocina
+// Ej: KITCHEN (cocina caliente), BAR (barra de bebidas), COLD (cocina fría), DESSERT (postres)
+model KdsStation {
+  id         Int        @id @default(autoincrement())
+  tenantId   Int
+  tenant     Tenant     @relation(fields: [tenantId], references: [id])
+  name       String     // Nombre legible: "Cocina", "Barra", "Fría"
+  code       String     // Código único: "KITCHEN", "BAR", "COLD"
+  sortOrder  Int        @default(0)
+  isActive   Boolean    @default(true)
+  isDefault  Boolean    @default(false) // Una por tenant, fallback para items sin estación
+  products   Product[]
+  categories Category[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
 model Product {
   id            Int                    @id @default(autoincrement())
   tenantId      Int
   tenant        Tenant                 @relation(fields: [tenantId], references: [id])
   categoryId    Int
   category      Category               @relation(fields: [categoryId], references: [id])
+  kdsStationId  Int?                   // Override de estación KDS (si null, hereda de categoría)
+  kdsStation    KdsStation?            @relation(fields: [kdsStationId], references: [id])
   name          String
   description   String?
   price         Decimal                @db.Decimal(10, 2)
@@ -207,6 +233,7 @@ model Product {
   @@unique([tenantId, name]) // Unique index covers tenantId queries (DB-005)
   @@index([tenantId, isActive, categoryId])
   @@index([categoryId])
+  @@index([kdsStationId])
 }
 
 enum ProductType {

@@ -9,6 +9,9 @@
  * Cada cambio de estado se transmite en tiempo real via WebSocket al KDS
  * para que la cocina vea los cambios inmediatamente.
  *
+ * Soporta filtrado por estacion KDS para que cada pantalla muestre solo
+ * los items que le corresponden (cocina, barra, fria, postres, etc.)
+ *
  * @module services/orderKitchen.service
  * @extracted_from order.service.ts (DT-001 Refactoring)
  */
@@ -16,6 +19,7 @@
 import { prisma } from '../lib/prisma';
 import { OrderStatus } from '@prisma/client';
 import { kdsService } from './kds.service';
+import { kdsStationService } from './kdsStation.service';
 import { NotFoundError } from '../utils/errors';
 
 /**
@@ -90,9 +94,12 @@ export class OrderKitchenService {
      * Solo incluye items que aun no han sido servidos (status != SERVED)
      * y ordenes creadas desde hoy para no mostrar historial antiguo.
      * Excluye ordenes vacias (sin items) que se crean al abrir mesas.
+     *
+     * @param stationCode - Opcional. Si se especifica, filtra items por estacion KDS.
+     *                      Si no se especifica, retorna todos los items (vista general).
      */
-    async getActiveOrders(tenantId: number) {
-        return await prisma.order.findMany({
+    async getActiveOrders(tenantId: number, stationCode?: string) {
+        const orders = await prisma.order.findMany({
             where: {
                 tenantId,
                 status: { in: ['OPEN', 'CONFIRMED', 'IN_PREPARATION', 'PREPARED'] as OrderStatus[] },
@@ -110,7 +117,14 @@ export class OrderKitchenService {
             include: {
                 items: {
                     include: {
-                        product: true,
+                        product: {
+                            include: {
+                                kdsStation: true,
+                                category: {
+                                    include: { kdsStation: true }
+                                }
+                            }
+                        },
                         modifiers: { include: { modifierOption: true } }
                     },
                     where: { status: { not: 'SERVED' } }
@@ -119,6 +133,112 @@ export class OrderKitchenService {
             },
             orderBy: { createdAt: 'asc' }
         });
+
+        // Si no hay filtro de estacion, retornar todo con info de estacion agregada
+        if (!stationCode) {
+            return this.enrichOrdersWithStationInfo(orders, tenantId);
+        }
+
+        // Filtrar items por estacion y excluir ordenes sin items relevantes
+        return this.filterOrdersByStation(orders, stationCode, tenantId);
+    }
+
+    /**
+     * Agrega informacion de estacion KDS a cada item de las ordenes.
+     * Resuelve: Product.kdsStation > Category.kdsStation > Default Station
+     * @private
+     */
+    private async enrichOrdersWithStationInfo(orders: Awaited<ReturnType<typeof this.fetchRawOrders>>, tenantId: number) {
+        const defaultStation = await kdsStationService.getDefaultStation(tenantId);
+        const defaultCode = defaultStation?.code ?? null;
+
+        return orders.map(order => ({
+            ...order,
+            items: order.items.map(item => {
+                const product = item.product as {
+                    kdsStation?: { code: string } | null;
+                    category?: { kdsStation?: { code: string } | null };
+                };
+
+                // Resolver estacion: producto > categoria > default
+                const stationCode =
+                    product.kdsStation?.code ??
+                    product.category?.kdsStation?.code ??
+                    defaultCode;
+
+                return {
+                    ...item,
+                    kdsStationCode: stationCode
+                };
+            })
+        }));
+    }
+
+    /**
+     * Filtra ordenes para mostrar solo items de una estacion especifica.
+     * Excluye ordenes que no tienen items para esa estacion.
+     * @private
+     */
+    private async filterOrdersByStation(
+        orders: Awaited<ReturnType<typeof this.fetchRawOrders>>,
+        stationCode: string,
+        tenantId: number
+    ) {
+        const defaultStation = await kdsStationService.getDefaultStation(tenantId);
+        const defaultCode = defaultStation?.code ?? null;
+
+        const filteredOrders = orders.map(order => {
+            const filteredItems = order.items.filter(item => {
+                const product = item.product as {
+                    kdsStation?: { code: string } | null;
+                    category?: { kdsStation?: { code: string } | null };
+                };
+
+                // Resolver estacion del item
+                const itemStationCode =
+                    product.kdsStation?.code ??
+                    product.category?.kdsStation?.code ??
+                    defaultCode;
+
+                return itemStationCode === stationCode;
+            });
+
+            if (filteredItems.length === 0) return null;
+
+            return {
+                ...order,
+                items: filteredItems.map(item => ({
+                    ...item,
+                    kdsStationCode: stationCode
+                }))
+            };
+        }).filter(Boolean);
+
+        return filteredOrders;
+    }
+
+    /**
+     * Metodo auxiliar para tipar el resultado de la query de ordenes.
+     * @private
+     */
+    private async fetchRawOrders(_tenantId: number) {
+        // Este metodo solo existe para inferir tipos, no se usa directamente
+        return [] as Awaited<ReturnType<typeof prisma.order.findMany<{
+            include: {
+                items: {
+                    include: {
+                        product: {
+                            include: {
+                                kdsStation: true;
+                                category: { include: { kdsStation: true } };
+                            };
+                        };
+                        modifiers: { include: { modifierOption: true } };
+                    };
+                };
+                table: true;
+            };
+        }>>>;
     }
 
     /**

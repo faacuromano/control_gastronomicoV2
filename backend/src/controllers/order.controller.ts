@@ -126,9 +126,14 @@ export const updateItemStatus = asyncHandler(async (req: Request, res: Response)
     sendSuccess(res, item);
 });
 
-/** Obtiene las órdenes activas (no cerradas/canceladas) para la pantalla de KDS (Kitchen Display System) */
+/**
+ * Obtiene las órdenes activas (no cerradas/canceladas) para la pantalla de KDS (Kitchen Display System).
+ * @query station - Opcional. Codigo de estacion KDS para filtrar (ej: KITCHEN, BAR, COLD)
+ *                  Si no se especifica, retorna todos los items de todas las estaciones.
+ */
 export const getActiveOrders = asyncHandler(async (req: Request, res: Response) => {
-    const orders = await orderService.getActiveOrders(req.user!.tenantId!);
+    const stationCode = req.query.station as string | undefined;
+    const orders = await orderService.getActiveOrders(req.user!.tenantId!, stationCode);
     sendSuccess(res, orders);
 });
 
