@@ -8,8 +8,9 @@ import {
     ArrowUp, ArrowDown, Percent, DollarSign, Search, 
     Save, AlertCircle, CheckCircle, RefreshCw, Filter
 } from 'lucide-react';
-import { 
-    bulkPriceUpdateService, 
+import { getErrorMessage } from '../../../lib/errorUtils';
+import {
+    bulkPriceUpdateService,
     type ProductPriceChange, 
     type Category,
     type PriceUpdateType 
@@ -50,8 +51,8 @@ export const BulkPriceUpdatePage: React.FC = () => {
             setProducts(productsData);
             setCategories(categoriesData);
             setModifiedProducts(new Map());
-        } catch (err: any) {
-            setError(err.response?.data?.error?.message || 'Error cargando productos');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err, 'Error cargando productos'));
         } finally {
             setLoading(false);
         }
@@ -142,8 +143,8 @@ export const BulkPriceUpdatePage: React.FC = () => {
             
             // Reload fresh data
             await loadData();
-        } catch (err: any) {
-            setError(err.response?.data?.error?.message || 'Error guardando cambios');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err, 'Error guardando cambios'));
         } finally {
             setSaving(false);
         }

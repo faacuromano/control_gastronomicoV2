@@ -1,164 +1,248 @@
 import React from 'react';
-import { Clock, CheckCircle, ChefHat, RefreshCw, Truck } from 'lucide-react';
+import { Check, ChefHat, Clock, Flame, RefreshCcw, Send, Truck } from 'lucide-react';
 import { KitchenTimer } from '../../components/KitchenTimer';
 
+export interface KitchenOrderModifier {
+    id: number;
+    modifierOption?: { id: number; name: string; priceOverlay: string };
+}
+
+export interface KitchenOrderItem {
+    id: number;
+    productId: number;
+    quantity: number;
+    unitPrice: string;
+    status: 'PENDING' | 'COOKING' | 'READY' | 'SERVED';
+    notes?: string | null;
+    product: { id: number; name: string; price: string };
+    modifiers?: KitchenOrderModifier[];
+}
+
+export interface KitchenOrder {
+    id: number;
+    orderNumber: number;
+    status: string;
+    channel: string;
+    tableId?: number | null;
+    deliveryAddress?: string | null;
+    createdAt: string;
+    items: KitchenOrderItem[];
+}
+
 interface TicketCardProps {
-    order: any;
+    order: KitchenOrder;
     onStatusChange: (orderId: number, status: string) => void;
     onItemChange?: (itemId: number, status: string) => void;
-    onMarkServed?: (orderId: number) => void; // For table orders: mark all items as served
+    onMarkServed?: (orderId: number) => void;
     isHistory?: boolean;
 }
 
-export const TicketCard: React.FC<TicketCardProps> = ({ order, onStatusChange, onItemChange, onMarkServed, isHistory = false }) => {
-  // Helpers
-  const isPending = ['PENDING', 'OPEN', 'CONFIRMED'].includes(order.status);
-  const isCooking = ['IN_PREPARATION', 'COOKING'].includes(order.status);
-  const isReady = ['READY', 'PREPARED'].includes(order.status);
-  
-  // Detect if this is a delivery order (channel or has delivery address)
-  const isDelivery = order.channel === 'DELIVERY_APP' || !!order.deliveryAddress;
+export const TicketCard: React.FC<TicketCardProps> = ({
+    order,
+    onStatusChange,
+    onItemChange,
+    onMarkServed,
+    isHistory = false
+}) => {
+    const isPending = ['PENDING', 'OPEN', 'CONFIRMED'].includes(order.status);
+    const isCooking = ['IN_PREPARATION', 'COOKING'].includes(order.status);
+    const isReady = ['READY', 'PREPARED'].includes(order.status);
+    const isDelivery = order.channel === 'DELIVERY_APP' || !!order.deliveryAddress;
 
-  return (
-    <div className={`rounded-lg border flex flex-col overflow-hidden shadow-sm transition-all duration-200 
-        ${isPending ? 'bg-slate-800 border-slate-700' : ''}
-        ${isCooking ? 'bg-slate-800 border-yellow-500/50 shadow-yellow-500/10' : ''}
-        ${isReady ? 'bg-slate-800/50 border-green-500/30' : ''}
-    `} data-testid="ticket-card">
-        {/* Header */}
-        <div className={`px-3 py-2 flex justify-between items-center ${isHistory ? 'bg-slate-800' : 'bg-slate-700'}`}>
-            <div>
-                {isDelivery ? (
-                    <span className="text-[10px] text-purple-400 block uppercase tracking-wide flex items-center gap-1">
-                        <Truck size={10} /> Delivery
-                    </span>
-                ) : (
-                    <span className="text-[10px] text-slate-400 block uppercase tracking-wide">Mesa #{order.tableId || 'N/A'}</span>
-                )}
-                <h3 className="text-base font-bold text-white leading-tight">#{order.orderNumber}</h3>
+    // Status-based styling - Clean light theme
+    const statusStyles = {
+        pending: {
+            border: 'border-red-200',
+            headerBg: 'bg-red-50',
+            accentBar: 'bg-red-500',
+        },
+        cooking: {
+            border: 'border-amber-200',
+            headerBg: 'bg-amber-50',
+            accentBar: 'bg-amber-500',
+        },
+        ready: {
+            border: 'border-emerald-200',
+            headerBg: 'bg-emerald-50',
+            accentBar: 'bg-emerald-500',
+        },
+    };
+
+    const status = isPending ? 'pending' : isCooking ? 'cooking' : 'ready';
+    const styles = statusStyles[status];
+
+    return (
+        <div
+            className={`rounded-lg border ${styles.border} flex flex-col overflow-hidden bg-card shadow-sm`}
+            data-testid="ticket-card"
+        >
+            {/* Accent bar at top */}
+            <div className={`h-1 ${styles.accentBar}`} />
+
+            {/* Header */}
+            <div className={`px-3 py-2 ${styles.headerBg} border-b border-border/50`}>
+                <div className="flex justify-between items-start">
+                    <div>
+                        {/* Order type badge */}
+                        {isDelivery ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded">
+                                <Truck className="w-3 h-3" />
+                                Delivery
+                            </span>
+                        ) : (
+                            <span className="text-[10px] font-medium text-muted-foreground">
+                                Mesa {order.tableId || '—'}
+                            </span>
+                        )}
+
+                        {/* Order number */}
+                        <h3 className="text-xl font-bold text-foreground mt-0.5">
+                            <span className="text-muted-foreground">#</span>
+                            <span className="font-mono">{order.orderNumber}</span>
+                        </h3>
+                    </div>
+
+                    {/* Timer */}
+                    <KitchenTimer startTime={order.createdAt} />
+                </div>
             </div>
-            <KitchenTimer startTime={order.createdAt} />
-        </div>
 
-        {/* Items */}
-        <div className="p-2 overflow-y-auto max-h-[250px] scrollbar-thin">
-            <ul className="space-y-1">
-                {order.items.map((item: any, idx: number) => {
-                    const isCompleted = item.status === 'READY' || item.status === 'SERVED';
-                    const isCookingItem = item.status === 'COOKING';
-                    
-                    return (
-                    <li key={idx} className={`border-b border-slate-700/50 pb-1 last:border-0 last:pb-0 ${isCompleted ? 'opacity-50' : ''}`}>
-                        <div className="flex justify-between items-start gap-2">
-                             <div className="flex items-start gap-2 flex-1">
-                                <span className={`text-sm font-bold font-mono ${isCompleted ? 'text-green-500' : 'text-white'}`}>{item.quantity}</span>
-                                <div className="flex-1">
-                                    <span className={`text-sm block ${isCompleted ? 'line-through text-slate-500' : 'text-slate-200'}`}>{item.product.name}</span>
-                                    {/* Modifiers */}
-                                    {item.modifiers?.map((mod: any, mIdx: number) => (
-                                        <div key={mIdx} className="text-[11px] text-blue-300 pl-2 leading-tight">
-                                            + {mod.modifierOption?.name}
+            {/* Items List */}
+            <div className="flex-1 overflow-y-auto max-h-[240px]">
+                <ul className="divide-y divide-border">
+                    {order.items.map((item, idx) => {
+                        const isCompleted = item.status === 'READY' || item.status === 'SERVED';
+                        const isCookingItem = item.status === 'COOKING';
+
+                        return (
+                            <li
+                                key={idx}
+                                className={`px-3 py-2 ${isCompleted ? 'opacity-50 bg-emerald-50' : ''} ${isCookingItem ? 'bg-amber-50' : ''}`}
+                            >
+                                <div className="flex justify-between items-start gap-2">
+                                    <div className="flex items-start gap-2 flex-1 min-w-0">
+                                        {/* Quantity */}
+                                        <span className={`
+                                            flex-shrink-0 w-6 h-6 rounded flex items-center justify-center text-xs font-bold
+                                            ${isCompleted ? 'bg-emerald-200 text-emerald-700'
+                                                : isCookingItem ? 'bg-amber-200 text-amber-700'
+                                                : 'bg-muted text-foreground'}
+                                        `}>
+                                            {item.quantity}
+                                        </span>
+
+                                        {/* Item details */}
+                                        <div className="flex-1 min-w-0">
+                                            <span className={`text-sm font-medium block truncate ${isCompleted ? 'line-through text-muted-foreground' : 'text-foreground'}`}>
+                                                {item.product.name}
+                                            </span>
+
+                                            {/* Modifiers */}
+                                            {item.modifiers && item.modifiers.length > 0 && (
+                                                <div className="text-xs text-muted-foreground mt-0.5">
+                                                    {item.modifiers.map((mod, mIdx) => (
+                                                        <span key={mIdx}>+{mod.modifierOption?.name}{mIdx < item.modifiers!.length - 1 && ', '}</span>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            {/* Notes */}
+                                            {item.notes && (
+                                                <p className="text-xs text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded mt-1 inline-block">
+                                                    {item.notes}
+                                                </p>
+                                            )}
                                         </div>
-                                    ))}
-                                    {item.notes && (
-                                        <div className="text-[10px] text-yellow-400 mt-0.5 leading-none">
-                                            {item.notes}
-                                        </div>
+                                    </div>
+
+                                    {/* Item status toggle */}
+                                    {!isHistory && onItemChange && (
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                let nextStatus = 'PENDING';
+                                                if (item.status === 'PENDING') nextStatus = 'COOKING';
+                                                else if (item.status === 'COOKING') nextStatus = 'READY';
+                                                else if (item.status === 'READY') nextStatus = 'PENDING';
+                                                onItemChange(item.id, nextStatus);
+                                            }}
+                                            className={`
+                                                flex-shrink-0 p-1.5 rounded transition-colors
+                                                ${isCompleted ? 'bg-emerald-100 text-emerald-600'
+                                                    : isCookingItem ? 'bg-amber-100 text-amber-600'
+                                                    : 'bg-muted text-muted-foreground hover:bg-muted/80'}
+                                            `}
+                                            data-testid="item-status"
+                                        >
+                                            {isCompleted ? <Check className="w-4 h-4" />
+                                                : isCookingItem ? <Flame className="w-4 h-4" />
+                                                : <Clock className="w-4 h-4" />}
+                                        </button>
                                     )}
                                 </div>
-                             </div>
+                            </li>
+                        );
+                    })}
+                </ul>
+            </div>
 
-                            {!isHistory && onItemChange && (
-                                <button 
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        // Toggle logic: PENDING -> COOKING -> READY
-                                        let nextStatus = 'PENDING';
-                                        if (item.status === 'PENDING') nextStatus = 'COOKING';
-                                        else if (item.status === 'COOKING') nextStatus = 'READY';
-                                        else if (item.status === 'READY') nextStatus = 'PENDING';
-                                        
-                                        onItemChange(item.id, nextStatus);
+            {/* Footer Actions */}
+            {!isHistory && (
+                <div className="p-2 border-t border-border bg-muted/30 mt-auto">
+                    {isPending && (
+                        <button
+                            onClick={() => onStatusChange(order.id, 'IN_PREPARATION')}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                        >
+                            <ChefHat className="w-4 h-4" />
+                            Comenzar
+                        </button>
+                    )}
+
+                    {isCooking && (
+                        <button
+                            onClick={() => onStatusChange(order.id, 'PREPARED')}
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                        >
+                            <Check className="w-4 h-4" />
+                            Listo
+                        </button>
+                    )}
+
+                    {isReady && (
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => onStatusChange(order.id, 'IN_PREPARATION')}
+                                className="p-2.5 rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                                title="Volver a cocina"
+                            >
+                                <RefreshCcw className="w-4 h-4" />
+                            </button>
+
+                            {isDelivery ? (
+                                <div className="flex-1 bg-emerald-100 text-emerald-700 text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2">
+                                    <Check className="w-4 h-4" />
+                                    Listo despacho
+                                </div>
+                            ) : (
+                                <button
+                                    onClick={() => {
+                                        if (onMarkServed) {
+                                            onMarkServed(order.id);
+                                        } else {
+                                            onStatusChange(order.id, 'DELIVERED');
+                                        }
                                     }}
-                                    className={`p-1 rounded transition-colors ${
-                                        isCompleted
-                                            ? 'text-green-500'
-                                            : isCookingItem
-                                                ? 'text-yellow-500' 
-                                                : 'text-slate-500 hover:text-white'
-                                    }`}
-                                    data-testid="item-status"
+                                    className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
                                 >
-                                    {isCookingItem ? <Clock size={14} /> : <CheckCircle size={14} />}
+                                    <Send className="w-4 h-4" />
+                                    Entregar
                                 </button>
                             )}
                         </div>
-                    </li>
-                )})}
-            </ul>
+                    )}
+                </div>
+            )}
         </div>
-
-        {/* Footer Actions */}
-        {!isHistory && (
-             <div className="p-2 bg-slate-800/50 border-t border-slate-700/50 mt-auto">
-                {isPending && (
-                    <button 
-                        onClick={() => onStatusChange(order.id, 'IN_PREPARATION')}
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold py-2 rounded flex items-center justify-center gap-2 transition-colors shadow-sm"
-                    >
-                        <ChefHat size={16} />
-                        COCINAR
-                    </button>
-                )}
-
-                {isCooking && (
-                     <button 
-                        onClick={() => onStatusChange(order.id, 'PREPARED')}
-                        className="w-full bg-green-600 hover:bg-green-500 text-white text-sm font-bold py-2 rounded flex items-center justify-center gap-2 transition-colors shadow-sm"
-                    >
-                        <CheckCircle size={16} />
-                        TERMINAR
-                    </button>
-                )}
-
-                {isReady && (
-                    <div className="flex gap-2 w-full">
-                        <button 
-                            onClick={() => onStatusChange(order.id, 'IN_PREPARATION')} // Undo
-                            className="px-3 bg-yellow-600/10 hover:bg-yellow-600/20 text-yellow-600 text-sm font-bold py-2 rounded flex items-center justify-center gap-2 transition-colors border border-yellow-600/30"
-                            title="Deshacer"
-                        >
-                            <RefreshCw size={16} />
-                        </button>
-                        
-                        {isDelivery ? (
-                            // DELIVERY ORDER: Just visual confirmation - order stays PREPARED
-                            // Dispatch happens from Delivery Dashboard
-                            <div className="flex-1 bg-green-700/20 text-green-400 text-sm font-bold py-2 rounded flex items-center justify-center gap-2 border border-green-600/30">
-                                <CheckCircle size={16} />
-                                LISTO ✓
-                            </div>
-                        ) : (
-                            // TABLE ORDER: Mark items as served, order goes to DELIVERED
-                            <button 
-                                onClick={() => {
-                                    if (onMarkServed) {
-                                        onMarkServed(order.id);
-                                    } else {
-                                        // Fallback: use old behavior if onMarkServed not provided
-                                        onStatusChange(order.id, 'DELIVERED');
-                                    }
-                                }} 
-                                className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-bold py-2 rounded flex items-center justify-center gap-2 transition-colors border border-slate-600"
-                            >
-                                <CheckCircle size={16} />
-                                ENTREGAR
-                            </button>
-                        )}
-                    </div>
-                )}
-             </div>
-        )}
-    </div>
-  );
+    );
 };

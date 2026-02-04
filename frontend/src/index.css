@@ -1,7 +1,15 @@
-/* SEC-033: Replaced Google Fonts CDN with system font stack for privacy/GDPR.
-   Inter is available locally if installed; otherwise falls back to system UI fonts. */
+/**
+ * PENTIUM POS - Neo-Industrial Kitchen Design System
+ *
+ * A bold, distinctive aesthetic inspired by professional kitchens:
+ * - Dark backgrounds with warm amber accents (fire/heat metaphor)
+ * - High contrast for fast-paced work environments
+ * - Generous touch targets for tablet/touchscreen use
+ * - Monospace numbers for quick scanning of prices/quantities
+ */
 
-
+/* Typography: Distinctive font pairing */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -9,65 +17,88 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Neo-Industrial Kitchen Light Theme (for admin/back-office) */
+    --background: 30 10% 98%;
+    --foreground: 24 10% 10%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 24 10% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 24 10% 10%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Primary: Warm Amber - the color of fire */
+    --primary: 25 95% 53%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 30 10% 94%;
+    --secondary-foreground: 24 10% 20%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 30 10% 94%;
+    --muted-foreground: 24 5% 45%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Accent: Deep teal for contrast */
+    --accent: 174 72% 40%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 30 10% 88%;
+    --input: 30 10% 88%;
+    --ring: 25 95% 53%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
+
+    /* Custom tokens for the design system */
+    --surface-elevated: 0 0% 100%;
+    --surface-sunken: 30 10% 96%;
+
+    /* Status colors */
+    --status-pending: 0 84% 60%;
+    --status-cooking: 45 93% 47%;
+    --status-ready: 142 71% 45%;
+    --status-delivered: 174 72% 40%;
+
+    /* Glow effects */
+    --glow-primary: 25 95% 53% / 0.3;
+    --glow-accent: 174 72% 40% / 0.3;
   }
 
+  /* Dark Theme - Default for POS/KDS operational screens */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 24 10% 6%;
+    --foreground: 30 10% 95%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 24 10% 10%;
+    --card-foreground: 30 10% 95%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 24 10% 10%;
+    --popover-foreground: 30 10% 95%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    /* Primary: Bright Amber */
+    --primary: 25 95% 53%;
+    --primary-foreground: 24 10% 6%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 24 10% 15%;
+    --secondary-foreground: 30 10% 90%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 24 10% 15%;
+    --muted-foreground: 30 5% 55%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    /* Accent: Teal */
+    --accent: 174 72% 50%;
+    --accent-foreground: 24 10% 6%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --border: 24 10% 18%;
+    --input: 24 10% 18%;
+    --ring: 25 95% 53%;
+
+    --surface-elevated: 24 10% 12%;
+    --surface-sunken: 24 10% 4%;
   }
 }
 
@@ -76,7 +107,270 @@
     @apply border-border;
   }
 
+  html {
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-body;
+  }
+
+  /* Headings use Outfit - bold, geometric, modern */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-bold tracking-tight;
+  }
+
+  /* Numbers and prices use monospace for quick scanning */
+  .font-mono, .tabular-nums, [data-price], [data-quantity] {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-feature-settings: "tnum";
+  }
+}
+
+@layer components {
+  /* Glass morphism cards for elevated surfaces */
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-xl border border-border/50;
+  }
+
+  /* Glowing buttons for primary actions */
+  .glow-button {
+    @apply relative overflow-hidden;
+    box-shadow: 0 0 20px hsl(var(--glow-primary));
+  }
+
+  .glow-button::before {
+    content: '';
+    @apply absolute inset-0 opacity-0 transition-opacity duration-300;
+    background: linear-gradient(
+      180deg,
+      hsl(var(--primary) / 0.2) 0%,
+      transparent 100%
+    );
+  }
+
+  .glow-button:hover::before {
+    @apply opacity-100;
+  }
+
+  /* Status indicators with pulse animation */
+  .status-dot {
+    @apply relative;
+  }
+
+  .status-dot::after {
+    content: '';
+    @apply absolute inset-0 rounded-full animate-ping;
+    animation-duration: 2s;
+  }
+
+  .status-pending .status-dot::after {
+    @apply bg-red-500/50;
+  }
+
+  .status-cooking .status-dot::after {
+    @apply bg-amber-500/50;
+  }
+
+  .status-ready .status-dot::after {
+    @apply bg-emerald-500/50;
+  }
+
+  /* Kitchen ticket with dramatic styling */
+  .ticket-card {
+    @apply relative overflow-hidden;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--card)) 0%,
+      hsl(var(--card) / 0.8) 100%
+    );
+  }
+
+  .ticket-card::before {
+    content: '';
+    @apply absolute top-0 left-0 right-0 h-1;
+  }
+
+  .ticket-pending::before {
+    @apply bg-gradient-to-r from-red-500 via-red-400 to-red-500;
+  }
+
+  .ticket-cooking::before {
+    @apply bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500;
+  }
+
+  .ticket-ready::before {
+    @apply bg-gradient-to-r from-emerald-500 via-emerald-400 to-emerald-500;
+  }
+
+  /* Product cards with hover lift effect */
+  .product-card {
+    @apply transition-all duration-300 ease-out;
+  }
+
+  .product-card:hover {
+    @apply -translate-y-1;
+    box-shadow: 0 20px 40px -12px hsl(var(--foreground) / 0.15);
+  }
+
+  .product-card:active {
+    @apply translate-y-0 scale-[0.98];
+  }
+
+  /* Category pills with active state */
+  .category-pill {
+    @apply relative overflow-hidden transition-all duration-200;
+  }
+
+  .category-pill.active {
+    @apply bg-primary text-primary-foreground;
+    box-shadow: 0 0 30px hsl(var(--glow-primary));
+  }
+
+  .category-pill.active::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-b from-white/20 to-transparent;
+  }
+
+  /* Cart item with slide animation */
+  .cart-item {
+    @apply transition-all duration-200;
+    animation: slideIn 0.2s ease-out;
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  /* Price display with emphasis */
+  .price-display {
+    @apply font-mono font-bold tracking-tight;
+    font-feature-settings: "tnum";
+  }
+
+  .price-large {
+    @apply text-3xl md:text-4xl;
+    background: linear-gradient(135deg, hsl(var(--foreground)) 0%, hsl(var(--muted-foreground)) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Section headers with decorative line */
+  .section-header {
+    @apply relative flex items-center gap-4;
+  }
+
+  .section-header::after {
+    content: '';
+    @apply flex-1 h-px bg-gradient-to-r from-border to-transparent;
+  }
+
+  /* Modal backdrop with blur */
+  .modal-backdrop {
+    @apply fixed inset-0 bg-background/80 backdrop-blur-sm;
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* Modal content with scale animation */
+  .modal-content {
+    animation: scaleIn 0.2s ease-out;
+  }
+
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  /* Toast notifications */
+  .toast-success {
+    @apply border-l-4 border-l-emerald-500;
+    background: linear-gradient(90deg, hsl(142 71% 45% / 0.1) 0%, hsl(var(--card)) 20%);
+  }
+
+  .toast-error {
+    @apply border-l-4 border-l-red-500;
+    background: linear-gradient(90deg, hsl(0 72% 51% / 0.1) 0%, hsl(var(--card)) 20%);
+  }
+
+  /* Scrollbar styling for dark theme */
+  .dark ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  .dark ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+}
+
+@layer utilities {
+  /* Text gradient utility */
+  .text-gradient-primary {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(25 95% 65%) 100%);
+  }
+
+  /* Noise texture overlay */
+  .noise-overlay {
+    @apply pointer-events-none fixed inset-0 z-50 opacity-[0.015];
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  }
+
+  /* Gradient borders */
+  .gradient-border {
+    @apply relative;
+  }
+
+  .gradient-border::before {
+    content: '';
+    @apply absolute inset-0 rounded-[inherit] p-px;
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+  }
+
+  /* Focus visible styles */
+  .focus-ring {
+    @apply outline-none ring-2 ring-primary/50 ring-offset-2 ring-offset-background;
+  }
+
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 }

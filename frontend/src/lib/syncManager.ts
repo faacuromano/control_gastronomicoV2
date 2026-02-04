@@ -5,14 +5,15 @@
  * @module lib/syncManager
  */
 
-import { offlineDb } from './offlineDb';
+import { offlineDb, type OfflineProduct, type OfflineCategory, type OfflinePrinterRouting } from './offlineDb';
 import { isOnline } from './connectivity';
 import api from './api';
+import { getErrorMessage } from './errorUtils';
 
 interface SyncPullResponse {
-    products: any[];
-    categories: any[];
-    printerRouting: any[];
+    products: OfflineProduct[];
+    categories: OfflineCategory[];
+    printerRouting: OfflinePrinterRouting[];
     serverTime: string;
     syncToken: string;
 }
@@ -91,9 +92,9 @@ class SyncManager {
             });
 
             this.setStatus('synced');
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('[SyncManager] Pull failed', error);
-            this.setStatus('error', error.message);
+            this.setStatus('error', getErrorMessage(error, 'Pull failed'));
             throw error;
         }
     }
@@ -166,9 +167,9 @@ class SyncManager {
 
             this.setStatus(result.success ? 'synced' : 'error');
             return result;
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('[SyncManager] Push failed', error);
-            this.setStatus('error', error.message);
+            this.setStatus('error', getErrorMessage(error, 'Push failed'));
             throw error;
         }
     }

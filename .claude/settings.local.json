@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(grep:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(node:*)",
+      "Bash(dir:*)",
+      "Bash(dir \"D:\\\\Proyectos\\\\control_gastronomicoV2\\\\audit-phase*.md\")"
     ]
   },
   "enabledPlugins": {

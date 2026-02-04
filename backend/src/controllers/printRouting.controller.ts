@@ -106,5 +106,5 @@ export const removeAreaOverride = asyncHandler(async (req: Request, res: Respons
     await printRoutingService.removeAreaOverride(req.user!.tenantId!, areaId, categoryId);
 
     logger.info('Area printer override removed', { areaId, categoryId });
-    return sendSuccess(res, { message: 'Override removed' });
+    return sendSuccess(res, { message: 'Override eliminado' });
 });

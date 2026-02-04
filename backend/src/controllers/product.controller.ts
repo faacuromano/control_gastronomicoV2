@@ -118,5 +118,5 @@ export const deleteProduct = asyncHandler(async (req: Request, res: Response) =>
         { action: 'soft-delete' }
     );
 
-    sendSuccess(res, { message: 'Product deactivated (Soft Delete)' });
+    sendSuccess(res, { message: 'Producto desactivado (eliminación lógica)' });
 });

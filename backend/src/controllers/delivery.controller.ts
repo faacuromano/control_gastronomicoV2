@@ -107,7 +107,7 @@ export const togglePlatform = asyncHandler(async (req: Request, res: Response) =
 export const deletePlatform = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
     await deliveryService.deletePlatform(id, req.user!.tenantId!);
-    sendSuccess(res, { message: 'Platform deleted' });
+    sendSuccess(res, { message: 'Plataforma eliminada' });
 });
 
 // ============================================================================
@@ -167,7 +167,7 @@ export const assignDriverToOrder = asyncHandler(async (req: Request, res: Respon
     const driverId = parseInt(req.params.id as string);
     const { orderId } = assignDriverToOrderSchema.parse(req.body);
     await deliveryService.assignDriverToOrder(driverId, orderId, req.user!.tenantId!);
-    sendSuccess(res, { message: 'Driver assigned to order' });
+    sendSuccess(res, { message: 'Repartidor asignado a la orden' });
 });
 
 /** Libera un repartidor de su orden actual (lo marca como disponible nuevamente) */
@@ -181,7 +181,7 @@ export const releaseDriver = asyncHandler(async (req: Request, res: Response) =>
 export const deleteDriver = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
     await deliveryService.deleteDriver(id, req.user!.tenantId!);
-    sendSuccess(res, { message: 'Driver deleted' });
+    sendSuccess(res, { message: 'Repartidor eliminado' });
 });
 
 // ============================================================================

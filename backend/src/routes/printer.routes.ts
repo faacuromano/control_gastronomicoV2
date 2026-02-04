@@ -18,7 +18,7 @@
  */
 
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requirePermission } from '../middleware/auth';
 import { validateId } from '../middleware/validateId';
 import * as printerController from '../controllers/printer.controller';
 
@@ -27,26 +27,26 @@ const router = Router();
 // Todas las rutas de impresión requieren autenticación
 router.use(authenticate);
 
-// --- CRUD de Impresoras ---
+// --- CRUD de Impresoras (SEC-005: requiere permisos de administración) ---
 // Listar todas las impresoras configuradas para el tenant
-router.get('/printers', printerController.getPrinters);
+router.get('/printers', requirePermission('printers', 'read'), printerController.getPrinters);
 // Listar impresoras del sistema operativo Windows (para descubrimiento automático)
-router.get('/printers/system', printerController.getSystemPrinters);
+router.get('/printers/system', requirePermission('printers', 'read'), printerController.getSystemPrinters);
 // Registrar nueva impresora (nombre, tipo de conexión, IP/puerto)
-router.post('/printers', printerController.createPrinter);
+router.post('/printers', requirePermission('printers', 'create'), printerController.createPrinter);
 // Actualizar configuración de una impresora existente
-router.put('/printers/:id', validateId(), printerController.updatePrinter);
+router.put('/printers/:id', validateId(), requirePermission('printers', 'update'), printerController.updatePrinter);
 // Eliminar una impresora del tenant
-router.delete('/printers/:id', validateId(), printerController.deletePrinter);
+router.delete('/printers/:id', validateId(), requirePermission('printers', 'delete'), printerController.deletePrinter);
 
-// --- Operaciones de Impresión ---
+// --- Operaciones de Impresión (cualquier usuario autenticado puede imprimir) ---
 // Generar buffer de ticket para una orden (retorna los datos de impresión)
-router.get('/:id', validateId(), printerController.printTicket);
+router.get('/:id', validateId(), requirePermission('orders', 'read'), printerController.printTicket);
 // Enviar ticket de una orden a una impresora específica (impresión directa)
-router.post('/:orderId/device/:printerId', validateId('orderId', 'printerId'), printerController.printToDevice);
+router.post('/:orderId/device/:printerId', validateId('orderId', 'printerId'), requirePermission('orders', 'read'), printerController.printToDevice);
 // Imprimir pre-cuenta (cuenta parcial que se lleva a la mesa antes de cobrar)
-router.post('/:orderId/preaccount/:printerId', validateId('orderId', 'printerId'), printerController.printPreAccount);
+router.post('/:orderId/preaccount/:printerId', validateId('orderId', 'printerId'), requirePermission('orders', 'read'), printerController.printPreAccount);
 // Imprimir página de prueba para verificar conectividad de la impresora
-router.post('/test/:printerId', validateId('printerId'), printerController.printTestPage);
+router.post('/test/:printerId', validateId('printerId'), requirePermission('printers', 'update'), printerController.printTestPage);
 
 export default router;

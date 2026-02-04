@@ -217,8 +217,11 @@ export function skipHmacInDevelopment(
   res: Response,
   next: NextFunction
 ) {
-  // SEC-007: Bloquear explicitamente el bypass HMAC en produccion, sin importar env vars
+  // SEC-007 / FIX-007 (CFG-001): Bloquear explicitamente el bypass HMAC en produccion
   if (process.env.NODE_ENV === 'production') {
+    if (process.env.SKIP_HMAC_VALIDATION === 'true') {
+      logger.error('SKIP_HMAC_VALIDATION is set in production — ignoring and enforcing HMAC validation');
+    }
     return validateHmacDynamic(req, res, next);
   }
 

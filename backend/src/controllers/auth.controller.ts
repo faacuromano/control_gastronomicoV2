@@ -117,11 +117,11 @@ export const loginPin = asyncHandler(async (req: Request, res: Response) => {
     const { pin, tenantId: rawTenantId } = req.body;
 
     if (!rawTenantId) {
-        return sendError(res, 'MISSING_TENANT', 'Tenant ID is required');
+        return sendError(res, 'MISSING_TENANT', 'El ID del tenant es requerido');
     }
 
     if (!pin) {
-        return sendError(res, 'MISSING_CREDENTIALS', 'PIN is required');
+        return sendError(res, 'MISSING_CREDENTIALS', 'El PIN es requerido');
     }
 
     // Verificar que el tenant exista y tenga suscripción activa antes de autenticar
@@ -129,7 +129,7 @@ export const loginPin = asyncHandler(async (req: Request, res: Response) => {
         where: { id: rawTenantId, activeSubscription: true }
     });
     if (!tenant) {
-        return sendError(res, 'INVALID_TENANT', 'Invalid or inactive organization');
+        return sendError(res, 'INVALID_TENANT', 'Organización inválida o inactiva');
     }
     const tenantId = tenant.id;
 
@@ -154,7 +154,7 @@ export const loginPin = asyncHandler(async (req: Request, res: Response) => {
         // Devolver datos del usuario SIN token (el token viaja en la cookie)
         return sendSuccess(res, {
           user: result.user,
-          message: 'Authentication successful'
+          message: 'Autenticación exitosa'
         });
     } catch (error) {
         // Auditoría: registrar intento de login fallido para detección de fuerza bruta
@@ -174,13 +174,13 @@ export const registerUser = asyncHandler(async (req: Request, res: Response) => 
     // P1-26: Validar que el tenant exista y esté activo antes de registrar
     const { tenantId: rawTenantId } = req.body;
     if (!rawTenantId) {
-        return sendError(res, 'MISSING_TENANT', 'Tenant ID is required');
+        return sendError(res, 'MISSING_TENANT', 'El ID del tenant es requerido');
     }
     const tenant = await prisma.tenant.findFirst({
         where: { id: rawTenantId, activeSubscription: true }
     });
     if (!tenant) {
-        return sendError(res, 'INVALID_TENANT', 'Invalid or inactive organization');
+        return sendError(res, 'INVALID_TENANT', 'Organización inválida o inactiva');
     }
 
     const result = await register(req.body);
@@ -199,7 +199,7 @@ export const registerUser = asyncHandler(async (req: Request, res: Response) => 
     // Devolver datos del usuario SIN token
     return sendSuccess(res, {
       user: result.user,
-      message: 'Registration successful'
+      message: 'Registro exitoso'
     }, undefined, 201);
 });
 
@@ -230,7 +230,7 @@ export const registerNewTenant = asyncHandler(async (req: Request, res: Response
     return sendSuccess(res, {
         tenant: result.tenant,
         user: result.user,
-        message: 'Tenant registered successfully'
+        message: 'Tenant registrado exitosamente'
     }, undefined, 201);
 });
 
@@ -247,7 +247,7 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
             where: { id: rawTenantId, activeSubscription: true }
         });
         if (!tenant) {
-            return sendError(res, 'INVALID_TENANT', 'Invalid or inactive organization');
+            return sendError(res, 'INVALID_TENANT', 'Organización inválida o inactiva');
         }
     }
 
@@ -273,7 +273,7 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
         // Devolver datos del usuario SIN token
         return sendSuccess(res, {
           user: result.user,
-          message: 'Authentication successful'
+          message: 'Autenticación exitosa'
         });
     } catch (error) {
         // Auditoría: registrar intento fallido para monitoreo de seguridad
@@ -294,7 +294,7 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
 export const resolveTenant = asyncHandler(async (req: Request, res: Response) => {
     const { code } = req.params;
     if (!code || typeof code !== 'string') {
-        return sendError(res, 'MISSING_CODE', 'Business code is required');
+        return sendError(res, 'MISSING_CODE', 'El código de negocio es requerido');
     }
 
     const tenant = await prisma.tenant.findFirst({
@@ -309,7 +309,7 @@ export const resolveTenant = asyncHandler(async (req: Request, res: Response) =>
     });
 
     if (!tenant) {
-        return sendError(res, 'INVALID_TENANT', 'Business not found or inactive', null, 404);
+        return sendError(res, 'INVALID_TENANT', 'Negocio no encontrado o inactivo', null, 404);
     }
 
     return sendSuccess(res, { tenantId: tenant.id, name: tenant.name });
@@ -331,7 +331,7 @@ export const logoutUser = asyncHandler(async (req: Request, res: Response) => {
         });
     }
 
-    return sendSuccess(res, { message: 'Logged out successfully' });
+    return sendSuccess(res, { message: 'Sesión cerrada exitosamente' });
 });
 
 /**
@@ -342,7 +342,7 @@ export const logoutUser = asyncHandler(async (req: Request, res: Response) => {
 export const refreshTokenHandler = asyncHandler(async (req: Request, res: Response) => {
     const rawToken = req.cookies?.[REFRESH_COOKIE_NAME];
     if (!rawToken) {
-        return sendError(res, 'NO_REFRESH_TOKEN', 'Refresh token not provided', null, 401);
+        return sendError(res, 'NO_REFRESH_TOKEN', 'Token de actualización no proporcionado', null, 401);
     }
 
     const result = await refreshAccessToken(rawToken);
@@ -355,6 +355,6 @@ export const refreshTokenHandler = asyncHandler(async (req: Request, res: Respon
 
     return sendSuccess(res, {
         user: result.user,
-        message: 'Token refreshed successfully'
+        message: 'Token renovado exitosamente'
     });
 });

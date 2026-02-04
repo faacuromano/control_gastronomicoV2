@@ -15,6 +15,7 @@ import { prisma } from '../lib/prisma';
 import { NotFoundError } from '../utils/errors';
 import type { DeliveryPlatform, DeliveryDriver, VehicleType } from '@prisma/client';
 import { OrderStatus } from '@prisma/client';
+import { encryptField, decryptField } from '../lib/fieldEncryption';
 
 // ============================================================================
 // GESTIÓN DE PLATAFORMAS DE DELIVERY
@@ -55,6 +56,18 @@ export interface DriverUpdateData {
     isActive?: boolean;
 }
 
+/**
+ * SEC-009: Descifra los campos sensibles de una plataforma al leerla de la DB.
+ * Soporta valores legacy en plaintext (sin prefijo enc:v1:) para compatibilidad.
+ */
+function decryptPlatformSecrets<T extends { apiKey?: string | null; webhookSecret?: string | null }>(platform: T): T {
+    return {
+        ...platform,
+        apiKey: decryptField(platform.apiKey),
+        webhookSecret: decryptField(platform.webhookSecret),
+    };
+}
+
 class DeliveryService {
     // ========================================================================
     // PLATAFORMAS DE DELIVERY (PedidosYa, Rappi, etc.)
@@ -64,13 +77,14 @@ class DeliveryService {
      * Obtiene todas las plataformas de delivery del tenant con su configuración.
      */
     async getAllPlatforms(tenantId: number): Promise<DeliveryPlatform[]> {
-        return prisma.deliveryPlatform.findMany({
+        const platforms = await prisma.deliveryPlatform.findMany({
             where: { tenantId },
             include: {
                 tenantConfigs: { where: { tenantId } }
             },
             orderBy: { name: 'asc' }
         });
+        return platforms.map(decryptPlatformSecrets);
     }
 
     /**
@@ -86,19 +100,20 @@ class DeliveryService {
         if (!platform) {
             throw new NotFoundError('Platform not found');
         }
-        return platform;
+        return decryptPlatformSecrets(platform);
     }
 
     /**
      * Busca una plataforma por su código único dentro del tenant.
      */
     async getPlatformByCode(code: string, tenantId: number): Promise<DeliveryPlatform | null> {
-        return prisma.deliveryPlatform.findFirst({
+        const platform = await prisma.deliveryPlatform.findFirst({
             where: { code, tenantId },
             include: {
                 tenantConfigs: { where: { tenantId } }
             }
         });
+        return platform ? decryptPlatformSecrets(platform) : null;
     }
 
     /**
@@ -106,16 +121,17 @@ class DeliveryService {
      * FIX P0-SEC-001: Todas las operaciones CRUD de plataformas ahora aisladas por tenantId.
      */
     async createPlatform(tenantId: number, data: PlatformCreateData): Promise<DeliveryPlatform> {
-        return prisma.deliveryPlatform.create({
+        const platform = await prisma.deliveryPlatform.create({
             data: {
                 tenantId,
                 code: data.code.toUpperCase(),
                 name: data.name,
-                apiKey: data.apiKey ?? null,
-                webhookSecret: data.webhookSecret ?? null,
+                apiKey: encryptField(data.apiKey ?? null),
+                webhookSecret: encryptField(data.webhookSecret ?? null),
                 storeId: data.storeId ?? null
             }
         });
+        return decryptPlatformSecrets(platform);
     }
 
     /**
@@ -127,14 +143,21 @@ class DeliveryService {
         if (!platform) {
             throw new NotFoundError('Platform not found');
         }
+        // SEC-009: Cifrar secretos antes de persistir
+        const encryptedData = {
+            ...data,
+            ...(data.apiKey !== undefined ? { apiKey: encryptField(data.apiKey ?? null) } : {}),
+            ...(data.webhookSecret !== undefined ? { webhookSecret: encryptField(data.webhookSecret ?? null) } : {}),
+        };
         const result = await prisma.deliveryPlatform.updateMany({
             where: { id, tenantId },
-            data
+            data: encryptedData
         });
         if (result.count === 0) {
             throw new NotFoundError('Platform not found');
         }
-        return prisma.deliveryPlatform.findFirst({ where: { id, tenantId } }) as Promise<DeliveryPlatform>;
+        const updated = await prisma.deliveryPlatform.findFirst({ where: { id, tenantId } });
+        return decryptPlatformSecrets(updated as DeliveryPlatform);
     }
 
     /**
@@ -150,7 +173,8 @@ class DeliveryService {
             where: { id, tenantId },
             data: { isEnabled: !platform.isEnabled }
         });
-        return prisma.deliveryPlatform.findFirst({ where: { id, tenantId } }) as Promise<DeliveryPlatform>;
+        const updated = await prisma.deliveryPlatform.findFirst({ where: { id, tenantId } });
+        return decryptPlatformSecrets(updated as DeliveryPlatform);
     }
 
     /**
@@ -171,13 +195,14 @@ class DeliveryService {
      * Obtiene solo las plataformas habilitadas (para mostrar en el POS).
      */
     async getEnabledPlatforms(tenantId: number): Promise<DeliveryPlatform[]> {
-        return prisma.deliveryPlatform.findMany({
+        const platforms = await prisma.deliveryPlatform.findMany({
             where: { tenantId, isEnabled: true },
             include: {
                 tenantConfigs: { where: { tenantId } }
             },
             orderBy: { name: 'asc' }
         });
+        return platforms.map(decryptPlatformSecrets);
     }
 
     // ========================================================================

@@ -288,7 +288,7 @@ export const deleteRole = asyncHandler(async (req: Request, res: Response) => {
         { roleName: role.name }
     );
 
-    sendSuccess(res, { message: 'Role deleted successfully' });
+    sendSuccess(res, { message: 'Rol eliminado exitosamente' });
 });
 
 /** Devuelve los módulos, recursos y acciones válidas para la UI de configuración de permisos */

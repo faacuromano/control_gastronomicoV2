@@ -1,7 +1,41 @@
 import React from 'react';
 
+interface ReceiptModifier {
+    id?: number;
+    modifierOptionId?: number;
+    modifierOption?: { id: number; name: string; priceOverlay: string };
+    name?: string;
+    priceCharged?: string;
+    priceOverlay?: number;
+}
+
+interface ReceiptItem {
+    id?: number;
+    productId: number;
+    quantity: number;
+    unitPrice?: string;
+    notes?: string | null;
+    product?: { id: number; name: string; price: string | number };
+    modifiers?: ReceiptModifier[];
+}
+
+interface ReceiptPayment {
+    id?: number;
+    method: string;
+    amount: string | number;
+}
+
+interface ReceiptOrder {
+    id?: number;
+    orderNumber: number;
+    createdAt: string;
+    total: string | number;
+    items: ReceiptItem[];
+    payments?: ReceiptPayment[];
+}
+
 export interface ReceiptProps {
-    order: any; // Type accurately if possible
+    order: ReceiptOrder;
     businessName?: string;
 }
 
@@ -17,7 +51,7 @@ export const Receipt: React.FC<ReceiptProps> = ({ order, businessName = "Restaur
             <div className="border-b border-black my-2"></div>
             
             <div className="flex flex-col gap-1">
-                {order.items?.map((item: any, i: number) => {
+                {order.items?.map((item, i) => {
                     // Handle both Backend (unitPrice/product snapshot) and Frontend Cart (product.price) structures
                     const unitPrice = item.unitPrice !== undefined ? Number(item.unitPrice) : Number(item.product?.price || 0);
                     const itemTotal = unitPrice * item.quantity;
@@ -29,11 +63,11 @@ export const Receipt: React.FC<ReceiptProps> = ({ order, businessName = "Restaur
                                 <span>${itemTotal.toFixed(2)}</span>
                             </div>
                             {/* Modifiers */}
-                            {item.modifiers?.map((mod: any, j: number) => {
+                            {item.modifiers?.map((mod, j) => {
                                 // Handle Backend (modifierOption.name, priceCharged) vs Frontend (name, priceOverlay)
                                 const modName = mod.modifierOption?.name || mod.name || 'Extra';
                                 const modPrice = mod.priceCharged !== undefined ? Number(mod.priceCharged) : Number(mod.priceOverlay || 0);
-                                
+
                                 return (
                                     <div key={j} className="flex justify-between pl-4 text-[10px] text-gray-600">
                                         <span>+ {modName}</span>

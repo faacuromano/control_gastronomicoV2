@@ -59,7 +59,9 @@ export const apiRateLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: () => isDevelopment || process.env.DISABLE_RATE_LIMIT === 'true',
+  // CFG-002: En desarrollo se usa un límite alto en vez de omitir, para que el middleware
+  // se ejercite y se detecten bugs de integración antes de producción
+  skip: () => process.env.DISABLE_RATE_LIMIT === 'true',
 });
 
 /**
@@ -77,7 +79,7 @@ export const webhookRateLimiter = rateLimit({
     success: false,
     error: {
       code: "RATE_LIMITED",
-      message: "Too many webhook requests. Please retry later.",
+      message: "Demasiadas solicitudes de webhook. Por favor reintenta más tarde.",
     },
   },
   standardHeaders: true,

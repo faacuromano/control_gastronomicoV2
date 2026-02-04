@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, MapPin, Phone, Mail, Edit } from 'lucide-react';
 import { clientService, type Client } from '../../../services/clientService';
+import { toast } from 'sonner';
 
 export const ClientsPage: React.FC = () => {
     const [clients, setClients] = useState<Client[]>([]);
@@ -48,7 +49,7 @@ export const ClientsPage: React.FC = () => {
             loadClients();
         } catch (error) {
             console.error("Failed to create client", error);
-            alert("Error al crear cliente");
+            toast.error("Error al crear cliente");
         }
     };
 

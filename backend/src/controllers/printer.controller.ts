@@ -66,7 +66,7 @@ export const printTicket = asyncHandler(async (req: Request, res: Response) => {
     const buffer = await printerService.generateOrderTicket(orderId, req.user!.tenantId!);
 
     sendSuccess(res, {
-        message: 'Ticket generated',
+        message: 'Ticket generado',
         base64: buffer.toString('base64')
     });
 });
@@ -83,7 +83,7 @@ export const printToDevice = asyncHandler(async (req: Request, res: Response) =>
     await printerService.printOrderToDevice(orderId, printerId, req.user!.tenantId!);
 
     sendSuccess(res, {
-        message: 'Ticket sent to printer successfully'
+        message: 'Ticket enviado a la impresora exitosamente'
     });
 });
 
@@ -101,7 +101,7 @@ export const printPreAccount = asyncHandler(async (req: Request, res: Response) 
     await printerService.printOrderToDevice(orderId, printerId, req.user!.tenantId!);
 
     sendSuccess(res, {
-        message: 'Pre-check sent to printer successfully'
+        message: 'Pre-cuenta enviada a la impresora exitosamente'
     });
 });
 
@@ -115,7 +115,7 @@ export const printTestPage = asyncHandler(async (req: Request, res: Response) =>
     await printerService.printTestPage(printerId, req.user!.tenantId!);
 
     sendSuccess(res, {
-        message: 'Test page printed successfully'
+        message: 'Página de prueba impresa exitosamente'
     });
 });
 
@@ -285,5 +285,5 @@ export const deletePrinter = asyncHandler(async (req: Request, res: Response) =>
         );
     }
 
-    sendSuccess(res, { message: 'Printer deleted' });
+    sendSuccess(res, { message: 'Impresora eliminada' });
 });

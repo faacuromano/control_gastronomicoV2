@@ -7,6 +7,7 @@ import { ShoppingCart } from '../components/ShoppingCart';
 import { CheckoutModal } from '../components/CheckoutModal';
 import { usePOSStore } from '../../../../store/pos.store';
 import { orderService } from '../../../../services/orderService';
+import type { OrderItemResponse } from '../../../../services/orderService';
 import { tableService } from '../../../../services/tableService';
 
 import { OpenShiftModal } from '../../../../components/cash/OpenShiftModal';
@@ -15,7 +16,9 @@ import { cashShiftService } from '../../../../services/cashShiftService';
 import { ClientLookup } from '../components/ClientLookup';
 import { DeliveryModal } from '../components/DeliveryModal';
 import type { Client } from '../../../../services/clientService';
-import { Truck } from 'lucide-react';
+import { Truck, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { getErrorMessage } from '../../../../lib/errorUtils';
 
 export const POSPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -32,7 +35,7 @@ export const POSPage: React.FC = () => {
   const [orderLoaded, setOrderLoaded] = useState(false);
   
   // NEW: Store existing items separately from cart (new items)
-  const [existingItems, setExistingItems] = useState<any[]>([]);
+  const [existingItems, setExistingItems] = useState<OrderItemResponse[]>([]);
 
   // Delivery State
   const [isDeliveryMode, setIsDeliveryMode] = useState(false);
@@ -108,12 +111,9 @@ export const POSPage: React.FC = () => {
         clearCart();
         navigate('/tables');
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Save failed", error);
-      const errorMessage = error?.response?.data?.error?.message 
-          || error?.message 
-          || "Error al guardar el pedido";
-      alert(errorMessage);
+      toast.error(getErrorMessage(error, "Error al guardar el pedido"));
     }
   };
 
@@ -122,7 +122,7 @@ export const POSPage: React.FC = () => {
     // Delivery Mode Check
     if (isDeliveryMode) {
         if (!selectedClient) {
-            alert("Por favor, seleccione un cliente para el delivery.");
+            toast.warning("Por favor, seleccione un cliente para el delivery.");
             return;
         }
         setIsDeliveryModalOpen(true);
@@ -140,7 +140,8 @@ export const POSPage: React.FC = () => {
 
 
   /* New State for Delivery Flow */
-  const [pendingDeliveryData, setPendingDeliveryData] = useState<any>(null);
+  interface DeliveryData { address: string; notes?: string; phone: string; name: string; driverId?: number; }
+  const [pendingDeliveryData, setPendingDeliveryData] = useState<DeliveryData | null>(null);
 
   // Use Refs to ensure handleCheckout always accesses the latest state, avoiding stale closures
   const isDeliveryModeRef = React.useRef(isDeliveryMode);
@@ -193,7 +194,7 @@ export const POSPage: React.FC = () => {
             clearCart();
         } catch (error) {
              console.error("Auto-save failed during checkout", error);
-             alert("Error al guardar items nuevos antes de cerrar mesa");
+             toast.error("Error al guardar items nuevos antes de cerrar mesa");
              return;
         }
     }
@@ -210,12 +211,9 @@ export const POSPage: React.FC = () => {
             setIsCheckoutOpen(false);
             navigate('/tables');
             return;
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error("Table checkout failed", error);
-            const errorMessage = error?.response?.data?.error?.message
-                || error?.message
-                || "Error al procesar el pago de la mesa";
-            alert(errorMessage);
+            toast.error(getErrorMessage(error, "Error al procesar el pago de la mesa"));
             return;
         }
     }
@@ -274,15 +272,20 @@ export const POSPage: React.FC = () => {
         
         return order;
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Checkout failed", error);
-        // Extract actual error message from API response
-        const errorMessage = error?.response?.data?.error?.message 
-            || error?.message 
-            || "Error al procesar la orden";
-        alert(errorMessage);
+        toast.error(getErrorMessage(error, "Error al procesar la orden"));
     }
   };
+
+  // FE-005: Indicador de carga mientras se verifican turno y orden existente
+  if (isShiftOpen === null || !orderLoaded) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -295,36 +298,51 @@ export const POSPage: React.FC = () => {
         }
         products={
             <div className="h-full flex flex-col">
+                 {/* Header - Minimal & Functional */}
                  <div className="mb-4 flex items-center justify-between">
-                    <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
-                        {existingOrderId ? `Orden #${existingOrderId}` : (isDeliveryMode ? 'Delivery' : 'Nueva Venta')}
-                        {tableId && <span className="text-sm font-normal text-slate-500 ml-2">(Mesa {tableId})</span>}
-                    </h1>
-                    
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-lg font-semibold text-foreground">
+                            {existingOrderId ? (
+                                <>Orden <span className="font-mono">#{existingOrderId}</span></>
+                            ) : (
+                                isDeliveryMode ? 'Delivery' : 'Nueva Venta'
+                            )}
+                        </h1>
+                        {tableId && (
+                            <span className="text-sm text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                                Mesa {tableId}
+                            </span>
+                        )}
+                    </div>
+
                     {!existingOrderId && (
-                        <button 
+                        <button
                             onClick={() => setIsDeliveryMode(!isDeliveryMode)}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                                isDeliveryMode 
-                                    ? 'bg-primary text-primary-foreground' 
-                                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                            }`}
+                            className={`
+                                flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
+                                ${isDeliveryMode
+                                    ? 'bg-purple-600 text-white'
+                                    : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+                                }
+                            `}
                         >
                             <Truck className="w-4 h-4" />
-                            {isDeliveryMode ? 'Modo Delivery' : 'Venta Mostrador'}
+                            {isDeliveryMode ? 'Delivery' : 'Mostrador'}
                         </button>
                     )}
                  </div>
 
+                 {/* Client Lookup for Delivery */}
                  {isDeliveryMode && (
-                     <div className="mb-4">
-                         <ClientLookup 
-                            onSelect={setSelectedClient} 
-                            selectedClient={selectedClient} 
+                     <div className="mb-3">
+                         <ClientLookup
+                            onSelect={setSelectedClient}
+                            selectedClient={selectedClient}
                          />
                      </div>
                  )}
 
+                 {/* Product Grid */}
                  <div className="flex-1 overflow-y-auto">
                     <ProductGrid activeCategoryId={activeCategoryId} />
                  </div>
@@ -354,7 +372,7 @@ export const POSPage: React.FC = () => {
             existingItems.reduce((acc, item) => {
                 const itemBase = Number(item.unitPrice) * item.quantity;
                 const modifiersPrice = (item.modifiers || []).reduce(
-                    (sum: number, mod: any) => sum + Number(mod.priceCharged || 0),
+                    (sum: number, mod: { priceCharged?: string | number }) => sum + Number(mod.priceCharged || 0),
                     0
                 ) * item.quantity;
                 return acc + itemBase + modifiersPrice;

@@ -6,37 +6,45 @@ interface KitchenTimerProps {
     expectedPrepTime?: number; // in minutes
 }
 
-export const KitchenTimer: React.FC<KitchenTimerProps> = ({ startTime }) => {
+export const KitchenTimer: React.FC<KitchenTimerProps> = ({ startTime, expectedPrepTime = 15 }) => {
     const [elapsed, setElapsed] = useState(0);
 
     useEffect(() => {
         const start = new Date(startTime).getTime();
-        
+
         const updateTimer = () => {
             const now = new Date().getTime();
             setElapsed(Math.floor((now - start) / 60000)); // minutes
         };
 
         updateTimer();
-        const interval = setInterval(updateTimer, 60000); // Update every minute
+        const interval = setInterval(updateTimer, 60000);
 
         return () => clearInterval(interval);
     }, [startTime]);
 
-    // Color logic & Status Text
-    const getStatus = () => {
-        if (elapsed < 15) return { color: 'text-green-500 bg-green-500/10', text: 'En tiempo' };
-        if (elapsed < 25) return { color: 'text-yellow-500 bg-yellow-500/10', text: 'Atento' };
-        return { color: 'text-red-500 bg-red-500/10', text: 'Demorado' };
+    // Calculate thresholds
+    const warningThreshold = expectedPrepTime;
+    const urgentThreshold = Math.ceil(expectedPrepTime * 1.67);
+
+    // Status colors - light theme
+    const getStatusClass = () => {
+        if (elapsed < warningThreshold) return 'bg-emerald-100 text-emerald-700';
+        if (elapsed < urgentThreshold) return 'bg-amber-100 text-amber-700';
+        return 'bg-red-100 text-red-700';
     };
 
-    const status = getStatus();
+    const formatTime = (minutes: number): string => {
+        if (minutes < 60) return `${minutes}m`;
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        return `${hours}h${mins}m`;
+    };
 
     return (
-        <div className={`flex items-center gap-2 px-2 py-1 rounded-md font-mono font-medium border text-xs ${status.color}`}>
-            <Clock size={14} />
-            <span>{elapsed}m</span>
-            <span className="opacity-75 border-l border-current pl-2 ml-1">{status.text}</span>
+        <div className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium ${getStatusClass()}`}>
+            <Clock className="w-3 h-3" />
+            <span className="font-mono">{formatTime(elapsed)}</span>
         </div>
     );
 };

@@ -16,8 +16,11 @@
  */
 
 import { Prisma } from '@prisma/client';
-import { v4 as uuidv4, validate as uuidValidate } from 'uuid';
+import crypto from 'crypto';
 import { logger } from '../utils/logger';
+
+// DEP-004: Reemplaza dependencia uuid con crypto.randomUUID() nativo de Node.js
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { ConflictError } from '../utils/errors';
 
 // Utilidad para pausas con timeout estricto en reintentos
@@ -63,8 +66,8 @@ export class OrderNumberService {
     businessDate: Date
   ): Promise<OrderIdentifier> {
     const startTime = Date.now();
-    const operationId = uuidv4();
-    const generatedUuid = uuidv4();
+    const operationId = crypto.randomUUID();
+    const generatedUuid = crypto.randomUUID();
 
     // 1. Formatear fecha para la clave: YYYYMMDD
     const yyyy = businessDate.getFullYear();
@@ -159,7 +162,7 @@ export class OrderNumberService {
    * Usado para verificar IDs de orden recibidos en requests.
    */
   validateUuid(uuid: string): boolean {
-    return uuidValidate(uuid);
+    return UUID_REGEX.test(uuid);
   }
 }
 

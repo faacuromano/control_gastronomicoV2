@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Package, Truck, Monitor, FileText, Smartphone, Save, Loader2 } from 'lucide-react';
 import { configService, type TenantConfig } from '../../../services/configService';
+import { toast } from 'sonner';
 
 interface FeatureToggle {
     key: keyof TenantConfig['features'];
@@ -96,7 +97,7 @@ export const SettingsPage: React.FC = () => {
             window.location.reload();
         } catch (error) {
             console.error('Error saving config:', error);
-            alert('Error al guardar la configuración');
+            toast.error('Error al guardar la configuración');
         } finally {
             setSaving(false);
         }

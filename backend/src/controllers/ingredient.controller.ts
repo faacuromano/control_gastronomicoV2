@@ -95,5 +95,5 @@ export const deleteIngredient = asyncHandler(async (req: Request, res: Response)
   }
 
   await ingredientService.delete(id, req.user!.tenantId!);
-  return sendSuccess(res, { message: 'Ingredient deleted' });
+  return sendSuccess(res, { message: 'Ingrediente eliminado' });
 });

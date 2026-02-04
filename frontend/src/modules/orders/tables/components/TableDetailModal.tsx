@@ -5,6 +5,7 @@ import type { Table } from './TableMap';
 import { tableService } from '../../../../services/tableService';
 import { orderService } from '../../../../services/orderService';
 import { printerService, type Printer as PrinterConfig } from '../../../../services/printerService';
+import { getErrorMessage } from '../../../../lib/errorUtils';
 
 interface OrderItem {
     id: number;
@@ -106,10 +107,9 @@ export const TableDetailModal: React.FC<TableDetailModalProps> = ({ table, onClo
             navigate(`/ventas?orderId=${order.id}&tableId=${table.id}`);
             onClose();
             onTableUpdated?.();
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('Error opening table:', err);
-            const errorMessage = err.response?.data?.error?.message || err.message || 'Error al abrir la mesa';
-            setError(errorMessage);
+            setError(getErrorMessage(err, 'Error al abrir la mesa'));
         } finally {
             setLoading(false);
         }

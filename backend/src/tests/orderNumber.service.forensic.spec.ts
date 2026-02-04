@@ -3,7 +3,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { mockDeep, DeepMockProxy } from 'vitest-mock-extended';
 import { OrderNumberService, OrderIdentifier } from '../services/orderNumber.service';
-import { validate as uuidValidate } from 'uuid';
+// DEP-004: Reemplaza uuid con validacion nativa
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const uuidValidate = (s: string) => UUID_REGEX.test(s);
 
 // Mock de Prisma para tests unitarios
 const prismaMock: DeepMockProxy<PrismaClient> = mockDeep<PrismaClient>();

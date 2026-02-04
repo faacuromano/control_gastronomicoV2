@@ -140,7 +140,7 @@ export const remove = asyncHandler(async (req: Request, res: Response) => {
     { code: method.code, name: method.name }
   );
 
-  sendSuccess(res, { message: 'Payment method deleted' });
+  sendSuccess(res, { message: 'Método de pago eliminado' });
 });
 
 /**
@@ -149,5 +149,5 @@ export const remove = asyncHandler(async (req: Request, res: Response) => {
  */
 export const seedDefaults = asyncHandler(async (req: Request, res: Response) => {
   await paymentMethodService.seedDefaults(req.user!.tenantId!);
-  sendSuccess(res, { message: 'Default payment methods seeded' });
+  sendSuccess(res, { message: 'Métodos de pago por defecto inicializados' });
 });

@@ -51,7 +51,7 @@ export const updateArea = asyncHandler(async (req: Request, res: Response) => {
 export const deleteArea = asyncHandler(async (req: Request, res: Response) => {
     const id = Number(req.params.id as string);
     await tableService.deleteArea(id, req.user!.tenantId!);
-    sendSuccess(res, { message: 'Area deleted' });
+    sendSuccess(res, { message: 'Área eliminada' });
 });
 
 // ============================================================================
@@ -93,7 +93,7 @@ export const updatePositions = asyncHandler(async (req: Request, res: Response) 
 export const deleteTable = asyncHandler(async (req: Request, res: Response) => {
     const id = tableIdSchema.parse(req.params.id);
     await tableService.deleteTable(id, req.user!.tenantId!);
-    sendSuccess(res, { message: 'Table deleted' });
+    sendSuccess(res, { message: 'Mesa eliminada' });
 });
 
 /** Obtiene una mesa por ID con su orden activa si existe */

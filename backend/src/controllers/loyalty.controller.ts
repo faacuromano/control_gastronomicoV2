@@ -54,7 +54,7 @@ export const redeemPoints = asyncHandler(async (req: Request, res: Response) => 
     const discountAmount = await loyaltyService.redeemPoints(clientId, points, req.user!.tenantId!);
 
     sendSuccess(res, {
-        message: 'Points redeemed successfully',
+        message: 'Puntos canjeados exitosamente',
         pointsRedeemed: points,
         discountAmount
     });
@@ -72,7 +72,7 @@ export const addWalletFunds = asyncHandler(async (req: Request, res: Response) =
     const newBalance = await loyaltyService.addWalletFunds(clientId, amount, req.user!.tenantId!);
 
     sendSuccess(res, {
-        message: 'Funds added successfully',
+        message: 'Fondos cargados exitosamente',
         newBalance
     });
 });
@@ -89,7 +89,7 @@ export const useWalletFunds = asyncHandler(async (req: Request, res: Response) =
     const amountUsed = await loyaltyService.useWalletFunds(clientId, amount, req.user!.tenantId!);
 
     sendSuccess(res, {
-        message: 'Wallet funds applied',
+        message: 'Fondos de billetera aplicados',
         amountUsed
     });
 });

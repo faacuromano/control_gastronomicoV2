@@ -50,7 +50,7 @@ export default function RegisterPage() {
                 phone: phone || undefined
             });
             setStep('success');
-        } catch (err: any) {
+        } catch (err: unknown) {
             // Use utility to extract user-friendly error message
             const message = getErrorMessage(err, 'Failed to register. Please try again.');
             setServerError(message);
@@ -60,7 +60,7 @@ export default function RegisterPage() {
     };
 
     if (step === 'success') {
-        const pin = (user as any)?.generatedPin || '******'; // Access generatedPin from user object
+        const pin = user?.generatedPin || '******';
         
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4">

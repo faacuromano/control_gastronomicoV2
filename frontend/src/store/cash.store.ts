@@ -1,16 +1,17 @@
 import { create } from 'zustand';
-import { cashShiftService, type CashShift } from '../services/cashShiftService';
+import { cashShiftService, type CashShift, type ShiftReport } from '../services/cashShiftService';
+import { getErrorMessage } from '../lib/errorUtils';
 
 interface CashState {
     shift: CashShift | null;
     isLoading: boolean;
     error: string | null;
-    
+
     // Actions
     checkShiftStatus: () => Promise<void>;
     openShift: (initialAmount: number) => Promise<void>;
     closeShift: (finalAmount: number) => Promise<void>;
-    closeShiftWithCount: (countedCash: number) => Promise<any>; // Using any for ShiftReport to avoid circular deps or generic issues, or better import ShiftReport
+    closeShiftWithCount: (countedCash: number) => Promise<ShiftReport>;
 }
 
 export const useCashStore = create<CashState>((set) => ({
@@ -34,8 +35,8 @@ export const useCashStore = create<CashState>((set) => ({
         try {
             const shift = await cashShiftService.openShift(initialAmount);
             set({ shift, isLoading: false });
-        } catch (error: any) {
-            set({ error: error.message || 'Error opening shift', isLoading: false });
+        } catch (error: unknown) {
+            set({ error: getErrorMessage(error, 'Error opening shift'), isLoading: false });
             throw error;
         }
     },
@@ -45,8 +46,8 @@ export const useCashStore = create<CashState>((set) => ({
         try {
             await cashShiftService.closeShift(finalAmount);
             set({ shift: null, isLoading: false });
-        } catch (error: any) {
-            set({ error: error.message || 'Error closing shift', isLoading: false });
+        } catch (error: unknown) {
+            set({ error: getErrorMessage(error, 'Error closing shift'), isLoading: false });
             throw error;
         }
     },
@@ -57,8 +58,8 @@ export const useCashStore = create<CashState>((set) => ({
             const report = await cashShiftService.closeShiftWithCount(countedCash);
             set({ shift: null, isLoading: false });
             return report;
-        } catch (error: any) {
-            set({ error: error.message || 'Error closing shift', isLoading: false });
+        } catch (error: unknown) {
+            set({ error: getErrorMessage(error, 'Error closing shift'), isLoading: false });
             throw error;
         }
     }

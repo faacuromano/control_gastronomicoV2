@@ -17,7 +17,7 @@
  */
 
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requirePermission } from '../middleware/auth';
 import { validateId } from '../middleware/validateId';
 import * as loyaltyController from '../controllers/loyalty.controller';
 
@@ -26,19 +26,19 @@ const router = Router();
 // Todas las rutas de fidelidad requieren autenticación
 router.use(authenticate);
 
-// Obtener la configuración del programa de fidelidad del tenant
-router.get('/config', loyaltyController.getConfig);
+// SEC-005: Obtener la configuración del programa de fidelidad del tenant
+router.get('/config', requirePermission('loyalty', 'read'), loyaltyController.getConfig);
 
 // Consultar balance de puntos y saldo de billetera de un cliente
-router.get('/:id', validateId(), loyaltyController.getBalance);
+router.get('/:id', validateId(), requirePermission('loyalty', 'read'), loyaltyController.getBalance);
 
 // Canjear puntos acumulados por un descuento en la orden actual
-router.post('/:id/redeem', validateId(), loyaltyController.redeemPoints);
+router.post('/:id/redeem', validateId(), requirePermission('loyalty', 'update'), loyaltyController.redeemPoints);
 
 // Operaciones de billetera virtual
 // Cargar saldo a la billetera de un cliente (pago anticipado)
-router.post('/:id/wallet/add', validateId(), loyaltyController.addWalletFunds);
+router.post('/:id/wallet/add', validateId(), requirePermission('loyalty', 'update'), loyaltyController.addWalletFunds);
 // Descontar saldo de la billetera de un cliente al pagar una orden
-router.post('/:id/wallet/use', validateId(), loyaltyController.useWalletFunds);
+router.post('/:id/wallet/use', validateId(), requirePermission('loyalty', 'update'), loyaltyController.useWalletFunds);
 
 export default router;

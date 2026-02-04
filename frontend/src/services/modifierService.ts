@@ -17,12 +17,20 @@ export interface ModifierGroup {
     options: ModifierOption[];
 }
 
+interface ModifierGroupApiResponse {
+    id: number;
+    name: string;
+    minSelection: number;
+    maxSelection: number;
+    options: Array<{ id: number; name: string; priceOverlay: string; ingredientId?: number | null; qtyUsed?: number; ingredient?: { name: string; unit: string } }>;
+}
+
 export const modifierService = {
-    getAll: async () => {
+    getAll: async (): Promise<ModifierGroup[]> => {
          const response = await api.get('/modifiers/groups');
-         return response.data.data.map((g: any) => ({
+         return response.data.data.map((g: ModifierGroupApiResponse) => ({
              ...g,
-             options: g.options.map((o: any) => ({
+             options: g.options.map((o) => ({
                  ...o,
                  priceOverlay: Number(o.priceOverlay)
              }))

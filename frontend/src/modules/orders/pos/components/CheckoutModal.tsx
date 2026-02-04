@@ -9,11 +9,13 @@ import { loyaltyService, type LoyaltyBalance, type LoyaltyConfig } from '../../.
 import { calculateDiscountPreview, type DiscountType } from '../../../../services/discountService';
 import { X, CreditCard, Banknote, QrCode, Loader2, AlertCircle, Smartphone, Printer, CheckCircle, Trash2, Plus, FileText, ArrowLeftRight, Wallet, Star, Gift, Percent } from 'lucide-react';
 import { Receipt } from './Receipt';
+import { toast } from 'sonner';
+import { getErrorMessage } from '../../../../lib/errorUtils';
 
 interface CheckoutModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (method: string, payments?: { method: string; amount: number }[], discount?: number) => Promise<any>;
+  onConfirm: (method: string, payments?: { method: string; amount: number }[], discount?: number) => Promise<OrderResponse | void>;
   tableMode?: boolean; // When true, don't create order, just pass payments to parent
   tableId?: number; // Table ID for fetching fresh order total
   totalAmount?: number; // Override store total (used for tables with existing items)
@@ -230,9 +232,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
               type: 'RECEIPT'
           });
           setInvoiceNumber(invoice.invoiceNumber);
-      } catch (err: any) {
+      } catch (err: unknown) {
           console.error('Failed to generate invoice', err);
-          alert(err.response?.data?.error?.message || 'Error al generar comprobante');
+          toast.error(getErrorMessage(err, 'Error al generar comprobante'));
       } finally {
           setGeneratingInvoice(false);
       }
@@ -318,8 +320,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
                 } else {
                     handleClose();
                 }
-            } catch (err: any) {
-                setError(err.response?.data?.error?.message || err.message || 'Error al cerrar mesa');
+            } catch (err: unknown) {
+                setError(getErrorMessage(err, 'Error al cerrar mesa'));
                 setLoading(false);
             }
             return;
@@ -340,9 +342,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
             // If parent didn't return an order (e.g. table close), just close modal
            handleClose();
         }
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error("Order failed", err);
-        setError(err.response?.data?.message || err.message || 'Failed to create order');
+        setError(getErrorMessage(err, 'Failed to create order'));
     } finally {
         setLoading(false);
     }
@@ -398,25 +400,29 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-            <h2 className="text-lg font-bold text-slate-800">
+      <div className="bg-card w-full max-w-lg rounded-xl shadow-2xl border border-border overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        {/* Header */}
+        <div className="p-4 border-b border-border flex justify-between items-center bg-muted/30">
+            <h2 className="text-lg font-semibold text-foreground">
                 {completedOrder ? 'Orden Finalizada' : 'Checkout'}
             </h2>
-            <button onClick={handleClose} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
-                <X size={20} className="text-slate-500" />
+            <button onClick={handleClose} className="p-1.5 hover:bg-muted rounded-lg transition-colors">
+                <X size={18} className="text-muted-foreground" />
             </button>
         </div>
-        
-        <div className="p-6">
+
+        <div className="p-6 max-h-[75vh] overflow-y-auto">
             {completedOrder ? (
-                <div className="flex flex-col items-center animate-in fade-in fill-mode-forwards">
-                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4 text-green-600">
-                        <CheckCircle size={40} />
+                <div className="flex flex-col items-center">
+                    {/* Success Icon */}
+                    <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mb-4">
+                        <CheckCircle size={32} className="text-emerald-600" />
                     </div>
-                    <h3 className="text-2xl font-bold text-slate-800 mb-2">¡Pago Exitoso!</h3>
-                    <p className="text-slate-500 mb-8">Orden #{completedOrder.orderNumber}</p>
-                    
+                    <h3 className="text-xl font-bold text-foreground mb-1">¡Pago Exitoso!</h3>
+                    <p className="text-muted-foreground mb-6">
+                        Orden <span className="font-mono font-semibold">#{completedOrder.orderNumber}</span>
+                    </p>
+
                      {/* Hidden Receipt */}
                      <div id="receipt-hidden-container" className="hidden">
                         <Receipt order={completedOrder} />
@@ -425,32 +431,35 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
                     <div className="flex flex-col gap-3 w-full">
                         {/* Invoice status */}
                         {invoiceNumber && (
-                            <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
-                                <p className="text-green-700 font-medium">Comprobante: {invoiceNumber}</p>
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-center">
+                                <p className="text-emerald-700 font-medium text-sm">Comprobante: <span className="font-mono">{invoiceNumber}</span></p>
                             </div>
                         )}
-                        
-                        <div className="flex gap-3">
-                            <button 
-                                onClick={handlePrint} 
+
+                        <div className="flex gap-2">
+                            <button
+                                onClick={handlePrint}
                                 disabled={isPrinting}
-                                className="flex-1 flex items-center justify-center gap-2 bg-slate-100 font-bold py-3 rounded-xl hover:bg-slate-200 transition-colors disabled:opacity-50"
+                                className="flex-1 flex items-center justify-center gap-2 bg-muted font-medium py-2.5 rounded-lg hover:bg-muted/80 text-foreground transition-colors disabled:opacity-50 text-sm"
                             >
-                                {isPrinting ? <Loader2 size={20} className="animate-spin" /> : <Printer size={20} />}
+                                {isPrinting ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
                                 {isPrinting ? 'Imprimiendo...' : 'Imprimir'}
                             </button>
                             {!invoiceNumber && (
-                                <button 
-                                    onClick={handleGenerateInvoice} 
+                                <button
+                                    onClick={handleGenerateInvoice}
                                     disabled={generatingInvoice}
-                                    className="flex-1 flex items-center justify-center gap-2 bg-amber-100 text-amber-800 font-bold py-3 rounded-xl hover:bg-amber-200 transition-colors disabled:opacity-50"
+                                    className="flex-1 flex items-center justify-center gap-2 bg-amber-50 border border-amber-200 text-amber-700 font-medium py-2.5 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50 text-sm"
                                 >
-                                    {generatingInvoice ? <Loader2 size={20} className="animate-spin" /> : <FileText size={20} />}
+                                    {generatingInvoice ? <Loader2 size={16} className="animate-spin" /> : <FileText size={16} />}
                                     Comprobante
                                 </button>
                             )}
                         </div>
-                        <button onClick={handleClose} className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-colors">
+                        <button
+                            onClick={handleClose}
+                            className="w-full bg-primary text-primary-foreground font-semibold py-3 rounded-lg hover:bg-primary/90 transition-colors"
+                        >
                             Nueva Orden
                         </button>
                     </div>
@@ -459,26 +468,32 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
                 <>
                     {/* Totals Header */}
                     <div className="text-center mb-6">
-                        <p className="text-slate-500">Total a Pagar</p>
+                        <p className="text-muted-foreground text-sm mb-1">Total a Pagar</p>
                         {totalDiscounts > 0 ? (
                             <>
-                                <div className="text-2xl line-through text-slate-400">${total.toFixed(2)}</div>
-                                <div className="text-4xl font-black text-green-600">${effectiveTotal.toFixed(2)}</div>
-                                <p className="text-green-600 text-sm flex items-center justify-center gap-1 mt-1">
-                                    <Percent size={14} /> Descuento: -${totalDiscounts.toFixed(2)}
+                                <div className="text-lg line-through text-muted-foreground font-mono">${total.toFixed(2)}</div>
+                                <div className="font-mono text-3xl font-bold text-emerald-600">${effectiveTotal.toFixed(2)}</div>
+                                <p className="text-emerald-600 text-xs mt-1">
+                                    Descuento: -${totalDiscounts.toFixed(2)}
                                 </p>
                             </>
                         ) : (
-                            <div className="text-4xl font-black text-indigo-600">${total.toFixed(2)}</div>
+                            <div className="font-mono text-3xl font-bold text-foreground">${total.toFixed(2)}</div>
                         )}
                         {remaining > 0 && totalPaid > 0 && (
-                            <p className="text-red-500 font-bold mt-1">Faltan: ${remaining.toFixed(2)}</p>
+                            <p className="text-red-600 font-medium mt-2 text-sm">
+                                Faltan: ${remaining.toFixed(2)}
+                            </p>
                         )}
                         {remaining === 0 && totalPaid <= effectiveTotal + 0.01 && totalPaid > 0 && (
-                            <p className="text-green-600 font-bold mt-1">¡Total Cubierto!</p>
+                            <p className="text-emerald-600 font-medium mt-2 text-sm flex items-center justify-center gap-1">
+                                <CheckCircle size={14} /> Total cubierto
+                            </p>
                         )}
                         {totalPaid > effectiveTotal + 0.01 && (
-                             <p className="text-blue-600 font-bold mt-1">Su Vuelto: ${(totalPaid - effectiveTotal).toFixed(2)}</p>
+                             <p className="text-blue-600 font-medium mt-2 text-sm">
+                                Vuelto: ${(totalPaid - effectiveTotal).toFixed(2)}
+                             </p>
                         )}
                     </div>
 
@@ -488,7 +503,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
                             <button
                                 onClick={handlePrintPreAccount}
                                 disabled={isPrinting}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl border border-slate-200 transition-colors disabled:opacity-50"
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-secondary hover:bg-secondary/80 text-foreground font-medium rounded-xl border border-border transition-colors disabled:opacity-50"
                             >
                                 {isPrinting ? (
                                     <>
@@ -507,15 +522,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
 
                     {/* Loyalty Points Section */}
                     {loyaltyBalance && loyaltyConfig && !redeemedDiscount && (
-                        <div className="mb-6 bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-xl border border-amber-200">
-                            <div className="flex items-center justify-between mb-3">
+                        <div className="mb-4 bg-amber-50 p-4 rounded-lg border border-amber-200">
+                            <div className="flex items-center justify-between mb-2">
                                 <div className="flex items-center gap-2">
-                                    <Star className="text-amber-500" size={20} />
-                                    <span className="font-bold text-amber-800">Puntos de Lealtad</span>
+                                    <Star className="text-amber-600" size={18} />
+                                    <span className="font-semibold text-amber-800">Puntos de Lealtad</span>
                                 </div>
-                                <span className="text-lg font-black text-amber-600">{loyaltyBalance.points} pts</span>
+                                <span className="font-bold text-amber-700 font-mono">{loyaltyBalance.points} pts</span>
                             </div>
-                            <p className="text-xs text-amber-700 mb-3">
+                            <p className="text-xs text-amber-600 mb-3">
                                 {loyaltyConfig.pointsToRedeemValue} puntos = $1 descuento
                             </p>
                             <div className="flex gap-2">
@@ -526,14 +541,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
                                     placeholder="Puntos a canjear"
                                     max={loyaltyBalance.points}
                                     min={0}
-                                    className="flex-1 border border-amber-300 rounded-lg px-3 py-2 text-sm"
+                                    className="flex-1 border border-amber-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/50"
                                 />
                                 <button
                                     onClick={handleRedeemPoints}
                                     disabled={pointsToRedeem <= 0}
-                                    className="bg-amber-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-amber-600 disabled:opacity-50 flex items-center gap-1"
+                                    className="bg-amber-600 text-white px-3 py-2 rounded-lg font-semibold hover:bg-amber-700 disabled:opacity-50 flex items-center gap-1 transition-colors text-sm"
                                 >
-                                    <Gift size={16} /> Canjear
+                                    <Gift size={14} /> Canjear
                                 </button>
                             </div>
                             {pointsToRedeem > 0 && (
@@ -546,15 +561,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
 
                     {/* Show redeemed points summary */}
                     {redeemedDiscount > 0 && (
-                        <div className="mb-4 bg-green-50 border border-green-200 rounded-xl p-3 flex items-center justify-between">
-                            <div className="flex items-center gap-2 text-green-700">
-                                <Star size={18} />
-                                <span className="font-medium">Puntos canjeados</span>
+                        <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-emerald-700">
+                                <Star size={16} />
+                                <span className="font-medium text-sm">Puntos canjeados</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <span className="font-bold text-green-700">-${redeemedDiscount.toFixed(2)}</span>
-                                <button onClick={handleRemovePointsRedemption} className="text-red-400 hover:text-red-600">
-                                    <X size={16} />
+                                <span className="font-semibold font-mono text-emerald-700">-${redeemedDiscount.toFixed(2)}</span>
+                                <button onClick={handleRemovePointsRedemption} className="text-muted-foreground hover:text-destructive p-1">
+                                    <X size={14} />
                                 </button>
                             </div>
                         </div>
@@ -562,53 +577,53 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
 
                     {/* Manual Discount Section */}
                     {!manualDiscountApplied && !showDiscountSection && (
-                        <button 
+                        <button
                             onClick={() => setShowDiscountSection(true)}
-                            className="mb-4 w-full py-2 px-4 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 hover:border-indigo-400 hover:text-indigo-600 flex items-center justify-center gap-2 transition-all"
+                            className="mb-4 w-full py-2.5 px-4 border-2 border-dashed border-border rounded-lg text-muted-foreground hover:border-primary hover:text-primary flex items-center justify-center gap-2 transition-colors text-sm"
                         >
-                            <Percent size={16} /> Aplicar Descuento
+                            <Percent size={14} /> Aplicar Descuento
                         </button>
                     )}
 
                     {showDiscountSection && !manualDiscountApplied && (
-                        <div className="mb-6 bg-gradient-to-r from-indigo-50 to-purple-50 p-4 rounded-xl border border-indigo-200">
+                        <div className="mb-4 bg-muted/50 p-4 rounded-lg border border-border">
                             <div className="flex items-center justify-between mb-3">
                                 <div className="flex items-center gap-2">
-                                    <Percent className="text-indigo-500" size={20} />
-                                    <span className="font-bold text-indigo-800">Descuento Manual</span>
+                                    <Percent className="text-foreground" size={16} />
+                                    <span className="font-semibold text-foreground text-sm">Descuento Manual</span>
                                 </div>
-                                <button onClick={() => setShowDiscountSection(false)} className="text-slate-400 hover:text-slate-600">
-                                    <X size={18} />
+                                <button onClick={() => setShowDiscountSection(false)} className="text-muted-foreground hover:text-foreground p-1">
+                                    <X size={16} />
                                 </button>
                             </div>
-                            <div className="flex gap-2 mb-3">
+                            <div className="flex gap-2 mb-2">
                                 <select
                                     value={manualDiscountType}
                                     onChange={(e) => setManualDiscountType(e.target.value as DiscountType)}
-                                    className="border border-indigo-300 rounded-lg px-3 py-2 text-sm bg-white"
+                                    className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                                 >
-                                    <option value="PERCENTAGE">Porcentaje (%)</option>
-                                    <option value="FIXED">Monto Fijo ($)</option>
+                                    <option value="PERCENTAGE">%</option>
+                                    <option value="FIXED">$</option>
                                 </select>
                                 <input
                                     type="number"
                                     value={manualDiscountValue || ''}
                                     onChange={(e) => setManualDiscountValue(Number(e.target.value))}
-                                    placeholder={manualDiscountType === 'PERCENTAGE' ? '10' : '50.00'}
+                                    placeholder={manualDiscountType === 'PERCENTAGE' ? '10' : '50'}
                                     min={0}
                                     max={manualDiscountType === 'PERCENTAGE' ? 100 : total}
-                                    className="flex-1 border border-indigo-300 rounded-lg px-3 py-2 text-sm"
+                                    className="flex-1 border border-border rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/50"
                                 />
                                 <button
                                     onClick={handleApplyManualDiscount}
                                     disabled={manualDiscountValue <= 0}
-                                    className="bg-indigo-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-600 disabled:opacity-50"
+                                    className="bg-primary text-primary-foreground px-4 py-2 rounded-lg font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors text-sm"
                                 >
                                     Aplicar
                                 </button>
                             </div>
                             {manualDiscountValue > 0 && (
-                                <p className="text-xs text-indigo-600">
+                                <p className="text-xs text-muted-foreground">
                                     = ${calculateDiscountPreview(total, manualDiscountType, manualDiscountValue).toFixed(2)} de descuento
                                 </p>
                             )}
@@ -617,15 +632,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
 
                     {/* Show applied manual discount summary */}
                     {manualDiscountApplied > 0 && (
-                        <div className="mb-4 bg-indigo-50 border border-indigo-200 rounded-xl p-3 flex items-center justify-between">
-                            <div className="flex items-center gap-2 text-indigo-700">
-                                <Percent size={18} />
-                                <span className="font-medium">Descuento aplicado</span>
+                        <div className="mb-4 bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-purple-700">
+                                <Percent size={16} />
+                                <span className="font-medium text-sm">Descuento aplicado</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <span className="font-bold text-indigo-700">-${manualDiscountApplied.toFixed(2)}</span>
-                                <button onClick={handleRemoveManualDiscount} className="text-red-400 hover:text-red-600">
-                                    <X size={16} />
+                                <span className="font-semibold font-mono text-purple-700">-${manualDiscountApplied.toFixed(2)}</span>
+                                <button onClick={handleRemoveManualDiscount} className="text-muted-foreground hover:text-destructive p-1">
+                                    <X size={14} />
                                 </button>
                             </div>
                         </div>
@@ -633,61 +648,69 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
 
                     {/* Payment Input Section */}
                     {remaining > 0.01 && (
-                        <div className="mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                             <p className="text-xs font-bold text-slate-500 mb-2 uppercase">Agregar Pago</p>
-                             <div className="grid grid-cols-2 gap-2 mb-3">
+                        <div className="mb-6 bg-muted/50 p-4 rounded-lg border border-border">
+                             <p className="text-xs font-semibold text-muted-foreground mb-3 uppercase tracking-wide">Agregar Pago</p>
+                             <div className="grid grid-cols-2 gap-2 mb-4">
                                 {paymentMethods.map((m) => {
                                     const IconComponent = ICON_MAP[m.icon || ''] || DEFAULT_ICON;
                                     return (
-                                        <button 
+                                        <button
                                             key={m.code}
                                             onClick={() => setCurrentMethod(m.code)}
-                                            className={`p-2 rounded-lg text-sm font-bold border transition-all flex items-center justify-center gap-2 ${currentMethod === m.code ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                                            className={`
+                                                p-2.5 rounded-lg text-sm font-medium border transition-colors
+                                                flex items-center justify-center gap-2
+                                                ${currentMethod === m.code
+                                                    ? 'bg-primary text-primary-foreground border-primary'
+                                                    : 'bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-foreground'
+                                                }
+                                            `}
                                         >
                                             <IconComponent size={16} /> {m.name}
                                         </button>
                                     );
                                 })}
                              </div>
-                             
+
                              <div className="flex gap-2">
                                 <div className="relative flex-1">
-                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
-                                    <input 
-                                        type="number" 
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">$</span>
+                                    <input
+                                        type="number"
                                         value={currentAmount}
                                         onChange={(e) => setCurrentAmount(parseFloat(e.target.value) || 0)}
-                                        className="w-full pl-8 pr-3 py-3 rounded-lg border border-slate-300 font-bold text-lg"
+                                        className="w-full pl-8 pr-3 py-2.5 rounded-lg bg-card border border-border text-foreground font-mono font-semibold text-lg focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary"
                                         min="0"
                                     />
                                 </div>
-                                <button 
+                                <button
                                     onClick={addPayment}
-                                    className="bg-indigo-600 text-white px-4 rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50"
+                                    className="bg-primary text-primary-foreground px-4 rounded-lg font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                     disabled={currentAmount <= 0}
                                 >
-                                    <Plus size={24} />
+                                    <Plus size={20} />
                                 </button>
                              </div>
                         </div>
                     )}
 
                     {/* Payment List */}
-                    <div className="mb-6 space-y-2">
-                        {payments.map((p, idx) => (
-                            <div key={idx} className="flex justify-between items-center p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
-                                <div className="flex items-center gap-2">
-                                    <span className="font-bold text-slate-700">{p.label}</span>
+                    {payments.length > 0 && (
+                        <div className="mb-6 space-y-2">
+                            <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">Pagos Registrados</p>
+                            {payments.map((p, idx) => (
+                                <div key={idx} className="flex justify-between items-center p-3 bg-card border border-border rounded-lg">
+                                    <span className="font-medium text-foreground">{p.label}</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-mono font-semibold text-foreground">${p.amount.toFixed(2)}</span>
+                                        <button onClick={() => removePayment(idx)} className="text-muted-foreground hover:text-destructive p-1 hover:bg-destructive/10 rounded transition-colors">
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <span className="font-bold text-lg">${p.amount.toFixed(2)}</span>
-                                    <button onClick={() => removePayment(idx)} className="text-red-400 hover:text-red-600">
-                                        <Trash2 size={18} />
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    )}
 
                     {error && (
                         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
@@ -696,12 +719,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose, o
                         </div>
                     )}
 
-                    <button 
+                    <button
                         onClick={handleConfirm}
                         disabled={loading || remaining > 0.01}
-                        className="w-full bg-green-600 hover:bg-green-700 disabled:bg-slate-300 disabled:text-slate-500 text-white py-4 rounded-xl font-bold text-lg shadow-lg shadow-green-200 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                        className="w-full py-3 rounded-lg font-semibold text-base flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed transition-colors"
                     >
-                        {loading ? <Loader2 className="animate-spin" /> : 'Confirmar Pago'}
+                        {loading ? <Loader2 className="animate-spin" size={18} /> : 'Confirmar Pago'}
                     </button>
                 </>
             )}

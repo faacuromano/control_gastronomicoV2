@@ -440,5 +440,5 @@ export const deleteUser = asyncHandler(async (req: Request, res: Response) => {
         { userName: user.name, userEmail: user.email }
     );
 
-    sendSuccess(res, { message: 'User deactivated successfully' });
+    sendSuccess(res, { message: 'Usuario desactivado exitosamente' });
 });

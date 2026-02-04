@@ -30,14 +30,19 @@ interface ApiErrorResponse {
  * @returns User-friendly error message
  */
 export const extractErrorMessage = (
-    error: any,
-    fallback = 'An unexpected error occurred. Please try again.'
+    error: unknown,
+    fallback = 'Ocurrió un error inesperado. Por favor intenta de nuevo.'
 ): string => {
-    // Handle AxiosError
-    if (error.response) {
-        const data = error.response.data as ApiErrorResponse;
+    // FE-002b: Acepta unknown con type narrowing seguro
+    if (!error || typeof error !== 'object') return fallback;
 
-        // Try multiple paths for error message
+    const err = error as Record<string, unknown>;
+
+    // Handle AxiosError
+    if (err.response && typeof err.response === 'object') {
+        const resp = err.response as Record<string, unknown>;
+        const data = resp.data as ApiErrorResponse | undefined;
+
         if (typeof data?.error === 'string') {
             return data.error;
         }
@@ -50,18 +55,18 @@ export const extractErrorMessage = (
     }
 
     // Handle network errors
-    if (error.message === 'Network Error') {
-        return 'Network error. Please check your internet connection.';
+    if ((err as Error).message === 'Network Error') {
+        return 'Error de red. Verifica tu conexión a internet.';
     }
 
     // Handle timeout errors
-    if (error.code === 'ECONNABORTED') {
-        return 'Request timeout. Please try again.';
+    if (err.code === 'ECONNABORTED') {
+        return 'Tiempo de espera agotado. Por favor intenta de nuevo.';
     }
 
     // Generic error message
-    if (error.message) {
-        return error.message;
+    if (typeof (err as Error).message === 'string') {
+        return (err as Error).message;
     }
 
     return fallback;
@@ -70,14 +75,20 @@ export const extractErrorMessage = (
 /**
  * Get HTTP status code from error
  */
-export const getErrorStatus = (error: any): number | null => {
-    return error.response?.status || null;
+export const getErrorStatus = (error: unknown): number | null => {
+    if (!error || typeof error !== 'object') return null;
+    const resp = (error as Record<string, unknown>).response;
+    if (resp && typeof resp === 'object') {
+        const status = (resp as Record<string, unknown>).status;
+        return typeof status === 'number' ? status : null;
+    }
+    return null;
 };
 
 /**
  * Check if error is a specific HTTP status
  */
-export const isErrorStatus = (error: any, status: number): boolean => {
+export const isErrorStatus = (error: unknown, status: number): boolean => {
     return getErrorStatus(error) === status;
 };
 
@@ -87,23 +98,23 @@ export const isErrorStatus = (error: any, status: number): boolean => {
 export const getStatusMessage = (status: number): string => {
     switch (status) {
         case 400:
-            return 'Invalid request. Please check your input.';
+            return 'Solicitud inválida. Verifica los datos ingresados.';
         case 401:
-            return 'Unauthorized. Please log in again.';
+            return 'No autorizado. Por favor inicia sesión nuevamente.';
         case 403:
-            return 'Access denied. You do not have permission for this action.';
+            return 'Acceso denegado. No tienes permiso para esta acción.';
         case 404:
-            return 'Resource not found.';
+            return 'Recurso no encontrado.';
         case 409:
-            return 'Conflict. This resource already exists.';
+            return 'Conflicto. Este recurso ya existe.';
         case 429:
-            return 'Too many requests. Please try again later.';
+            return 'Demasiadas solicitudes. Intenta de nuevo más tarde.';
         case 500:
-            return 'Server error. Please contact support if this persists.';
+            return 'Error del servidor. Contacta soporte si el problema persiste.';
         case 503:
-            return 'Service temporarily unavailable. Please try again later.';
+            return 'Servicio temporalmente no disponible. Intenta más tarde.';
         default:
-            return `Error ${status}. Please try again.`;
+            return `Error ${status}. Por favor intenta de nuevo.`;
     }
 };
 
@@ -114,7 +125,7 @@ export const getStatusMessage = (status: number): string => {
  * @param fallback - Fallback message
  * @returns User-friendly error message
  */
-export const getErrorMessage = (error: any, fallback?: string): string => {
+export const getErrorMessage = (error: unknown, fallback?: string): string => {
     const status = getErrorStatus(error);
 
     // For specific status codes, use status message if no custom message
@@ -132,7 +143,7 @@ export const getErrorMessage = (error: any, fallback?: string): string => {
 /**
  * Check if error is authentication-related (401 or 403)
  */
-export const isAuthError = (error: any): boolean => {
+export const isAuthError = (error: unknown): boolean => {
     const status = getErrorStatus(error);
     return status === 401 || status === 403;
 };
@@ -140,17 +151,19 @@ export const isAuthError = (error: any): boolean => {
 /**
  * Check if error is a validation error (400)
  */
-export const isValidationError = (error: any): boolean => {
+export const isValidationError = (error: unknown): boolean => {
     return isErrorStatus(error, 400);
 };
 
 /**
  * Check if error is a network/connectivity error
  */
-export const isNetworkError = (error: any): boolean => {
+export const isNetworkError = (error: unknown): boolean => {
+    if (!error || typeof error !== 'object') return true;
+    const err = error as Record<string, unknown>;
     return (
-        error.message === 'Network Error' ||
-        error.code === 'ECONNABORTED' ||
-        !error.response
+        (err as Error).message === 'Network Error' ||
+        err.code === 'ECONNABORTED' ||
+        !err.response
     );
 };

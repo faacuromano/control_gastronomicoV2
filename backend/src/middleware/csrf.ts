@@ -24,7 +24,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     if (xRequestedWith !== 'XMLHttpRequest') {
         res.status(403).json({
             success: false,
-            error: { code: 'CSRF_FAILED', message: 'Missing or invalid X-Requested-With header' }
+            error: { code: 'CSRF_FAILED', message: 'Header X-Requested-With faltante o inválido' }
         });
         return;
     }

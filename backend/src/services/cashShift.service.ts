@@ -288,24 +288,15 @@ export class CashShiftService {
 
     /**
      * Obtiene el historial de turnos de un usuario.
-     * Busca el tenantId del usuario para garantizar aislamiento multi-inquilino.
+     * DB-001: Recibe tenantId del caller (JWT) para aislamiento multi-inquilino
+     * sin necesidad de una query adicional.
      */
-    async getShiftHistory(userId: number, limit = 10) {
-        // Obtener tenantId del usuario para aislamiento multi-inquilino
-        const user = await prisma.user.findUnique({
-            where: { id: userId },
-            select: { tenantId: true }
-        });
-
-        if (!user) {
-            throw new NotFoundError('User not found');
-        }
-
+    async getShiftHistory(userId: number, tenantId: number, limit = 10) {
         // PERF-013: Limitar resultados para evitar consultas sin cota
         return await prisma.cashShift.findMany({
             where: {
                 userId,
-                tenantId: user.tenantId
+                tenantId
             },
             orderBy: { startTime: 'desc' },
             take: Math.min(limit, 100)

@@ -60,7 +60,7 @@ export const errorHandler = (
         return sendError(
             res,
             'VALIDATION_ERROR',
-            'Invalid data provided',
+            'Datos proporcionados inválidos',
             isProduction ? null : err.issues,
             400
         );
@@ -70,19 +70,23 @@ export const errorHandler = (
     if (err instanceof Prisma.PrismaClientKnownRequestError) {
         switch (err.code) {
             case 'P2002': // Violacion de restriccion unica (registro duplicado)
-                return sendError(res, 'DUPLICATE_ENTRY', 'This record already exists', null, 409);
+                return sendError(res, 'DUPLICATE_ENTRY', 'Este registro ya existe', null, 409);
             case 'P2025': // Registro no encontrado en operacion de update/delete
-                return sendError(res, 'NOT_FOUND', 'Record not found', null, 404);
+                return sendError(res, 'NOT_FOUND', 'Registro no encontrado', null, 404);
             case 'P2003': // Violacion de clave foranea (referencia a registro inexistente)
-                return sendError(res, 'INVALID_REFERENCE', 'Referenced record does not exist', null, 400);
+                return sendError(res, 'INVALID_REFERENCE', 'El registro referenciado no existe', null, 400);
+            case 'P2024': // Timeout en pool de conexiones — la DB no pudo responder a tiempo
+                return sendError(res, 'DATABASE_TIMEOUT', 'Tiempo de conexión a la base de datos agotado', null, 503);
+            case 'P2028': // Error de transacción — la transacción no pudo completarse
+                return sendError(res, 'TRANSACTION_ERROR', 'La transacción falló, por favor reintenta', null, 504);
             default:
-                return sendError(res, 'DATABASE_ERROR', 'Database operation failed', null, 500);
+                return sendError(res, 'DATABASE_ERROR', 'Operación de base de datos fallida', null, 500);
         }
     }
 
     // Error de validacion de Prisma (datos con formato incorrecto enviados al ORM)
     if (err instanceof Prisma.PrismaClientValidationError) {
-        return sendError(res, 'VALIDATION_ERROR', 'Invalid data format', null, 400);
+        return sendError(res, 'VALIDATION_ERROR', 'Formato de datos inválido', null, 400);
     }
 
     // TST-007 FIX: Manejo de errores que tienen propiedad statusCode (LockTimeoutError, InvalidStateTransitionError)
@@ -95,7 +99,7 @@ export const errorHandler = (
 
     // Error de parseo JSON (body de solicitud con JSON malformado)
     if (err instanceof SyntaxError && 'body' in err) {
-        return sendError(res, 'INVALID_JSON', 'Invalid JSON in request body', null, 400);
+        return sendError(res, 'INVALID_JSON', 'JSON inválido en el cuerpo de la solicitud', null, 400);
     }
 
     // Default: Error Interno del Servidor
@@ -103,7 +107,7 @@ export const errorHandler = (
     return sendError(
         res,
         'INTERNAL_ERROR',
-        isProduction ? 'An unexpected error occurred' : err.message,
+        isProduction ? 'Ocurrió un error inesperado' : err.message,
         null,
         500
     );
@@ -118,7 +122,7 @@ export const notFoundHandler = (req: Request, res: Response) => {
     return sendError(
         res,
         'NOT_FOUND',
-        `Route ${req.method} ${req.path} not found`,
+        `Ruta ${req.method} ${req.path} no encontrada`,
         null,
         404
     );

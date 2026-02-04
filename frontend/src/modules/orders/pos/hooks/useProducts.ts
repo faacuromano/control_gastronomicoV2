@@ -1,6 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { type Product, productService } from '../../../../services/productService';
+import { getErrorMessage } from '../../../../lib/errorUtils';
 
 export const useProducts = (categoryId?: number, isActive?: boolean) => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -16,8 +17,8 @@ export const useProducts = (categoryId?: number, isActive?: boolean) => {
       setLoading(true);
       const data = await productService.getAll(categoryId, isActive);
       setProducts(data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch products');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to fetch products'));
     } finally {
       setLoading(false);
     }

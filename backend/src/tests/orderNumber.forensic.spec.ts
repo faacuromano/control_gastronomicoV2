@@ -15,7 +15,13 @@ import {
   OrderNumberService,
   OrderIdentifier
 } from '../services/orderNumber.service';
-import { v4 as uuidv4, validate as uuidValidate, version as uuidVersion } from 'uuid';
+import crypto from 'crypto';
+
+// DEP-004: Reemplaza uuid con crypto nativo de Node.js
+const uuidv4 = () => crypto.randomUUID();
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const uuidValidate = (s: string) => UUID_REGEX.test(s);
+const uuidVersion = (s: string) => parseInt(s.charAt(14), 16);
 
 // Mock logger globally
 vi.mock('../utils/logger', () => ({

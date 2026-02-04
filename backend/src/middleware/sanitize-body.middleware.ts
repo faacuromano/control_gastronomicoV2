@@ -140,7 +140,7 @@ export function sanitizeBody(req: Request, res: Response, next: NextFunction): v
     // Ante un error, rechazar la solicitud por seguridad (fail-safe)
     return res.status(400).json({
       error: 'INVALID_REQUEST',
-      message: 'Request contains invalid data',
+      message: 'La solicitud contiene datos inválidos',
     });
   }
 }

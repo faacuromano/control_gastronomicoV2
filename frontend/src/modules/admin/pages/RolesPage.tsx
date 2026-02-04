@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Loader2, Save, X, Users, Package, ShoppingCart, Settings, Grid, type LucideProps } from 'lucide-react';
 import { roleService, type Role, type RolePermissions, type PermissionOptions } from '../../../services/roleService';
+import { toast } from 'sonner';
+import { getErrorMessage } from '../../../lib/errorUtils';
 
 // Resource grouping for better organization
 const RESOURCE_GROUPS: Record<string, { label: string; icon: React.FC<LucideProps>; resources: string[] }> = {
@@ -171,9 +173,9 @@ export const RolesPage: React.FC = () => {
             setRoles(prev => prev.map(r => r.id === updated.id ? { ...r, permissions: updated.permissions } : r));
             setSelectedRole({ ...selectedRole, permissions: updated.permissions });
             setHasChanges(false);
-        } catch (error: any) {
+        } catch (error: unknown) {
             console.error('Failed to save permissions', error);
-            alert(error?.response?.data?.error?.message || 'Error al guardar permisos');
+            toast.error(getErrorMessage(error, 'Error al guardar permisos'));
         } finally {
             setSaving(false);
         }

@@ -21,6 +21,8 @@ export interface User {
     role: string;
     permissions: RolePermissions;
     tenantId: number;
+    /** Solo presente tras el registro — PIN generado que se muestra una única vez */
+    generatedPin?: string;
 }
 
 /**
@@ -151,11 +153,16 @@ export const useAuthStore = create<AuthState>()(
         {
             name: 'auth-storage',
             // FIX P0-004: Only persist user data, not sensitive tokens
+            // FIX FE-004: No longer persist isAuthenticated — derive from user on rehydration
             partialize: (state) => ({
                 user: state.user,
-                isAuthenticated: state.isAuthenticated,
                 tenantId: state.tenantId
             }),
+            onRehydrateStorage: () => (state) => {
+                if (state) {
+                    state.isAuthenticated = state.user !== null;
+                }
+            },
         }
     )
 );

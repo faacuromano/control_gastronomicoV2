@@ -16,6 +16,23 @@ export interface Table {
     currentOrderId?: number;
 }
 
+export interface OpenTableResponse {
+    id: number;
+    orderNumber: number;
+    channel: string;
+    status: string;
+    tableId: number;
+    total: string;
+    createdAt: string;
+}
+
+export interface CloseTableResponse {
+    orderId: number;
+    total: number;
+    paid: number;
+    status: 'PAID' | 'PARTIAL' | 'PENDING';
+}
+
 class TableService {
     async getAreas(): Promise<Area[]> {
         const response = await api.get('/areas');
@@ -60,7 +77,7 @@ class TableService {
      * Opens a table, marks it as OCCUPIED, and creates an order for it.
      * Backend handles both status change and order creation atomically.
      */
-    async openTable(id: number, pax = 1): Promise<any> {
+    async openTable(id: number, pax = 1): Promise<OpenTableResponse> {
         const response = await api.post(`/tables/${id}/open`, { pax });
         return response.data.data;
     }
@@ -69,7 +86,7 @@ class TableService {
      * Closes a table: processes payment on the active order and marks table as FREE.
      * Backend handles payment recording + order close + table status atomically.
      */
-    async closeTable(id: number, payments?: { method: string; amount: number }[]): Promise<any> {
+    async closeTable(id: number, payments?: { method: string; amount: number }[]): Promise<CloseTableResponse> {
         const response = await api.post(`/tables/${id}/close`, payments ? { payments } : undefined);
         return response.data.data;
     }

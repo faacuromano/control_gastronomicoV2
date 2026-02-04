@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useCashStore } from '../../store/cash.store';
 import { useAuthStore } from '../../store/auth.store';
 import { Loader2, DollarSign } from 'lucide-react';
+import { getErrorMessage } from '../../lib/errorUtils';
 
 interface OpenShiftModalProps {
     onShiftOpened: () => void;
@@ -28,8 +29,8 @@ export const OpenShiftModal: React.FC<OpenShiftModalProps> = ({ onShiftOpened })
         try {
             await useCashStore.getState().openShift(numAmount);
             onShiftOpened();
-        } catch (err: any) {
-            setError(err.response?.data?.error?.message || err.message || 'Error al abrir caja.');
+        } catch (err: unknown) {
+            setError(getErrorMessage(err, 'Error al abrir caja.'));
         } finally {
             setLoading(false);
         }

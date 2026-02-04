@@ -48,5 +48,5 @@ export const updateCategory = asyncHandler(async (req: Request, res: Response) =
 export const deleteCategory = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
     await categoryService.deleteCategory(id, req.user!.tenantId!);
-    sendSuccess(res, { message: 'Category deleted' });
+    sendSuccess(res, { message: 'Categoría eliminada' });
 });

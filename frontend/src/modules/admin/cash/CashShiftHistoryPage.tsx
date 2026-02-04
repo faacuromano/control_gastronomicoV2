@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { cashShiftService, type CashShift } from '../../../services/cashShiftService';
-import { userService } from '../../../services/userService';
+import { userService, type User } from '../../../services/userService';
 import { Wallet, Filter, Download } from 'lucide-react';
 
 export const CashShiftHistoryPage = () => {
     const [shifts, setShifts] = useState<CashShift[]>([]);
-    const [users, setUsers] = useState<any[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     
     // Filters

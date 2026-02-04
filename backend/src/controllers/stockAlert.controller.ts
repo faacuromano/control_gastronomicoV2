@@ -29,5 +29,5 @@ export const getLowStockItems = asyncHandler(async (req: Request, res: Response)
  */
 export const broadcastStatus = asyncHandler(async (req: Request, res: Response) => {
     await stockAlertService.broadcastLowStockStatus(req.user!.tenantId!);
-    sendSuccess(res, { message: 'Low stock status broadcasted to connected clients' });
+    sendSuccess(res, { message: 'Estado de stock bajo difundido a los clientes conectados' });
 });

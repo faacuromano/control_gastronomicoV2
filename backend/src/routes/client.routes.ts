@@ -10,7 +10,7 @@
  */
 
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requirePermission } from '../middleware/auth';
 import { searchClients, createClient } from '../controllers/client.controller';
 
 const router = Router();
@@ -18,9 +18,9 @@ const router = Router();
 // Todas las rutas de clientes requieren usuario autenticado
 router.use(authenticate);
 
-// Buscar clientes por nombre, teléfono o email (usado en el POS y delivery)
-router.get('/search', searchClients);
+// SEC-005: Buscar clientes requiere permiso de lectura
+router.get('/search', requirePermission('clients', 'read'), searchClients);
 // Crear un nuevo cliente (se puede hacer desde el POS al momento de facturar)
-router.post('/', createClient);
+router.post('/', requirePermission('clients', 'create'), createClient);
 
 export default router;

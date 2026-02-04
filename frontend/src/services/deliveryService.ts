@@ -16,7 +16,7 @@ export interface DeliveryPlatform {
     menuSyncEnabled: boolean;
     lastSyncAt?: string;
     commissionRate?: number;
-    config?: any;
+    config?: Record<string, unknown>;
     createdAt: string;
     updatedAt: string;
 }
@@ -33,6 +33,34 @@ export interface DeliveryDriver {
     currentOrderId?: number;
     createdAt: string;
     updatedAt: string;
+}
+
+export interface DeliveryOrderItem {
+    id: number;
+    productId: number;
+    quantity: number;
+    unitPrice: string;
+    notes?: string | null;
+    product?: { id: number; name: string; price: string };
+    modifiers?: { id: number; modifierOption: { id: number; name: string; priceOverlay: string } }[];
+}
+
+export interface DeliveryOrderResponse {
+    id: number;
+    orderNumber: number;
+    channel: string;
+    fulfillmentType: string;
+    status: string;
+    paymentStatus: string;
+    subtotal: string;
+    total: string;
+    createdAt: string;
+    closedAt?: string | null;
+    deliveryAddress?: string | null;
+    deliveryNotes?: string | null;
+    items: DeliveryOrderItem[];
+    client?: { id: number; name: string; phone: string } | null;
+    driver?: { id: number; name: string } | null;
 }
 
 class DeliveryService {
@@ -138,7 +166,7 @@ class DeliveryService {
     // DELIVERY ORDERS
     // ========================================================================
 
-    async getDeliveryOrders(status?: string): Promise<any[]> {
+    async getDeliveryOrders(status?: string): Promise<DeliveryOrderResponse[]> {
         const params = status ? `?status=${status}` : '';
         const response = await api.get(`/delivery/orders${params}`);
         return response.data.data;

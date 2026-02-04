@@ -118,5 +118,5 @@ export const deleteSupplier = asyncHandler(async (req: Request, res: Response) =
     { supplierName: supplier.name }
   );
 
-  sendSuccess(res, { message: 'Supplier deleted successfully' });
+  sendSuccess(res, { message: 'Proveedor eliminado exitosamente' });
 });

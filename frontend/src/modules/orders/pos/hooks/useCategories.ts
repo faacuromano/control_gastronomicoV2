@@ -1,6 +1,7 @@
 
 import { useState, useEffect } from 'react';
 import { type Category, categoryService } from '../../../../services/categoryService';
+import { getErrorMessage } from '../../../../lib/errorUtils';
 
 export const useCategories = () => {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -16,8 +17,8 @@ export const useCategories = () => {
       setLoading(true);
       const data = await categoryService.getAll();
       setCategories(data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch categories');
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to fetch categories'));
     } finally {
       setLoading(false);
     }

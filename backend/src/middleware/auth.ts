@@ -102,12 +102,12 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
             hasAuthHeader: !!req.headers['authorization'],
             path: req.path,
         });
-        return sendError(res, 'AUTH_REQUIRED', 'No token provided', null, 401);
+        return sendError(res, 'AUTH_REQUIRED', 'Token de autenticación no proporcionado', null, 401);
     }
 
     if (!JWT_SECRET) {
         logger.error('JWT_SECRET not configured');
-        return sendError(res, 'CONFIG_ERROR', 'Server configuration error', null, 500);
+        return sendError(res, 'CONFIG_ERROR', 'Error de configuración del servidor', null, 500);
     }
 
     // FIX P1-003: Algoritmo explicito para prevenir el ataque "alg: none"
@@ -118,7 +118,7 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
                 error: err.message,
                 path: req.path,
             });
-            return sendError(res, 'AUTH_INVALID', 'Invalid token', null, 403);
+            return sendError(res, 'AUTH_INVALID', 'Token inválido', null, 403);
         }
 
         req.user = decoded as JwtPayload;
@@ -143,17 +143,17 @@ export const authenticate = authenticateToken;
 export const authorize = (allowedRoles: string[]) => {
     return async (req: Request, res: Response, next: NextFunction) => {
         if (!req.user) {
-             return sendError(res, 'AUTH_REQUIRED', 'Not authenticated', null, 401);
+             return sendError(res, 'AUTH_REQUIRED', 'No autenticado', null, 401);
         }
 
         const userRole = req.user.role;
 
         if (!userRole) {
-             return sendError(res, 'AUTH_INVALID', 'User has no role assigned', null, 403);
+             return sendError(res, 'AUTH_INVALID', 'El usuario no tiene un rol asignado', null, 403);
         }
 
         if (!allowedRoles.includes(userRole)) {
-            return sendError(res, 'AUTH_FORBIDDEN', `Role ${userRole} is not authorized`, null, 403);
+            return sendError(res, 'AUTH_FORBIDDEN', `El rol ${userRole} no está autorizado`, null, 403);
         }
 
         return next();
@@ -178,7 +178,7 @@ export const authorize = (allowedRoles: string[]) => {
 export const requirePermission = (resource: string, action: string) => {
     return (req: Request, res: Response, next: NextFunction) => {
         if (!req.user) {
-            return sendError(res, 'AUTH_REQUIRED', 'Not authenticated', null, 401);
+            return sendError(res, 'AUTH_REQUIRED', 'No autenticado', null, 401);
         }
 
         // BYPASS ADMIN: El rol ADMIN tiene acceso total a todo el sistema
@@ -190,18 +190,18 @@ export const requirePermission = (resource: string, action: string) => {
 
         // Si no se encontraron permisos en el token/usuario, denegar acceso
         if (!permissions) {
-            return sendError(res, 'AUTH_INVALID', 'User has no permissions assigned', null, 403);
+            return sendError(res, 'AUTH_INVALID', 'El usuario no tiene permisos asignados', null, 403);
         }
 
         // Verificar si el recurso existe en el mapa de permisos del usuario
         const resourcePermissions = permissions[resource];
 
         if (!resourcePermissions || !Array.isArray(resourcePermissions)) {
-            return sendError(res, 'AUTH_FORBIDDEN', `Access to resource '${resource}' denied`, null, 403);
+            return sendError(res, 'AUTH_FORBIDDEN', `Acceso al recurso '${resource}' denegado`, null, 403);
         }
 
         if (!resourcePermissions.includes(action) && !resourcePermissions.includes('*')) {
-             return sendError(res, 'AUTH_FORBIDDEN', `Action '${action}' on '${resource}' denied`, null, 403);
+             return sendError(res, 'AUTH_FORBIDDEN', `Acción '${action}' sobre '${resource}' denegada`, null, 403);
         }
 
         return next();

@@ -13,7 +13,7 @@
  */
 
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth';
+import { authenticate, requirePermission } from '../middleware/auth';
 import { validateId } from '../middleware/validateId';
 import * as invoiceController from '../controllers/invoice.controller';
 
@@ -27,26 +27,26 @@ router.use(authenticate);
  * Listar facturas con filtros opcionales (tipo de comprobante, rango de fechas).
  * Utilizado en el módulo de administración para consultar historial fiscal.
  */
-router.get('/', invoiceController.getAll);
+router.get('/', requirePermission('invoices', 'read'), invoiceController.getAll);
 
 /**
  * POST /invoices
  * Generar comprobante fiscal para una orden. Asigna número secuencial
  * automático y guarda los datos del cliente si es factura tipo B.
  */
-router.post('/', invoiceController.generateInvoice);
+router.post('/', requirePermission('invoices', 'create'), invoiceController.generateInvoice);
 
 /**
  * GET /invoices/order/:orderId
  * Obtener el comprobante asociado a una orden específica.
  * Útil para reimprimir o consultar desde la vista de detalle de orden.
  */
-router.get('/order/:orderId', validateId('orderId'), invoiceController.getByOrderId);
+router.get('/order/:orderId', validateId('orderId'), requirePermission('invoices', 'read'), invoiceController.getByOrderId);
 
 /**
  * GET /invoices/:invoiceNumber
  * Buscar comprobante por su número de factura (búsqueda directa).
  */
-router.get('/:invoiceNumber', invoiceController.getByInvoiceNumber);
+router.get('/:invoiceNumber', requirePermission('invoices', 'read'), invoiceController.getByInvoiceNumber);
 
 export default router;

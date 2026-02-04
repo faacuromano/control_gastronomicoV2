@@ -48,9 +48,15 @@ export const initSocket = (httpServer: HttpServer) => {
   // los eventos se comparten entre todos los pods via pub/sub de Redis,
   // permitiendo que un usuario conectado al pod A reciba eventos emitidos desde el pod B.
   if (process.env.REDIS_HOST) {
-    import('@socket.io/redis-adapter').then(({ createAdapter }) => {
-      const { Redis } = require('ioredis');
-      const pubClient = new Redis({ host: process.env.REDIS_HOST, port: Number(process.env.REDIS_PORT || 6379), password: process.env.REDIS_PASSWORD || undefined });
+    import('@socket.io/redis-adapter').then(async ({ createAdapter }) => {
+      // PERF-003: Usar import() dinámico en vez de require() para consistencia con ESM
+      const ioredis = await import('ioredis');
+      const RedisClient = ioredis.default ?? ioredis.Redis;
+      const pubClient = new RedisClient({
+        host: process.env.REDIS_HOST!,
+        port: Number(process.env.REDIS_PORT || 6379),
+        ...(process.env.REDIS_PASSWORD ? { password: process.env.REDIS_PASSWORD } : {})
+      });
       const subClient = pubClient.duplicate();
       io!.adapter(createAdapter(pubClient, subClient));
       logger.info('Socket.IO Redis adapter initialized for horizontal scaling');
@@ -93,8 +99,9 @@ export const initSocket = (httpServer: HttpServer) => {
         return next(new Error('Authentication required'));
       }
 
-      // Verificar y decodificar el JWT
-      const decoded = jwt.verify(token, JWT_SECRET) as {
+      // FIX-003 (SEC-003): Verificar JWT restringiendo a HS256 para prevenir
+      // ataques de alg:none y confusion de algoritmos (consistente con auth.ts:115)
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as {
         id: number;
         role: string;
         name: string;

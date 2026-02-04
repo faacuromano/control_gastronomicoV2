@@ -24,18 +24,6 @@ import { ValidationError, UnauthorizedError, ConflictError } from '../utils/erro
 import { logger } from '../utils/logger';
 
 // =============================================================================
-// HELPER DE BÚSQUEDA POR PIN (FIX P0-PERF-001)
-// =============================================================================
-/**
- * Genera un hash SHA-256 determinístico para búsqueda rápida de PIN.
- * Se usa para localizar al usuario en O(1) en vez de escanear todos los hashes bcrypt O(n).
- * El hash bcrypt se sigue usando para la verificación final (defensa en profundidad).
- */
-export const generatePinLookup = (pin: string): string => {
-    return crypto.createHash('sha256').update(pin).digest('hex');
-};
-
-// =============================================================================
 // CONSTANTES DE SEGURIDAD
 // =============================================================================
 export const BCRYPT_SALT_ROUNDS = 10;
@@ -67,6 +55,29 @@ if (WEAK_SECRETS.some(weak => JWT_SECRET.toLowerCase().includes(weak))) {
     }
     logger.warn('[SECURITY] JWT_SECRET appears to be a weak/default value. Change it before deploying to production!');
 }
+
+// =============================================================================
+// HELPER DE BÚSQUEDA POR PIN (FIX P0-PERF-001 + SEC-004)
+// =============================================================================
+
+// SEC-004: Secreto HMAC para PIN lookup. Sin este secreto, un SHA-256 plano de PINs
+// de 6 dígitos (1M combinaciones) es trivialmente reversible con una tabla de lookup.
+// Con HMAC, un atacante que obtenga la DB necesita también este secreto para generar hashes.
+// Si PIN_HMAC_SECRET no está definido, se usa JWT_SECRET como fallback.
+const PIN_HMAC_SECRET = process.env.PIN_HMAC_SECRET || JWT_SECRET;
+
+/**
+ * Genera un hash HMAC-SHA256 determinístico para búsqueda rápida de PIN.
+ * Se usa para localizar al usuario en O(1) en vez de escanear todos los hashes bcrypt O(n).
+ * El hash bcrypt se sigue usando para la verificación final (defensa en profundidad).
+ *
+ * SEC-004: Usa HMAC con secreto del servidor para que la DB por sí sola no permita
+ * revertir PINs. Sin el secreto, las 1M combinaciones de 6 dígitos no se pueden
+ * precalcular.
+ */
+export const generatePinLookup = (pin: string): string => {
+    return crypto.createHmac('sha256', PIN_HMAC_SECRET).update(pin).digest('hex');
+};
 
 // =============================================================================
 // CONFIGURACIÓN DE BLOQUEO DE CUENTAS

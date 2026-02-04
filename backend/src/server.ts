@@ -12,14 +12,17 @@
  * @module server
  */
 
+// FIX-005 (SEC-006): dotenv.config() DEBE ejecutarse antes de cualquier import
+// que lea process.env. Los imports de ES modules se ejecutan en orden de aparicion,
+// por lo que dotenv debe ser el primer import y su .config() debe llamarse
+// inmediatamente despues, antes de importar app.ts (que lee JWT_SECRET, DATABASE_URL, etc.)
+import dotenv from 'dotenv';
+dotenv.config();
+
 import http from 'http';
 import app from './app';
-import dotenv from 'dotenv';
 import { initSocket } from './lib/socket';
 import { logger } from './utils/logger';
-
-// Cargar variables de entorno desde .env antes de cualquier otra operacion
-dotenv.config();
 
 const PORT = process.env.PORT || 3001;
 

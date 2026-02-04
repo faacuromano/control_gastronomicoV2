@@ -47,7 +47,7 @@ router.get('/config', authenticateToken, async (req: Request, res: Response) => 
         });
     } catch (error) {
         logger.error('Error fetching config:', { error });
-        sendError(res, 'CONFIG_ERROR', 'Could not load configuration');
+        sendError(res, 'CONFIG_ERROR', 'No se pudo cargar la configuración');
     }
 });
 
@@ -76,7 +76,7 @@ router.patch('/config', authenticateToken, requirePermission('settings', 'update
         });
     } catch (error) {
         logger.error('Error updating config:', { error });
-        sendError(res, 'CONFIG_ERROR', 'Could not update configuration');
+        sendError(res, 'CONFIG_ERROR', 'No se pudo actualizar la configuración');
     }
 });
 
