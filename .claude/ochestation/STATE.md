@@ -6,11 +6,11 @@
 ## CURRENT POSITION
 
 ```
-phase: 5
-step: 5.6
-sprint: 6
-status: WAITING_USER
-last_updated: 2026-02-06 23:30
+phase: 2
+step: 2.0
+sprint: 10
+status: IN_PROGRESS
+last_updated: 2026-02-06 23:50
 ```
 
 ## VALID STATES
@@ -55,13 +55,16 @@ status: NOT_STARTED | IN_PROGRESS | COMPLETED | BLOCKED | WAITING_USER
 | 4 | COMPLETED | PASS | 0 | Invoicing frontend: InvoicesPage + InvoiceDetail + route + nav |
 | 5 | COMPLETED | PASS (PRE-EXISTING) | 0 | Analytics: all endpoints + dashboard already complete |
 | 6 | COMPLETED | PASS | 0 | Audit log: backend endpoint + frontend page with filters/pagination |
+| 7 | COMPLETED | PASS (PRE-EXISTING) | 0 | Delivery webhooks: Rappi + PedidosYa fully implemented |
+| 8 | COMPLETED | PASS (PRE-EXISTING) | 0 | Sync/Offline: conflict resolution, retries, notifications |
+| 9 | COMPLETED | PASS | 0 | Client/Loyalty: detail view + points/wallet columns + operations UI |
 
 ## LAST COMPLETED ACTION
 
 ```
-action: Sprint 6 complete — awaiting git commit
-output: .agents/reports/sprint-006-review.md
-next: HUMAN CHECKPOINT — awaiting user response before Sprint 7
+action: Sprint 9 complete — Client/Loyalty frontend
+output: .agents/reports/sprint-009-review.md
+next: Sprint 10 (Discount Rule Engine)
 ```
 
 ## RECOVERY

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, MapPin, Phone, Mail, Edit } from 'lucide-react';
+import { Plus, Search, MapPin, Phone, Mail, Eye, Star, Wallet } from 'lucide-react';
 import { clientService, type Client } from '../../../services/clientService';
+import { ClientDetail } from './components/ClientDetail';
 import { toast } from 'sonner';
 
 export const ClientsPage: React.FC = () => {
@@ -8,6 +9,7 @@ export const ClientsPage: React.FC = () => {
     const [search, setSearch] = useState('');
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedClient, setSelectedClient] = useState<Client | null>(null);
     const [formData, setFormData] = useState({
         name: '',
         phone: '',
@@ -18,22 +20,14 @@ export const ClientsPage: React.FC = () => {
 
     useEffect(() => {
         loadClients();
-    }, [search]); // Reload when search changes (debounce would be better but keeping simple for MVP)
+    }, [search]);
 
     const loadClients = async () => {
         setLoading(true);
         try {
-            // If empty search, we might want a different endpoint or just search empty string
-            // Current clientService.search returns [] if query is empty.
-            // We might need a getAll or search handles empty.
-            // Let's assume search(' ') or similar works, or add getAll to service.
-            // For now, let's try searching 'a' or commonly used vowel if empty, 
-            // OR better, modify service/controller to return recent if empty.
-            // Client controller currently returns [] if !q. 
-            // We should fix that to return recent 50 or similar.
-            const data = await clientService.search(search || ' '); 
+            const data = await clientService.search(search || ' ');
             setClients(data);
-        } catch (error) {
+        } catch {
             console.error("Failed to load clients");
         } finally {
             setLoading(false);
@@ -47,17 +41,20 @@ export const ClientsPage: React.FC = () => {
             setIsModalOpen(false);
             setFormData({ name: '', phone: '', address: '', email: '', taxId: '' });
             loadClients();
-        } catch (error) {
-            console.error("Failed to create client", error);
+        } catch {
             toast.error("Error al crear cliente");
         }
+    };
+
+    const formatCurrency = (amount: number | string) => {
+        return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(amount));
     };
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold text-slate-800">Clientes</h1>
-                <button 
+                <button
                     onClick={() => setIsModalOpen(true)}
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-colors"
                 >
@@ -69,9 +66,9 @@ export const ClientsPage: React.FC = () => {
                 <div className="p-4 border-b border-slate-100 bg-slate-50 flex gap-4">
                     <div className="relative flex-1 max-w-md">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                        <input 
-                            type="text" 
-                            placeholder="Buscar por nombre, teléfono..." 
+                        <input
+                            type="text"
+                            placeholder="Buscar por nombre, teléfono..."
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
                             className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
@@ -86,14 +83,16 @@ export const ClientsPage: React.FC = () => {
                                 <th className="px-6 py-4">Nombre</th>
                                 <th className="px-6 py-4">Contacto</th>
                                 <th className="px-6 py-4">Dirección</th>
+                                <th className="px-6 py-4 text-center">Puntos</th>
+                                <th className="px-6 py-4 text-right">Billetera</th>
                                 <th className="px-6 py-4 text-right">Acciones</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {loading ? (
-                                <tr><td colSpan={4} className="p-8 text-center text-slate-500">Cargando...</td></tr>
+                                <tr><td colSpan={6} className="p-8 text-center text-slate-500">Cargando...</td></tr>
                             ) : clients.length === 0 ? (
-                                <tr><td colSpan={4} className="p-8 text-center text-slate-500">No se encontraron clientes.</td></tr>
+                                <tr><td colSpan={6} className="p-8 text-center text-slate-500">No se encontraron clientes.</td></tr>
                             ) : (
                                 clients.map(client => (
                                     <tr key={client.id} className="hover:bg-slate-50 transition-colors">
@@ -123,9 +122,26 @@ export const ClientsPage: React.FC = () => {
                                                 </div>
                                              ) : <span className="text-slate-400 text-sm italic">Sin dirección</span>}
                                         </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <div className="flex items-center justify-center gap-1">
+                                                <Star size={14} className="text-amber-500" />
+                                                <span className="text-sm font-medium text-slate-700">{(client.points || 0).toLocaleString()}</span>
+                                            </div>
+                                        </td>
                                         <td className="px-6 py-4 text-right">
-                                            <button className="text-slate-400 hover:text-indigo-600 mx-1"><Edit size={18} /></button>
-                                            {/* <button className="text-slate-400 hover:text-red-600 mx-1"><Trash2 size={18} /></button> */}
+                                            <div className="flex items-center justify-end gap-1">
+                                                <Wallet size={14} className="text-emerald-500" />
+                                                <span className="text-sm font-medium text-slate-700">{formatCurrency(client.walletBalance || 0)}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <button
+                                                onClick={() => setSelectedClient(client)}
+                                                className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors"
+                                                title="Ver detalle"
+                                            >
+                                                <Eye size={18} />
+                                            </button>
                                         </td>
                                     </tr>
                                 ))
@@ -134,6 +150,15 @@ export const ClientsPage: React.FC = () => {
                     </table>
                 </div>
             </div>
+
+            {/* Client Detail Modal */}
+            {selectedClient && (
+                <ClientDetail
+                    client={selectedClient}
+                    onClose={() => setSelectedClient(null)}
+                    onUpdated={() => { loadClients(); setSelectedClient(null); }}
+                />
+            )}
 
             {/* Create Modal */}
             {isModalOpen && (
@@ -146,8 +171,8 @@ export const ClientsPage: React.FC = () => {
                         <form onSubmit={handleSubmit} className="p-6 space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">Nombre Completo *</label>
-                                <input 
-                                    required 
+                                <input
+                                    required
                                     value={formData.name}
                                     onChange={e => setFormData({...formData, name: e.target.value})}
                                     className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none"
@@ -155,7 +180,7 @@ export const ClientsPage: React.FC = () => {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
-                                <input 
+                                <input
                                     value={formData.phone}
                                     onChange={e => setFormData({...formData, phone: e.target.value})}
                                     className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none"
@@ -163,7 +188,7 @@ export const ClientsPage: React.FC = () => {
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">Dirección</label>
-                                <input 
+                                <input
                                     value={formData.address}
                                     onChange={e => setFormData({...formData, address: e.target.value})}
                                     className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none"
@@ -172,7 +197,7 @@ export const ClientsPage: React.FC = () => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-                                    <input 
+                                    <input
                                         type="email"
                                         value={formData.email}
                                         onChange={e => setFormData({...formData, email: e.target.value})}
@@ -181,14 +206,14 @@ export const ClientsPage: React.FC = () => {
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">CUIT/Tax ID</label>
-                                    <input 
+                                    <input
                                         value={formData.taxId}
                                         onChange={e => setFormData({...formData, taxId: e.target.value})}
                                         className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none"
                                     />
                                 </div>
                             </div>
-                            
+
                             <div className="pt-4 flex justify-end gap-3">
                                 <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">Cancelar</button>
                                 <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">Crear Cliente</button>
