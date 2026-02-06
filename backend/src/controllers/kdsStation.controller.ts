@@ -17,10 +17,38 @@
  */
 
 import { Request, Response } from 'express';
+import { z } from 'zod';
 import { kdsStationService } from '../services/kdsStation.service';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { sendSuccess } from '../utils/response';
 import { ValidationError } from '../utils/errors';
+
+const CreateKdsStationSchema = z.object({
+    name: z.string().min(1).max(100),
+    code: z.string().min(1).max(50).regex(/^[A-Z0-9_]+$/, 'Code must be uppercase alphanumeric with underscores'),
+    sortOrder: z.number().int().min(0).optional(),
+    isActive: z.boolean().optional(),
+    isDefault: z.boolean().optional(),
+}).strict().transform((obj) => {
+    const result: { name: string; code: string; sortOrder?: number; isActive?: boolean; isDefault?: boolean } = {
+        name: obj.name,
+        code: obj.code,
+    };
+    if (obj.sortOrder !== undefined) result.sortOrder = obj.sortOrder;
+    if (obj.isActive !== undefined) result.isActive = obj.isActive;
+    if (obj.isDefault !== undefined) result.isDefault = obj.isDefault;
+    return result;
+});
+
+const UpdateKdsStationSchema = z.object({
+    name: z.string().min(1).max(100).optional(),
+    code: z.string().min(1).max(50).regex(/^[A-Z0-9_]+$/, 'Code must be uppercase alphanumeric with underscores').optional(),
+    sortOrder: z.number().int().min(0).optional(),
+    isActive: z.boolean().optional(),
+    isDefault: z.boolean().optional(),
+}).strict().transform((obj) =>
+    Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined))
+);
 
 /**
  * Lista todas las estaciones KDS del tenant.
@@ -51,15 +79,9 @@ export const getStation = asyncHandler(async (req: Request, res: Response) => {
  * Body: { name: string, code: string, sortOrder?: number, isActive?: boolean, isDefault?: boolean }
  */
 export const createStation = asyncHandler(async (req: Request, res: Response) => {
-    const { name, code, sortOrder, isActive, isDefault } = req.body;
+    const data = CreateKdsStationSchema.parse(req.body);
 
-    const station = await kdsStationService.createStation(req.user!.tenantId!, {
-        name,
-        code,
-        sortOrder,
-        isActive,
-        isDefault
-    });
+    const station = await kdsStationService.createStation(req.user!.tenantId!, data);
 
     sendSuccess(res, station, undefined, 201);
 });
@@ -75,15 +97,9 @@ export const updateStation = asyncHandler(async (req: Request, res: Response) =>
         throw new ValidationError('Invalid station ID');
     }
 
-    const { name, code, sortOrder, isActive, isDefault } = req.body;
+    const data = UpdateKdsStationSchema.parse(req.body);
 
-    const station = await kdsStationService.updateStation(id, req.user!.tenantId!, {
-        name,
-        code,
-        sortOrder,
-        isActive,
-        isDefault
-    });
+    const station = await kdsStationService.updateStation(id, req.user!.tenantId!, data);
 
     sendSuccess(res, station);
 });

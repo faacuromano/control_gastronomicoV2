@@ -18,12 +18,27 @@
 import { Request, Response } from 'express';
 import { isIP } from 'net';
 import { AuditAction } from '@prisma/client';
+import { z } from 'zod';
 import { PrinterService } from '../services/printer.service';
 import { sendSuccess } from '../utils/response';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { prisma } from '../lib/prisma';
 import { ValidationError } from '../utils/errors';
 import { auditService } from '../services/audit.service';
+
+const CreatePrinterSchema = z.object({
+    name: z.string().min(1).max(100),
+    connectionType: z.enum(['NETWORK', 'USB']).optional(),
+    ipAddress: z.string().max(50).optional(),
+    windowsName: z.string().max(200).optional(),
+}).strict();
+
+const UpdatePrinterSchema = z.object({
+    name: z.string().min(1).max(100).optional(),
+    connectionType: z.enum(['NETWORK', 'USB']).optional(),
+    ipAddress: z.string().max(50).optional(),
+    windowsName: z.string().max(200).optional(),
+}).strict();
 
 const printerService = new PrinterService();
 
@@ -154,7 +169,7 @@ export const getSystemPrinters = asyncHandler(async (_req: Request, res: Respons
  * Valida los datos de entrada y determina los campos según el tipo de conexión (red vs USB).
  */
 export const createPrinter = asyncHandler(async (req: Request, res: Response) => {
-    const { name, connectionType, ipAddress, windowsName } = req.body;
+    const { name, connectionType, ipAddress, windowsName } = CreatePrinterSchema.parse(req.body);
 
     // Sanitizar inputs para prevenir inyección de comandos
     validatePrinterInputs(ipAddress, windowsName, name);
@@ -175,8 +190,8 @@ export const createPrinter = asyncHandler(async (req: Request, res: Response) =>
             tenantId: req.user!.tenantId!,
             name,
             connectionType: connectionType || 'NETWORK',
-            ipAddress: connectionType === 'USB' ? null : ipAddress,
-            windowsName: connectionType === 'USB' ? windowsName : null
+            ipAddress: connectionType === 'USB' ? null : (ipAddress ?? null),
+            windowsName: connectionType === 'USB' ? (windowsName ?? null) : null
         }
     });
 
@@ -204,7 +219,7 @@ export const createPrinter = asyncHandler(async (req: Request, res: Response) =>
  */
 export const updatePrinter = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
-    const { name, connectionType, ipAddress, windowsName } = req.body;
+    const { name, connectionType, ipAddress, windowsName } = UpdatePrinterSchema.parse(req.body);
 
     // Sanitizar inputs para prevenir inyección de comandos
     validatePrinterInputs(ipAddress, windowsName, name);

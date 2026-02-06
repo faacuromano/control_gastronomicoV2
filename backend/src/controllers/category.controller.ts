@@ -11,9 +11,26 @@
  */
 
 import { Request, Response } from 'express';
+import { z } from 'zod';
 import * as categoryService from '../services/category.service';
 import { sendSuccess } from '../utils/response';
 import { asyncHandler } from '../middleware/asyncHandler';
+
+const CreateCategorySchema = z.object({
+    name: z.string().min(1).max(100),
+    printerId: z.number().int().positive().optional(),
+}).strict().transform(({ printerId, ...rest }) => ({
+    ...rest,
+    ...(printerId !== undefined ? { printerId } : {}),
+}));
+
+const UpdateCategorySchema = z.object({
+    name: z.string().min(1).max(100).optional(),
+    printerId: z.number().int().positive().nullable().optional(),
+    kdsStationId: z.number().int().positive().nullable().optional(),
+}).strict().transform((obj) =>
+    Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined))
+);
 
 /** Lista todas las categorías del tenant autenticado */
 export const listCategories = asyncHandler(async (req: Request, res: Response) => {
@@ -30,8 +47,9 @@ export const getCategory = asyncHandler(async (req: Request, res: Response) => {
 
 /** Crea una nueva categoría asociada al tenant del usuario autenticado */
 export const createCategory = asyncHandler(async (req: Request, res: Response) => {
+    const data = CreateCategorySchema.parse(req.body);
     const category = await categoryService.createCategory({
-        ...req.body,
+        ...data,
         tenantId: req.user!.tenantId!
     });
     sendSuccess(res, category, undefined, 201);
@@ -40,7 +58,8 @@ export const createCategory = asyncHandler(async (req: Request, res: Response) =
 /** Actualiza una categoría existente verificando pertenencia al tenant */
 export const updateCategory = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
-    const category = await categoryService.updateCategory(id, req.user!.tenantId!, req.body);
+    const data = UpdateCategorySchema.parse(req.body);
+    const category = await categoryService.updateCategory(id, req.user!.tenantId!, data);
     sendSuccess(res, category);
 });
 

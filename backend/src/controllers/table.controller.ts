@@ -51,6 +51,23 @@ const UpdateTableSchema = z.object({
     return result;
 });
 
+const UpdatePositionSchema = z.object({
+    x: z.number(),
+    y: z.number(),
+}).strict();
+
+const BatchUpdatePositionsSchema = z.object({
+    updates: z.array(z.object({
+        id: z.number().int().positive(),
+        x: z.number(),
+        y: z.number(),
+    })).min(1),
+}).strict();
+
+const OpenTableSchema = z.object({
+    pax: z.number().int().positive().default(1),
+}).strict();
+
 // SEC-AUD-015: Zod schema for table close payments
 const PaymentSchema = z.object({
     method: z.string().min(1).max(50),
@@ -111,17 +128,14 @@ export const updateTable = asyncHandler(async (req: Request, res: Response) => {
 /** Actualiza la posición X/Y de una mesa individual en el mapa visual */
 export const updatePosition = asyncHandler(async (req: Request, res: Response) => {
     const id = tableIdSchema.parse(req.params.id);
-    const { x, y } = req.body;
+    const { x, y } = UpdatePositionSchema.parse(req.body);
     const table = await tableService.updateTablePosition(id, req.user!.tenantId!, x, y);
     sendSuccess(res, table);
 });
 
 /** Actualiza las posiciones de múltiples mesas a la vez (usado por drag-and-drop masivo) */
 export const updatePositions = asyncHandler(async (req: Request, res: Response) => {
-    const { updates } = req.body; // Espera array de {id, x, y}
-    if (!Array.isArray(updates)) {
-        throw new ValidationError('Updates must be an array');
-    }
+    const { updates } = BatchUpdatePositionsSchema.parse(req.body);
     const result = await tableService.updatePositions(req.user!.tenantId!, updates);
     sendSuccess(res, result);
 });
@@ -154,7 +168,7 @@ export const openTable = asyncHandler(async (req: Request, res: Response) => {
         throw new UnauthorizedError('Not authenticated');
     }
     const tableId = tableIdSchema.parse(req.params.id);
-    const pax = req.body?.pax ?? 1;
+    const { pax } = OpenTableSchema.parse(req.body ?? {});
 
     const order = await tableService.openTableWithOrder(tableId, serverId, pax, req.user!.tenantId!);
     sendSuccess(res, order, undefined, 201);

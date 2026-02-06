@@ -18,6 +18,7 @@ import { sendSuccess, sendError } from '../utils/response';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { auditService, getAuditContext } from '../services/audit.service';
+import { z } from 'zod';
 import { logger } from '../utils/logger';
 
 // ============================================================================
@@ -63,6 +64,46 @@ const REFRESH_COOKIE_OPTIONS = {
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
   ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
 };
+
+// ============================================================================
+// ESQUEMAS DE VALIDACION (Zod — defensa en profundidad)
+// ============================================================================
+
+const LoginPinSchema = z.object({
+    pin: z.string().length(6),
+    tenantId: z.number().int().positive(),
+}).strict();
+
+const RegisterUserSchema = z.object({
+    email: z.string().email(),
+    password: z.string().min(8),
+    name: z.string().min(1),
+    pinCode: z.string().length(6),
+    roleId: z.number().int().positive(),
+}).strict();
+
+const RegisterTenantBodySchema = z.object({
+    businessName: z.string().min(2),
+    email: z.string().email(),
+    password: z.string().min(8),
+    name: z.string().min(1),
+    phone: z.string().optional(),
+}).strict().transform((obj) => {
+    const result: { businessName: string; email: string; password: string; name: string; phone?: string } = {
+        businessName: obj.businessName,
+        email: obj.email,
+        password: obj.password,
+        name: obj.name,
+    };
+    if (obj.phone !== undefined) result.phone = obj.phone;
+    return result;
+});
+
+const LoginUserSchema = z.object({
+    email: z.string().email(),
+    password: z.string(),
+    tenantId: z.number().int().positive(),
+}).strict();
 
 // ============================================================================
 // FUNCIONES AUXILIARES
@@ -123,15 +164,7 @@ export function clearAuthCookie(res: Response): void {
  * El token se devuelve SOLO en cookie HttpOnly, nunca en el cuerpo de la respuesta.
  */
 export const loginPin = asyncHandler(async (req: Request, res: Response) => {
-    const { pin, tenantId: rawTenantId } = req.body;
-
-    if (!rawTenantId) {
-        return sendError(res, 'MISSING_TENANT', 'El ID del tenant es requerido');
-    }
-
-    if (!pin) {
-        return sendError(res, 'MISSING_CREDENTIALS', 'El PIN es requerido');
-    }
+    const { pin, tenantId: rawTenantId } = LoginPinSchema.parse(req.body);
 
     // Verificar que el tenant exista y tenga suscripción activa antes de autenticar
     const tenant = await prisma.tenant.findFirst({
@@ -190,7 +223,8 @@ export const registerUser = asyncHandler(async (req: Request, res: Response) => 
         return sendError(res, 'INVALID_TENANT', 'Organización inválida o inactiva');
     }
 
-    const result = await register({ ...req.body, tenantId });
+    const data = RegisterUserSchema.parse(req.body);
+    const result = await register({ ...data, tenantId });
 
     // FIX P0-004: Token en cookie HttpOnly
     setAuthCookie(res, result.token);
@@ -215,7 +249,8 @@ export const registerUser = asyncHandler(async (req: Request, res: Response) => 
  * Crea la organización, el usuario admin inicial y genera el token de acceso.
  */
 export const registerNewTenant = asyncHandler(async (req: Request, res: Response) => {
-    const result = await registerTenant(req.body);
+    const data = RegisterTenantBodySchema.parse(req.body);
+    const result = await registerTenant(data);
 
     // Establecer token en cookie para el admin recién creado
     setAuthCookie(res, result.token);
@@ -247,19 +282,18 @@ export const registerNewTenant = asyncHandler(async (req: Request, res: Response
  * Si se proporciona tenantId, valida suscripción activa (BIZ-006).
  */
 export const loginUser = asyncHandler(async (req: Request, res: Response) => {
+    const data = LoginUserSchema.parse(req.body);
+
     // BIZ-006: Validar suscripción del tenant antes del login por contraseña (igual que en PIN)
-    const { tenantId: rawTenantId } = req.body;
-    if (rawTenantId) {
-        const tenant = await prisma.tenant.findFirst({
-            where: { id: rawTenantId, activeSubscription: true }
-        });
-        if (!tenant) {
-            return sendError(res, 'INVALID_TENANT', 'Organización inválida o inactiva');
-        }
+    const tenant = await prisma.tenant.findFirst({
+        where: { id: data.tenantId, activeSubscription: true }
+    });
+    if (!tenant) {
+        return sendError(res, 'INVALID_TENANT', 'Organización inválida o inactiva');
     }
 
     try {
-        const result = await loginWithPassword(req.body);
+        const result = await loginWithPassword(data);
 
         // FIX P0-004: Token en cookie HttpOnly
         setAuthCookie(res, result.token);
@@ -271,9 +305,9 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
         // Auditoría: registrar login exitoso por contraseña
         await auditService.logAuth('LOGIN', result.user.id, getAuditContext(req), {
             method: 'PASSWORD',
-            email: req.body.email,
+            email: data.email,
             role: result.user.role,
-            tenantId: req.body.tenantId,
+            tenantId: data.tenantId,
             authMethod: 'COOKIE'
         });
 
@@ -286,7 +320,7 @@ export const loginUser = asyncHandler(async (req: Request, res: Response) => {
         // Auditoría: registrar intento fallido para monitoreo de seguridad
         await auditService.logAuth('LOGIN_FAILED', undefined, getAuditContext(req), {
             method: 'PASSWORD',
-            email: req.body.email,
+            email: data.email,
             reason: error instanceof Error ? error.message : 'Unknown error'
         });
         throw error;

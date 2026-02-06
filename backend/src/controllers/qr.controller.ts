@@ -158,13 +158,17 @@ export const getAllCodes = asyncHandler(async (req: Request, res: Response) => {
     sendSuccess(res, codes);
 });
 
+const GenerateCodeSchema = z.object({
+    tableId: z.number().int().positive().optional(),
+}).strict();
+
 /**
  * Genera un nuevo código QR opcionalmente vinculado a una mesa.
  * POST /api/v1/admin/qr/codes
  * Si se asocia a una mesa, el menú QR muestra automáticamente el nombre de la mesa.
  */
 export const generateCode = asyncHandler(async (req: Request, res: Response) => {
-    const { tableId } = req.body;
+    const { tableId } = GenerateCodeSchema.parse(req.body ?? {});
     const code = await qrService.generateQrCode(req.user!.tenantId!, tableId);
     sendSuccess(res, code, undefined, 201);
 });

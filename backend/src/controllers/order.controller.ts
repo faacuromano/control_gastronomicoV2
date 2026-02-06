@@ -316,15 +316,19 @@ export const getDeliveryOrders = asyncHandler(async (req: Request, res: Response
     sendSuccess(res, orders);
 });
 
+/** Esquema para asignar un repartidor a una orden de delivery */
+const assignDriverSchema = z.object({
+    driverId: z.number().int().positive(),
+}).strict();
+
 /** Asigna un repartidor a una orden de delivery */
 export const assignDriver = asyncHandler(async (req: Request, res: Response) => {
     const orderId = Number(req.params.id as string);
-    const { driverId } = req.body;
+    if (isNaN(orderId) || orderId <= 0) return res.status(400).json({ success: false, error: 'Invalid order ID' });
 
-    if (isNaN(orderId)) return res.status(400).json({ success: false, error: 'Invalid order ID' });
-    if (!driverId) return res.status(400).json({ success: false, error: 'Driver ID required' });
+    const { driverId } = assignDriverSchema.parse(req.body);
 
-    const order = await orderService.assignDriver(orderId, Number(driverId), req.user!.tenantId!);
+    const order = await orderService.assignDriver(orderId, driverId, req.user!.tenantId!);
     return sendSuccess(res, order);
 });
 

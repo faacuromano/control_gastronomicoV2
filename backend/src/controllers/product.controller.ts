@@ -14,10 +14,30 @@
 
 import { Request, Response } from 'express';
 import { Prisma, AuditAction } from '@prisma/client';
+import { z } from 'zod';
 import * as productService from '../services/product.service';
 import { sendSuccess } from '../utils/response';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { auditService } from '../services/audit.service';
+
+const CreateProductSchema = z.object({
+    categoryId: z.number().int().positive(),
+    name: z.string().min(1).max(200),
+    description: z.string().max(2000).optional(),
+    price: z.number().min(0),
+    productType: z.enum(['SIMPLE', 'COMBO', 'RECIPE']).optional(),
+    isStockable: z.boolean().optional(),
+    image: z.string().url().max(500).optional(),
+    isActive: z.boolean().optional(),
+    kdsStationId: z.number().int().positive().nullable().optional(),
+    ingredients: z.array(z.object({
+        ingredientId: z.number().int().positive(),
+        quantity: z.number().positive(),
+    })).optional(),
+    modifierIds: z.array(z.number().int().positive()).optional(),
+}).strict();
+
+const UpdateProductSchema = CreateProductSchema.partial().strict();
 
 /**
  * Lista productos con filtros opcionales de categoría y estado activo.
@@ -45,8 +65,9 @@ export const getProduct = asyncHandler(async (req: Request, res: Response) => {
 
 /** Crea un nuevo producto asociado al tenant con registro de auditoría */
 export const createProduct = asyncHandler(async (req: Request, res: Response) => {
+    const data = CreateProductSchema.parse(req.body);
     const product = await productService.createProduct({
-        ...req.body,
+        ...data,
         tenantId: req.user!.tenantId!
     });
 
@@ -70,7 +91,8 @@ export const createProduct = asyncHandler(async (req: Request, res: Response) =>
 /** Actualiza un producto existente con registro de auditoría */
 export const updateProduct = asyncHandler(async (req: Request, res: Response) => {
     const id = parseInt(req.params.id as string);
-    const product = await productService.updateProduct(id, req.user!.tenantId!, req.body);
+    const data = UpdateProductSchema.parse(req.body);
+    const product = await productService.updateProduct(id, req.user!.tenantId!, data);
 
     // Auditoría: registrar modificación del producto
     auditService.log(
@@ -83,7 +105,7 @@ export const updateProduct = asyncHandler(async (req: Request, res: Response) =>
             ipAddress: String(req.ip),
             userAgent: req.headers['user-agent'] ?? 'unknown'
         },
-        { updates: req.body }
+        { updates: data }
     );
 
     sendSuccess(res, product);
