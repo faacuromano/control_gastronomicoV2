@@ -49,10 +49,21 @@ const mockAuditLog = {
   findMany: jest.fn().mockResolvedValue([]),
 };
 
+// 3. MOCK PRISMA REFRESH TOKEN - For refresh token operations
+const mockPrismaRefreshToken = {
+  findUnique: jest.fn(),
+  findFirst: jest.fn(),
+  create: jest.fn().mockResolvedValue({ id: 1 }),
+  delete: jest.fn().mockResolvedValue({}),
+  deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+  count: jest.fn().mockResolvedValue(0),
+};
+
 jest.mock('../../src/lib/prisma', () => ({
   prisma: {
     user: mockPrismaUser,
     auditLog: mockAuditLog,
+    refreshToken: mockPrismaRefreshToken,
   },
 }));
 
@@ -60,7 +71,14 @@ jest.mock('../../src/lib/prisma', () => ({
 // IMPORTS - After all mocks are set up
 // ============================================================================
 
-import { loginWithPin, loginWithPassword, register } from '../../src/services/auth.service';
+import {
+  loginWithPin,
+  loginWithPassword,
+  register,
+  refreshAccessToken,
+  createRefreshToken,
+  revokeRefreshTokens,
+} from '../../src/services/auth.service';
 import { auditService } from '../../src/services/audit.service';
 
 // ============================================================================
@@ -265,7 +283,7 @@ describe('Auth Service - loginWithPassword', () => {
     it('returns { user, token } for valid credentials', async () => {
       const result = await loginWithPassword({
         email: 'test@example.com',
-        password: 'password123',
+        password: 'Password123',
         tenantId: 1,
       });
 
@@ -281,11 +299,11 @@ describe('Auth Service - loginWithPassword', () => {
 
       await loginWithPassword({
         email: 'test@example.com',
-        password: 'password123',
+        password: 'Password123',
         tenantId: 1,
       });
 
-      expect(compareSpy).toHaveBeenCalledWith('password123', mockUser.passwordHash);
+      expect(compareSpy).toHaveBeenCalledWith('Password123', mockUser.passwordHash);
     });
   });
 
@@ -306,7 +324,7 @@ describe('Auth Service - loginWithPassword', () => {
     it('throws VALIDATION_ERROR for missing email', async () => {
       await expect(loginWithPassword({
         email: '',
-        password: 'password123',
+        password: 'Password123',
         tenantId: 1,
       })).rejects.toMatchObject({
         code: 'VALIDATION_ERROR',
@@ -349,7 +367,7 @@ describe('Auth Service - loginWithPassword', () => {
 
       await expect(loginWithPassword({
         email: 'test@example.com',
-        password: 'password123',
+        password: 'Password123',
         tenantId: 1,
       })).rejects.toMatchObject({
         code: 'UNAUTHORIZED',
@@ -407,7 +425,7 @@ describe('Auth Service - register', () => {
     it('creates user and returns { user, token } for valid data', async () => {
       const result = await register({
         email: 'new@example.com',
-        password: 'password123',
+        password: 'Password123',
         name: 'New User',
         pinCode: '654321',
         roleId: 1,
@@ -424,14 +442,14 @@ describe('Auth Service - register', () => {
 
       await register({
         email: 'new@example.com',
-        password: 'password123',
+        password: 'Password123',
         name: 'New User',
         pinCode: '654321',
         roleId: 1,
         tenantId: 1,
       });
 
-      expect(hashSpy).toHaveBeenCalledWith('password123', 10);
+      expect(hashSpy).toHaveBeenCalledWith('Password123', 10);
     });
   });
 
@@ -453,7 +471,7 @@ describe('Auth Service - register', () => {
     it('throws VALIDATION_ERROR for invalid email', async () => {
       await expect(register({
         email: 'invalid-email',
-        password: 'password123',
+        password: 'Password123',
         name: 'Test',
         pinCode: '123456',
         roleId: 1,
@@ -466,7 +484,7 @@ describe('Auth Service - register', () => {
     it('throws VALIDATION_ERROR for short PIN', async () => {
       await expect(register({
         email: 'test@example.com',
-        password: 'password123',
+        password: 'Password123',
         name: 'Test',
         pinCode: '123', // Too short
         roleId: 1,
@@ -485,7 +503,7 @@ describe('Auth Service - register', () => {
 
       await expect(register({
         email: 'test@example.com',
-        password: 'password123',
+        password: 'Password123',
         name: 'Duplicate User',
         pinCode: '111111',
         roleId: 1,
@@ -495,6 +513,235 @@ describe('Auth Service - register', () => {
       });
 
       expect(mockPrismaUser.create).not.toHaveBeenCalled();
+    });
+  });
+});
+
+// ============================================================================
+// TEST SUITE: refreshAccessToken
+// ============================================================================
+
+describe('Auth Service - refreshAccessToken', () => {
+
+  /**
+   * Creates a mock stored refresh token with associated user.
+   * Used by refreshAccessToken to validate and rotate tokens.
+   */
+  const createMockStoredToken = (overrides: Record<string, unknown> = {}) => ({
+    id: 1,
+    token: 'stored-hashed-token',
+    userId: 1,
+    tenantId: 1,
+    expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days ahead
+    createdAt: new Date(),
+    user: createCompleteMockUser({ tenantId: 1 }),
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrismaRefreshToken.findUnique.mockReset();
+    mockPrismaRefreshToken.create.mockReset();
+    mockPrismaRefreshToken.delete.mockReset();
+    mockPrismaRefreshToken.count.mockReset();
+    mockPrismaRefreshToken.findFirst.mockReset();
+    // Default: token creation succeeds
+    mockPrismaRefreshToken.create.mockResolvedValue({ id: 2 });
+    mockPrismaRefreshToken.count.mockResolvedValue(0);
+    mockPrismaRefreshToken.delete.mockResolvedValue({});
+  });
+
+  describe('Success Scenarios', () => {
+
+    it('returns new accessToken, refreshToken, and user on valid token', async () => {
+      mockPrismaRefreshToken.findUnique.mockResolvedValue(createMockStoredToken());
+
+      const result = await refreshAccessToken('raw-token-string');
+
+      expect(result).toHaveProperty('accessToken');
+      expect(result).toHaveProperty('refreshToken');
+      expect(result).toHaveProperty('user');
+      expect(typeof result.accessToken).toBe('string');
+      expect(typeof result.refreshToken).toBe('string');
+      expect(result.accessToken.length).toBeGreaterThan(0);
+      expect(result.refreshToken.length).toBeGreaterThan(0);
+    });
+
+    it('returns correctly shaped user object', async () => {
+      mockPrismaRefreshToken.findUnique.mockResolvedValue(createMockStoredToken());
+
+      const result = await refreshAccessToken('raw-token-string');
+
+      expect(result.user).toEqual({
+        id: 1,
+        name: 'Test User',
+        role: 'ADMIN',
+        tenantId: 1,
+        permissions: { all: ['*'] },
+      });
+    });
+
+    it('deletes old token for rotation (prevents reuse)', async () => {
+      const storedToken = createMockStoredToken();
+      mockPrismaRefreshToken.findUnique.mockResolvedValue(storedToken);
+
+      await refreshAccessToken('raw-token-string');
+
+      expect(mockPrismaRefreshToken.delete).toHaveBeenCalledWith({
+        where: { id: storedToken.id },
+      });
+    });
+
+    it('creates a new refresh token after consuming the old one', async () => {
+      mockPrismaRefreshToken.findUnique.mockResolvedValue(createMockStoredToken());
+
+      await refreshAccessToken('raw-token-string');
+
+      // createRefreshToken internally calls prisma.refreshToken.create
+      expect(mockPrismaRefreshToken.create).toHaveBeenCalled();
+    });
+
+    it('returns a valid JWT access token with correct claims', async () => {
+      mockPrismaRefreshToken.findUnique.mockResolvedValue(createMockStoredToken());
+
+      const result = await refreshAccessToken('raw-token-string');
+      const decoded = jwt.verify(result.accessToken, JWT_SECRET) as Record<string, unknown>;
+
+      expect(decoded.id).toBe(1);
+      expect(decoded.role).toBe('ADMIN');
+      expect(decoded.tenantId).toBe(1);
+      expect(decoded.exp).toBeDefined();
+    });
+  });
+
+  describe('Error Scenarios', () => {
+
+    it('throws UNAUTHORIZED for invalid/non-existent token', async () => {
+      mockPrismaRefreshToken.findUnique.mockResolvedValue(null);
+
+      await expect(refreshAccessToken('invalid-token')).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
+      });
+    });
+
+    it('throws UNAUTHORIZED for expired token and deletes it', async () => {
+      const expiredToken = createMockStoredToken({
+        expiresAt: new Date(Date.now() - 1000), // Expired 1 second ago
+      });
+      mockPrismaRefreshToken.findUnique.mockResolvedValue(expiredToken);
+
+      await expect(refreshAccessToken('expired-token')).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
+      });
+
+      // Expired token should be cleaned up
+      expect(mockPrismaRefreshToken.delete).toHaveBeenCalledWith({
+        where: { id: expiredToken.id },
+      });
+    });
+
+    it('throws UNAUTHORIZED for inactive user and deletes token', async () => {
+      const tokenWithInactiveUser = createMockStoredToken({
+        user: createCompleteMockUser({ tenantId: 1, isActive: false }),
+      });
+      mockPrismaRefreshToken.findUnique.mockResolvedValue(tokenWithInactiveUser);
+
+      await expect(refreshAccessToken('inactive-user-token')).rejects.toMatchObject({
+        code: 'UNAUTHORIZED',
+      });
+
+      expect(mockPrismaRefreshToken.delete).toHaveBeenCalledWith({
+        where: { id: tokenWithInactiveUser.id },
+      });
+    });
+  });
+});
+
+// ============================================================================
+// TEST SUITE: createRefreshToken
+// ============================================================================
+
+describe('Auth Service - createRefreshToken', () => {
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrismaRefreshToken.count.mockReset();
+    mockPrismaRefreshToken.findFirst.mockReset();
+    mockPrismaRefreshToken.create.mockReset();
+    mockPrismaRefreshToken.delete.mockReset();
+    mockPrismaRefreshToken.create.mockResolvedValue({ id: 1 });
+  });
+
+  it('creates a refresh token and returns raw token string', async () => {
+    mockPrismaRefreshToken.count.mockResolvedValue(0);
+
+    const rawToken = await createRefreshToken(1, 1);
+
+    expect(typeof rawToken).toBe('string');
+    expect(rawToken.length).toBe(64); // 32 bytes hex = 64 chars
+    expect(mockPrismaRefreshToken.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tenantId: 1,
+        userId: 1,
+        token: expect.any(String),
+        expiresAt: expect.any(Date),
+      }),
+    });
+  });
+
+  it('stores hashed token, not the raw token', async () => {
+    mockPrismaRefreshToken.count.mockResolvedValue(0);
+
+    const rawToken = await createRefreshToken(1, 1);
+
+    // The stored token should NOT be the raw token (it should be SHA-256 hashed)
+    const storedToken = mockPrismaRefreshToken.create.mock.calls[0][0].data.token;
+    expect(storedToken).not.toBe(rawToken);
+    expect(storedToken.length).toBe(64); // SHA-256 hex = 64 chars
+  });
+
+  it('deletes oldest token when limit is reached', async () => {
+    mockPrismaRefreshToken.count.mockResolvedValue(5); // At limit
+    mockPrismaRefreshToken.findFirst.mockResolvedValue({ id: 99, createdAt: new Date('2020-01-01') });
+    mockPrismaRefreshToken.delete.mockResolvedValue({});
+
+    await createRefreshToken(1, 1);
+
+    // Should delete the oldest token
+    expect(mockPrismaRefreshToken.delete).toHaveBeenCalledWith({
+      where: { id: 99 },
+    });
+    // And still create the new one
+    expect(mockPrismaRefreshToken.create).toHaveBeenCalled();
+  });
+
+  it('does not delete tokens when under limit', async () => {
+    mockPrismaRefreshToken.count.mockResolvedValue(2); // Under limit
+
+    await createRefreshToken(1, 1);
+
+    // findFirst should not be called to find oldest
+    expect(mockPrismaRefreshToken.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// TEST SUITE: revokeRefreshTokens
+// ============================================================================
+
+describe('Auth Service - revokeRefreshTokens', () => {
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockPrismaRefreshToken.deleteMany.mockReset();
+    mockPrismaRefreshToken.deleteMany.mockResolvedValue({ count: 3 });
+  });
+
+  it('deletes all refresh tokens for user+tenant', async () => {
+    await revokeRefreshTokens(1, 1);
+
+    expect(mockPrismaRefreshToken.deleteMany).toHaveBeenCalledWith({
+      where: { userId: 1, tenantId: 1 },
     });
   });
 });

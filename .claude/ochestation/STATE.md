@@ -8,9 +8,9 @@
 ```
 phase: 5
 step: 5.2
-sprint: 2
+sprint: 3
 status: IN_PROGRESS
-last_updated: 2026-02-06 16:35
+last_updated: 2026-02-06 22:15
 ```
 
 ## VALID STATES
@@ -51,13 +51,14 @@ status: NOT_STARTED | IN_PROGRESS | COMPLETED | BLOCKED | WAITING_USER
 |--------|--------|---------|---------------|-------|
 | 1 | COMPLETED | PASS | 0 | Input validation: category, product, printer, kdsStation |
 | 2 | COMPLETED | PASS | 0 | Input validation: auth, table, order, qr |
+| 3 | COMPLETED | PASS | 0 | Core service unit tests: order + auth (67 tests, 0 failures) |
 
 ## LAST COMPLETED ACTION
 
 ```
-action: Sprint 2 complete — PASS verdict (auth, table, order, qr validation)
-output: .agents/reports/sprint-002-review.md
-next: Git commit for Sprints 1+2, then HUMAN CHECKPOINT (rule: every 2 sprints)
+action: Sprint 3 review PASS — writing git commit
+output: .agents/reports/sprint-003-review.md
+next: Git commit + tag sprint-003, then Sprint 4 (Invoicing Frontend)
 ```
 
 ## RECOVERY
