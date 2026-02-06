@@ -89,7 +89,7 @@ export const initSocket = (httpServer: HttpServer) => {
             .split(';')
             .find(c => c.trim().startsWith('auth_token='));
           if (authCookie) {
-            token = authCookie.split('=')[1];
+            token = authCookie.substring(authCookie.indexOf('=') + 1);
           }
         }
       }
@@ -117,6 +117,7 @@ export const initSocket = (httpServer: HttpServer) => {
 
       // Guardar los datos del usuario en el socket para uso posterior
       socket.data.user = decoded;
+      logger.info('[Socket] Auth middleware passed', { socketId: socket.id, userId: decoded.id, tenantId: decoded.tenantId });
       next();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -129,10 +130,10 @@ export const initSocket = (httpServer: HttpServer) => {
   io.on('connection', (socket: Socket) => {
     const user = socket.data.user;
     const tenantId = user.tenantId;
-    logger.debug('WebSocket client connected', { socketId: socket.id, userId: user.id, tenantId });
+    logger.info('[Socket] WebSocket client connected', { socketId: socket.id, userId: user.id, tenantId });
 
-    socket.on('disconnect', () => {
-      logger.debug('WebSocket client disconnected', { socketId: socket.id, userId: user.id, tenantId });
+    socket.on('disconnect', (reason) => {
+      logger.info('[Socket] WebSocket client disconnected', { socketId: socket.id, userId: user.id, tenantId, reason });
     });
 
     // --- Gestion de Rooms (todas las rooms estan aisladas por tenant) ---
@@ -143,7 +144,7 @@ export const initSocket = (httpServer: HttpServer) => {
     const joinTenantRoom = (roomSuffix: string) => {
         const room = `tenant:${tenantId}:${roomSuffix}`;
         socket.join(room);
-        logger.debug(`Socket joined room: ${room}`, { socketId: socket.id, tenantId });
+        logger.info(`[Socket] Socket joined room: ${room}`, { socketId: socket.id, tenantId });
     };
 
     // SEC-031: Rechazar cualquier intento de join directo que no respete el scope de tenant.
@@ -163,6 +164,7 @@ export const initSocket = (httpServer: HttpServer) => {
     // Room de cocina general - recibe todos los eventos de ordenes nuevas y cambios de items
     socket.on('join:kitchen', () => {
         joinTenantRoom('kitchen');
+        logger.info('[Socket] Client joined kitchen room', { socketId: socket.id, tenantId, userId: user.id });
     });
 
     // Estaciones de cocina especificas (ej: 'tenant:1:kitchen:station:hot' para cocina caliente)
@@ -170,6 +172,7 @@ export const initSocket = (httpServer: HttpServer) => {
         // Sanitizar el nombre de estacion para prevenir inyeccion de room
         const safeStation = String(station).replace(/[^a-zA-Z0-9_-]/g, '');
         joinTenantRoom(`kitchen:station:${safeStation}`);
+        logger.info('[Socket] Client joined station room', { socketId: socket.id, tenantId, station: safeStation });
     });
 
     // Room de mozos - reciben alertas cuando un plato esta listo para servir

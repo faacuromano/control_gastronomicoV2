@@ -16,6 +16,7 @@
  */
 
 import { Request, Response } from 'express';
+import { isIP } from 'net';
 import { AuditAction } from '@prisma/client';
 import { PrinterService } from '../services/printer.service';
 import { sendSuccess } from '../utils/response';
@@ -26,23 +27,26 @@ import { auditService } from '../services/audit.service';
 
 const printerService = new PrinterService();
 
-// Patrones de validación para prevenir inyección de comandos en datos de impresora
-const IP_PATTERN = /^(\d{1,3}\.){3}\d{1,3}(:\d{1,5})?$/;
+// Pattern for safe printer names to prevent command injection
 const SAFE_NAME_PATTERN = /^[a-zA-Z0-9\s\-_().#]+$/;
 
 /**
  * Valida los datos de entrada de impresora para prevenir inyección de comandos.
- * Verifica formato de IP, caracteres seguros en nombres y límites de longitud.
+ * Verifica formato de IP con net.isIP(), caracteres seguros en nombres y límites de longitud.
  */
 function validatePrinterInputs(ipAddress?: string, windowsName?: string, name?: string): void {
-    if (ipAddress && !IP_PATTERN.test(ipAddress)) {
-        throw new ValidationError('Invalid IP address format. Expected: x.x.x.x or x.x.x.x:port');
-    }
     if (ipAddress) {
-        const ipPart = ipAddress.split(':')[0];
-        const parts = ipPart ? ipPart.split('.') : [];
-        if (parts.some(p => parseInt(p) > 255)) {
-            throw new ValidationError('Invalid IP address: octets must be 0-255');
+        const colonIdx = ipAddress.indexOf(':');
+        const ipPart = colonIdx === -1 ? ipAddress : ipAddress.substring(0, colonIdx);
+        const portPart = colonIdx === -1 ? undefined : ipAddress.substring(colonIdx + 1);
+        if (!isIP(ipPart)) {
+            throw new ValidationError('Invalid IP address format');
+        }
+        if (portPart !== undefined) {
+            const port = parseInt(portPart, 10);
+            if (isNaN(port) || port < 1 || port > 65535) {
+                throw new ValidationError('Invalid port number (1-65535)');
+            }
         }
     }
     if (windowsName && !SAFE_NAME_PATTERN.test(windowsName)) {

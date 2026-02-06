@@ -33,7 +33,7 @@ const supplierSchema = z.object({
 /** Obtiene todos los proveedores del tenant con paginación */
 export const getSuppliers = asyncHandler(async (req: Request, res: Response) => {
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const limit = Math.max(1, parseInt(req.query.limit as string) || 200);
+  const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 200), 200);
   const result = await supplierService.getAll(req.user!.tenantId!, page, limit);
   sendSuccess(res, result.data, {
     page: result.page,

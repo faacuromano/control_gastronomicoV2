@@ -33,9 +33,9 @@ router.use(authenticate);
 // ============================================================================
 
 // Listar todas las plataformas disponibles (globales + config del tenant)
-router.get('/platforms', deliveryController.getAllPlatforms);
+router.get('/platforms', requirePermission('delivery', 'read'), deliveryController.getAllPlatforms);
 // Obtener detalle de una plataforma específica
-router.get('/platforms/:id', validateId(), deliveryController.getPlatformById);
+router.get('/platforms/:id', validateId(), requirePermission('delivery', 'read'), deliveryController.getPlatformById);
 // Crear nueva plataforma de delivery (solo admin de configuración)
 router.post('/platforms', requirePermission('settings', 'update'), deliveryController.createPlatform);
 // Actualizar datos de una plataforma (credenciales, nombre, etc.)
@@ -54,23 +54,23 @@ router.delete('/platforms/:id', validateId(), requirePermission('settings', 'upd
 // ============================================================================
 
 // Listar todos los conductores del tenant
-router.get('/drivers', deliveryController.getAllDrivers);
+router.get('/drivers', requirePermission('delivery', 'read'), deliveryController.getAllDrivers);
 // Listar solo conductores disponibles (activos y no asignados a otra orden)
-router.get('/drivers/available', deliveryController.getAvailableDrivers);
+router.get('/drivers/available', requirePermission('delivery', 'read'), deliveryController.getAvailableDrivers);
 // Obtener detalle de un conductor específico
-router.get('/drivers/:id', validateId(), deliveryController.getDriverById);
+router.get('/drivers/:id', validateId(), requirePermission('delivery', 'read'), deliveryController.getDriverById);
 // Crear nuevo conductor/repartidor
 router.post('/drivers', requirePermission('settings', 'update'), deliveryController.createDriver);
 // Actualizar datos de un conductor (nombre, teléfono, tipo de vehículo)
 router.patch('/drivers/:id', validateId(), requirePermission('settings', 'update'), deliveryController.updateDriver);
 // Cambiar disponibilidad de un conductor (disponible/no disponible)
-router.patch('/drivers/:id/availability', validateId(), deliveryController.toggleDriverAvailability);
+router.patch('/drivers/:id/availability', validateId(), requirePermission('delivery', 'update'), deliveryController.toggleDriverAvailability);
 // Activar/desactivar un conductor (baja temporal sin eliminarlo)
 router.patch('/drivers/:id/active', validateId(), requirePermission('settings', 'update'), deliveryController.toggleDriverActive);
 // Asignar un conductor a una orden de delivery
-router.post('/drivers/:id/assign', validateId(), deliveryController.assignDriverToOrder);
+router.post('/drivers/:id/assign', validateId(), requirePermission('delivery', 'update'), deliveryController.assignDriverToOrder);
 // Liberar un conductor de su orden actual (al completar la entrega)
-router.post('/drivers/:id/release', validateId(), deliveryController.releaseDriver);
+router.post('/drivers/:id/release', validateId(), requirePermission('delivery', 'update'), deliveryController.releaseDriver);
 // Eliminar un conductor permanentemente
 router.delete('/drivers/:id', validateId(), requirePermission('settings', 'update'), deliveryController.deleteDriver);
 
@@ -81,8 +81,8 @@ router.delete('/drivers/:id', validateId(), requirePermission('settings', 'updat
 // ============================================================================
 
 // Listar órdenes de delivery (filtradas por estado, fecha, etc.)
-router.get('/orders', deliveryController.getDeliveryOrders);
+router.get('/orders', requirePermission('delivery', 'read'), deliveryController.getDeliveryOrders);
 // Asignar un usuario con rol de delivery como repartidor de una orden
-router.patch('/orders/:orderId/assign', validateId('orderId'), deliveryController.assignUserDriverToOrder);
+router.patch('/orders/:orderId/assign', validateId('orderId'), requirePermission('delivery', 'update'), deliveryController.assignUserDriverToOrder);
 
 export default router;

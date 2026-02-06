@@ -44,7 +44,7 @@ export const getGroups = asyncHandler(async (req: Request, res: Response) => {
 
   // Parsear parámetros de paginación con valores por defecto
   const page = Math.max(1, parseInt(pageStr as string) || 1);
-  const limit = Math.max(1, parseInt(limitStr as string) || 50);
+  const limit = Math.min(Math.max(1, parseInt(limitStr as string) || 50), 100);
 
   const result = await modifierService.getAllGroups(req.user!.tenantId!, page, limit);
 

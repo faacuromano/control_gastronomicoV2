@@ -85,7 +85,7 @@ export const getRoles = asyncHandler(async (req: Request, res: Response) => {
 
     // Parsear parámetros de paginación
     const page = Math.max(1, parseInt(pageStr as string) || 1);
-    const limit = Math.max(1, parseInt(limitStr as string) || 50);
+    const limit = Math.min(Math.max(1, parseInt(limitStr as string) || 50), 100);
     const skip = (page - 1) * limit;
 
     const where = { tenantId: req.user!.tenantId! };

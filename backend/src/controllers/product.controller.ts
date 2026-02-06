@@ -31,7 +31,7 @@ export const listProducts = asyncHandler(async (req: Request, res: Response) => 
     if (isActive !== undefined) filters.isActive = isActive === 'true';
 
     const page = Math.max(1, parseInt(pageStr as string) || 1);
-    const limit = Math.max(1, parseInt(limitStr as string) || 500);
+    const limit = Math.min(Math.max(1, parseInt(limitStr as string) || 500), 500);
     const result = await productService.getProducts(req.user!.tenantId!, filters, page, limit);
     sendSuccess(res, result.data, { total: result.total, page: result.page, limit: result.limit, totalPages: Math.ceil(result.total / result.limit) });
 });

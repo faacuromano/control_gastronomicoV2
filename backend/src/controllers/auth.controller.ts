@@ -29,16 +29,22 @@ import { logger } from '../utils/logger';
  * Cada opción corresponde a un requisito OWASP ASVS 4.0:
  * - httpOnly: V3.4.1 — previene acceso desde JavaScript (protección XSS)
  * - secure: V3.4.2 — solo HTTPS en producción
- * - sameSite strict: V3.4.3 — previene CSRF
- * - path /api: limita el envío de la cookie solo a rutas de la API
+ * - sameSite: 'lax' en dev (cross-port), 'strict' en prod (same origin)
+ * - path /: necesario para que WebSocket (socket.io) reciba la cookie
  * - maxAge 12h: alineado con la expiración del JWT
+ *
+ * NOTE: En desarrollo, frontend (5173) y backend (3001) son distintos orígenes.
+ * sameSite 'strict' bloquea cookies en cross-origin requests como WebSocket.
+ * Usamos 'lax' en dev para permitir WebSocket, 'strict' en prod donde
+ * frontend y backend comparten origen.
  */
 const AUTH_COOKIE_OPTIONS = {
   httpOnly: true,           // V3.4.1: Prevenir acceso desde JavaScript (protección XSS)
   secure: process.env.NODE_ENV === 'production', // V3.4.2: Solo HTTPS en producción
-  sameSite: 'strict' as const, // V3.4.3: Prevenir CSRF
-  path: '/api',             // Limitar a rutas de la API
+  sameSite: (process.env.NODE_ENV === 'production' ? 'strict' : 'lax') as 'strict' | 'lax',
+  path: '/',                // Root path para incluir /socket.io/ (WebSocket auth)
   maxAge: 12 * 60 * 60 * 1000, // 12 horas — alineado con expiresIn del JWT
+  ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
 };
 
 const AUTH_COOKIE_NAME = 'auth_token';
@@ -52,9 +58,10 @@ const REFRESH_COOKIE_NAME = 'refresh_token';
 const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
-  sameSite: 'strict' as const,
+  sameSite: (process.env.NODE_ENV === 'production' ? 'strict' : 'lax') as 'strict' | 'lax',
   path: '/api/v1/auth/refresh', // Solo se envía al endpoint de refresh
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 días
+  ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
 };
 
 // ============================================================================
@@ -93,14 +100,16 @@ export function clearAuthCookie(res: Response): void {
   res.clearCookie(AUTH_COOKIE_NAME, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    path: '/api',
+    sameSite: (process.env.NODE_ENV === 'production' ? 'strict' : 'lax') as 'strict' | 'lax',
+    path: '/',
+    ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
   });
   res.clearCookie(REFRESH_COOKIE_NAME, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: (process.env.NODE_ENV === 'production' ? 'strict' : 'lax') as 'strict' | 'lax',
     path: '/api/v1/auth/refresh',
+    ...(process.env.COOKIE_DOMAIN ? { domain: process.env.COOKIE_DOMAIN } : {}),
   });
 }
 

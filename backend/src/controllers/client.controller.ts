@@ -37,7 +37,7 @@ export const searchClients = asyncHandler(async (req: Request, res: Response) =>
         req.user!.tenantId!,
         typeof q === 'string' ? q : undefined,
         parseInt(page as string) || 1,
-        parseInt(limit as string) || 50
+        Math.min(parseInt(limit as string) || 50, 100)
     );
     sendSuccess(res, result.data, result.meta);
 });

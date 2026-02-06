@@ -22,6 +22,17 @@ import { logger } from '../utils/logger';
  */
 const DANGEROUS_KEYS = ['__proto__', 'constructor', 'prototype'];
 
+const SENSITIVE_FIELDS = ['pin', 'pinCode', 'password', 'token', 'secret', 'passwordHash'];
+
+function redactForLogging(body: unknown): unknown {
+  if (!body || typeof body !== 'object') return body;
+  const sanitized = { ...(body as Record<string, unknown>) };
+  for (const field of SENSITIVE_FIELDS) {
+    if (field in sanitized) sanitized[field] = '[REDACTED]';
+  }
+  return sanitized;
+}
+
 /**
  * SEC-025: Elimina etiquetas HTML de strings para prevenir XSS almacenado.
  * Conserva caracteres comunes como &, <, > como texto plano pero
@@ -132,7 +143,7 @@ export function sanitizeBody(req: Request, res: Response, next: NextFunction): v
     logger.error('Error in sanitizeBody middleware', {
       error: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
-      body: req.body,
+      body: redactForLogging(req.body),
       path: req.path,
       method: req.method
     });

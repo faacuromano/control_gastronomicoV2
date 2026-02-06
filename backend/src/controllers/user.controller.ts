@@ -31,7 +31,12 @@ const CreateUserSchema = z.object({
     name: z.string().min(1, 'Name is required'),
     email: z.union([z.string().email('Invalid email'), z.literal('')]).optional().transform(v => v || undefined),
     pinCode: z.string().length(6, 'PIN must be 6 digits').optional(),
-    password: z.string().min(6, 'Password minimum 6 characters').optional(),
+    password: z.string()
+        .min(8, 'Password must be at least 8 characters')
+        .regex(/[a-z]/, 'Must contain lowercase')
+        .regex(/[A-Z]/, 'Must contain uppercase')
+        .regex(/[0-9]/, 'Must contain number')
+        .optional(),
     roleId: z.number().int().positive('Invalid Role ID')
 });
 
@@ -40,7 +45,12 @@ const UpdateUserSchema = z.object({
     name: z.string().min(1).optional(),
     email: z.string().email().optional(),
     pinCode: z.string().length(6).optional(),
-    password: z.string().min(6).optional(),
+    password: z.string()
+        .min(8, 'Password must be at least 8 characters')
+        .regex(/[a-z]/, 'Must contain lowercase')
+        .regex(/[A-Z]/, 'Must contain uppercase')
+        .regex(/[0-9]/, 'Must contain number')
+        .optional(),
     roleId: z.number().int().positive().optional(),
     isActive: z.boolean().optional()
 });
@@ -59,7 +69,7 @@ export const listUsers = asyncHandler(async (req: Request, res: Response) => {
 
     // Parsear parámetros de paginación
     const page = Math.max(1, parseInt(pageStr as string) || 1);
-    const limit = Math.max(1, parseInt(limitStr as string) || 50);
+    const limit = Math.min(Math.max(1, parseInt(limitStr as string) || 50), 100);
     const skip = (page - 1) * limit;
 
     // Construir cláusula WHERE con tipado Prisma correcto
