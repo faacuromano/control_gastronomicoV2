@@ -42,6 +42,7 @@ const DeliveryPlatformsPage = lazy(() => import('./pages/DeliveryPlatformsPage')
 const DeliveryDriversPage = lazy(() => import('./pages/DeliveryDriversPage').then(m => ({ default: m.DeliveryDriversPage })));
 const InvoicesPage = lazy(() => import('./modules/admin/pages/InvoicesPage').then(m => ({ default: m.InvoicesPage })));
 const AuditLogPage = lazy(() => import('./modules/admin/pages/AuditLogPage').then(m => ({ default: m.AuditLogPage })));
+const DiscountsPage = lazy(() => import('./modules/admin/pages/DiscountsPage').then(m => ({ default: m.DiscountsPage })));
 
 const ProtectedRoute = () => {
     const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -193,6 +194,11 @@ function App() {
                                 <Route path="audit-logs" element={
                                     <RouteGuard permission={{ resource: 'audit', action: 'read' }}>
                                         <AuditLogPage />
+                                    </RouteGuard>
+                                } />
+                                <Route path="discounts" element={
+                                    <RouteGuard permission={{ resource: 'orders', action: 'update' }}>
+                                        <DiscountsPage />
                                     </RouteGuard>
                                 } />
                             </Route>

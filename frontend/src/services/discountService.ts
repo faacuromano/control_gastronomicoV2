@@ -20,6 +20,11 @@ export interface DiscountReasonOption {
     label: string;
 }
 
+export interface DiscountTypeOption {
+    code: DiscountType;
+    label: string;
+}
+
 export interface ApplyDiscountInput {
     orderId: number;
     type: DiscountType;
@@ -64,6 +69,11 @@ class DiscountService {
 
     async getDiscountReasons(): Promise<DiscountReasonOption[]> {
         const response = await api.get('/discounts/reasons');
+        return response.data.data;
+    }
+
+    async getDiscountTypes(): Promise<DiscountTypeOption[]> {
+        const response = await api.get('/discounts/types');
         return response.data.data;
     }
 }

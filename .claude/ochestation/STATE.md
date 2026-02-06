@@ -6,11 +6,11 @@
 ## CURRENT POSITION
 
 ```
-phase: 2
-step: 2.0
+phase: 5
+step: 5.2
 sprint: 10
 status: IN_PROGRESS
-last_updated: 2026-02-06 23:50
+last_updated: 2026-02-07 00:15
 ```
 
 ## VALID STATES
@@ -58,13 +58,14 @@ status: NOT_STARTED | IN_PROGRESS | COMPLETED | BLOCKED | WAITING_USER
 | 7 | COMPLETED | PASS (PRE-EXISTING) | 0 | Delivery webhooks: Rappi + PedidosYa fully implemented |
 | 8 | COMPLETED | PASS (PRE-EXISTING) | 0 | Sync/Offline: conflict resolution, retries, notifications |
 | 9 | COMPLETED | PASS | 0 | Client/Loyalty: detail view + points/wallet columns + operations UI |
+| 10 | COMPLETED | PASS | 0 | Discounts: admin page + service enhancement + route + nav |
 
 ## LAST COMPLETED ACTION
 
 ```
-action: Sprint 9 complete — Client/Loyalty frontend
-output: .agents/reports/sprint-009-review.md
-next: Sprint 10 (Discount Rule Engine)
+action: Sprint 10 complete — Discount Rule Engine frontend
+output: .agents/reports/sprint-010-review.md
+next: Git commit + Human checkpoint (sprint 10 = every 2 sprints)
 ```
 
 ## RECOVERY
