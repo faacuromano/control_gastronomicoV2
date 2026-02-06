@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Users, Coffee, Grid, Package, Archive, Settings, ListPlus, Truck, ShoppingCart, BarChart3, ChevronDown, Shield, CreditCard, Wrench, Printer, QrCode, Bike, MonitorPlay } from 'lucide-react';
+import { Users, Coffee, Grid, Package, Archive, Settings, ListPlus, Truck, ShoppingCart, BarChart3, ChevronDown, Shield, CreditCard, Wrench, Printer, QrCode, Bike, MonitorPlay, FileText } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { useFeatureFlags, type FeatureFlags } from '../../hooks/useFeatureFlags';
 import { useState } from 'react';
@@ -28,6 +28,7 @@ const sidebarGroups: SidebarGroup[] = [
         icon: BarChart3,
         items: [
             { icon: BarChart3, label: 'Dashboard', href: '/admin/dashboard', isImplemented: true },
+            { icon: FileText, label: 'Comprobantes', href: '/admin/invoices', isImplemented: true },
         ]
     },
     {

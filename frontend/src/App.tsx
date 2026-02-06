@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from './store/auth.store';
 import LoginPage from './pages/auth/LoginPage';
@@ -40,10 +40,32 @@ const QrAdminPage = lazy(() => import('./pages/QrAdminPage').then(m => ({ defaul
 const MenuPublicPage = lazy(() => import('./pages/MenuPublicPage').then(m => ({ default: m.MenuPublicPage })));
 const DeliveryPlatformsPage = lazy(() => import('./pages/DeliveryPlatformsPage').then(m => ({ default: m.DeliveryPlatformsPage })));
 const DeliveryDriversPage = lazy(() => import('./pages/DeliveryDriversPage').then(m => ({ default: m.DeliveryDriversPage })));
+const InvoicesPage = lazy(() => import('./modules/admin/pages/InvoicesPage').then(m => ({ default: m.InvoicesPage })));
 
 const ProtectedRoute = () => {
     const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
     return isAuthenticated ? <Outlet /> : <Navigate to="/login" replace />;
+};
+
+// Sync offline data when user is authenticated
+const SyncOnStartup: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+    const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+    const [syncAttempted, setSyncAttempted] = React.useState(false);
+
+    React.useEffect(() => {
+        if (isAuthenticated && !syncAttempted) {
+            setSyncAttempted(true);
+            // Dynamically import to avoid loading sync code on public pages
+            import('./lib/syncManager').then(({ syncManager }) => {
+                console.log('[App] Starting initial sync (push pending + pull catalog)...');
+                syncManager.fullSync().catch((err) => {
+                    console.warn('[App] Initial sync failed (will use cached data if available)', err);
+                });
+            });
+        }
+    }, [isAuthenticated, syncAttempted]);
+
+    return <>{children}</>;
 };
 
 function App() {
@@ -51,6 +73,7 @@ function App() {
         <ErrorBoundary>
         <Toaster richColors position="top-right" />
         <SocketProvider>
+            <SyncOnStartup>
             <BrowserRouter>
                 <Suspense fallback={<div style={{display:'flex',justifyContent:'center',alignItems:'center',height:'100vh'}}>Cargando...</div>}>
                 <Routes>
@@ -161,12 +184,18 @@ function App() {
                                         <DeliveryDriversPage />
                                     </RouteGuard>
                                 } />
+                                <Route path="invoices" element={
+                                    <RouteGuard permission={{ resource: 'invoices', action: 'read' }}>
+                                        <InvoicesPage />
+                                    </RouteGuard>
+                                } />
                             </Route>
                         </Route>
                     </Route>
                 </Routes>
                 </Suspense>
             </BrowserRouter>
+            </SyncOnStartup>
         </SocketProvider>
         </ErrorBoundary>
     );
