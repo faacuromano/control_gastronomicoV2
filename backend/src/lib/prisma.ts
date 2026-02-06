@@ -60,14 +60,14 @@ export const prisma = basePrisma.$extends({
         return basePrisma.order.update({
           where: args.where,
           data: { deletedAt: new Date() },
-        }) as any;
+        });
       },
       async deleteMany({ args }) {
         // Convertir eliminacion masiva en soft-delete masivo
         return basePrisma.order.updateMany({
           where: args.where ?? {},
           data: { deletedAt: new Date() },
-        }) as any;
+        });
       },
     },
   },

@@ -24,6 +24,39 @@ import { sendSuccess } from '../utils/response';
 /** FIX IP-001: Validar que el parámetro tableId sea un entero positivo */
 const tableIdSchema = z.coerce.number().int().positive();
 
+// SEC-AUD-004: Zod schemas for mass assignment prevention — match service signatures exactly
+const CreateAreaSchema = z.object({ name: z.string().min(1).max(100) }).strict();
+const UpdateAreaSchema = z.object({ name: z.string().min(1).max(100) }).strict();
+
+const CreateTableSchema = z.object({
+    name: z.string().min(1).max(100),
+    areaId: z.number().int().positive(),
+    x: z.number().optional(),
+    y: z.number().optional(),
+}).strict().transform(({ x, y, ...rest }) => ({
+    ...rest,
+    ...(x !== undefined ? { x } : {}),
+    ...(y !== undefined ? { y } : {}),
+}));
+
+const UpdateTableSchema = z.object({
+    name: z.string().min(1).max(100).optional(),
+    x: z.number().optional(),
+    y: z.number().optional(),
+}).strict().transform((obj) => {
+    const result: { name?: string; x?: number; y?: number } = {};
+    if (obj.name !== undefined) result.name = obj.name;
+    if (obj.x !== undefined) result.x = obj.x;
+    if (obj.y !== undefined) result.y = obj.y;
+    return result;
+});
+
+// SEC-AUD-015: Zod schema for table close payments
+const PaymentSchema = z.object({
+    method: z.string().min(1).max(50),
+    amount: z.number().positive(),
+});
+
 // ============================================================================
 // AREAS
 // ============================================================================
@@ -36,14 +69,16 @@ export const getAreas = asyncHandler(async (req: Request, res: Response) => {
 
 /** Crea una nueva área en el restaurante */
 export const createArea = asyncHandler(async (req: Request, res: Response) => {
-    const area = await tableService.createArea(req.user!.tenantId!, req.body);
+    const data = CreateAreaSchema.parse(req.body);
+    const area = await tableService.createArea(req.user!.tenantId!, data);
     sendSuccess(res, area, undefined, 201);
 });
 
 /** Actualiza el nombre u otros datos de un área */
 export const updateArea = asyncHandler(async (req: Request, res: Response) => {
     const id = Number(req.params.id as string);
-    const area = await tableService.updateArea(id, req.user!.tenantId!, req.body);
+    const data = UpdateAreaSchema.parse(req.body);
+    const area = await tableService.updateArea(id, req.user!.tenantId!, data);
     sendSuccess(res, area);
 });
 
@@ -60,14 +95,16 @@ export const deleteArea = asyncHandler(async (req: Request, res: Response) => {
 
 /** Crea una nueva mesa dentro de un área */
 export const createTable = asyncHandler(async (req: Request, res: Response) => {
-    const table = await tableService.createTable(req.user!.tenantId!, req.body);
+    const data = CreateTableSchema.parse(req.body);
+    const table = await tableService.createTable(req.user!.tenantId!, data);
     sendSuccess(res, table, undefined, 201);
 });
 
 /** Actualiza los datos de una mesa (nombre, capacidad, área, etc.) */
 export const updateTable = asyncHandler(async (req: Request, res: Response) => {
     const id = tableIdSchema.parse(req.params.id);
-    const table = await tableService.updateTable(id, req.user!.tenantId!, req.body);
+    const data = UpdateTableSchema.parse(req.body);
+    const table = await tableService.updateTable(id, req.user!.tenantId!, data);
     sendSuccess(res, table);
 });
 
@@ -134,6 +171,11 @@ export const closeTable = asyncHandler(async (req: Request, res: Response) => {
     }
     const tableId = tableIdSchema.parse(req.params.id);
     const payments = req.body?.payments;
+
+    // SEC-AUD-015: Validate payment array structure before passing to service
+    if (payments !== undefined) {
+        z.array(PaymentSchema).min(1).parse(payments);
+    }
 
     const result = await tableService.closeTableWithPayment(tableId, serverId, payments, req.user!.tenantId!);
     sendSuccess(res, result);

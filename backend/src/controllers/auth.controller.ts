@@ -180,19 +180,17 @@ export const loginPin = asyncHandler(async (req: Request, res: Response) => {
  * Valida que el tenant exista y esté activo antes de permitir el registro (P1-26).
  */
 export const registerUser = asyncHandler(async (req: Request, res: Response) => {
-    // P1-26: Validar que el tenant exista y esté activo antes de registrar
-    const { tenantId: rawTenantId } = req.body;
-    if (!rawTenantId) {
-        return sendError(res, 'MISSING_TENANT', 'El ID del tenant es requerido');
-    }
+    // SEC-AUD-002: Derive tenantId from JWT (set by authenticateToken middleware)
+    // instead of req.body to prevent arbitrary tenant registration
+    const tenantId = req.user!.tenantId!;
     const tenant = await prisma.tenant.findFirst({
-        where: { id: rawTenantId, activeSubscription: true }
+        where: { id: tenantId, activeSubscription: true }
     });
     if (!tenant) {
         return sendError(res, 'INVALID_TENANT', 'Organización inválida o inactiva');
     }
 
-    const result = await register(req.body);
+    const result = await register({ ...req.body, tenantId });
 
     // FIX P0-004: Token en cookie HttpOnly
     setAuthCookie(res, result.token);
@@ -201,7 +199,7 @@ export const registerUser = asyncHandler(async (req: Request, res: Response) => 
     await auditService.logAuth('LOGIN', result.user.id, getAuditContext(req), {
         method: 'REGISTER',
         role: result.user.role,
-        tenantId: req.body.tenantId,
+        tenantId,
         authMethod: 'COOKIE'
     });
 

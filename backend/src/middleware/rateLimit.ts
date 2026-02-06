@@ -6,7 +6,7 @@
  * rastrear solicitudes por IP y aplicar limites configurables.
  *
  * El rate limiting de autenticacion esta SIEMPRE activo, incluso en desarrollo,
- * porque los PINes de 4 digitos son vulnerables a fuerza bruta.
+ * porque los PINes de 6 digitos son vulnerables a fuerza bruta.
  */
 
 import rateLimit from "express-rate-limit";
@@ -19,7 +19,7 @@ const isDevelopment = process.env.NODE_ENV === "development";
  * Limitador de tasa para autenticacion - limites estrictos para intentos de login.
  * 5 intentos cada 15 minutos por IP.
  *
- * SIEMPRE ACTIVO - nunca se omite por seguridad, ya que los PINes de 4 digitos
+ * SIEMPRE ACTIVO - nunca se omite por seguridad, ya que los PINes de 6 digitos
  * tienen solo 10,000 combinaciones posibles y son vulnerables a fuerza bruta.
  * Solo se puede desactivar explicitamente en desarrollo con DISABLE_RATE_LIMIT=true.
  */

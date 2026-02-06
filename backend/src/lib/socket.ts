@@ -22,7 +22,18 @@ import jwt from 'jsonwebtoken';
 import { logger } from '../utils/logger';
 
 // Instancia singleton de Socket.IO, undefined hasta que se llame initSocket()
-let io: Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any> | undefined;
+/** Type-safe socket user data attached during JWT authentication */
+interface SocketUserData {
+  user: {
+    id: number;
+    role: string;
+    name: string;
+    tenantId: number;
+    permissions?: unknown;
+  };
+}
+
+let io: Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, SocketUserData> | undefined;
 
 /**
  * Inicializa el servidor Socket.IO sobre el servidor HTTP existente.
@@ -147,18 +158,15 @@ export const initSocket = (httpServer: HttpServer) => {
         logger.info(`[Socket] Socket joined room: ${room}`, { socketId: socket.id, tenantId });
     };
 
-    // SEC-031: Rechazar cualquier intento de join directo que no respete el scope de tenant.
-    // Esto protege contra un cliente malicioso que intente escuchar eventos de otro restaurante.
-    socket.on('join', (room: string) => {
-        if (typeof room === 'string' && !room.startsWith(`tenant:${tenantId}:`)) {
-            logger.warn('Rejected cross-tenant room join attempt', {
-                socketId: socket.id,
-                tenantId,
-                requestedRoom: room,
-            });
-            socket.emit('error', { message: 'Cannot join rooms outside your tenant' });
-            return;
-        }
+    // SEC-AUD-001: Reject ALL direct room join attempts unconditionally.
+    // Clients must use specific handlers (join:kitchen, join:table, etc.) that enforce tenant scoping.
+    socket.on('join', (room: unknown) => {
+        logger.warn('Rejected direct room join attempt — use specific join handlers', {
+            socketId: socket.id,
+            tenantId,
+            requestedRoom: typeof room === 'string' ? room : String(room),
+        });
+        socket.emit('error', { message: 'Direct room joins are not allowed. Use join:kitchen, join:table, etc.' });
     });
 
     // Room de cocina general - recibe todos los eventos de ordenes nuevas y cambios de items
@@ -201,7 +209,7 @@ export const initSocket = (httpServer: HttpServer) => {
  * Retorna null si Socket.IO no fue inicializado (ej: en tests unitarios).
  * Los servicios deben manejar el caso null sin lanzar error.
  */
-export const getIO = (): Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, any> | null => {
+export const getIO = (): Server<DefaultEventsMap, DefaultEventsMap, DefaultEventsMap, SocketUserData> | null => {
   if (!io) {
     logger.warn('Socket.IO not initialized, real-time updates disabled');
     return null;

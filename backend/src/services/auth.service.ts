@@ -379,6 +379,17 @@ export const loginWithPin = async (pin: string, tenantId: number) => {
         }
     }
 
+    // SEC-AUD-006: Check lockout BEFORE bcrypt to avoid wasting CPU on locked accounts
+    // and to prevent timing-based PIN validity leakage
+    if (candidate && isAccountLocked(candidate)) {
+        const remainingMinutes = Math.ceil(
+            (candidate.lockedUntil!.getTime() - Date.now()) / (1000 * 60)
+        );
+        throw new UnauthorizedError(
+            `Account locked. Try again in ${remainingMinutes} minutes.`
+        );
+    }
+
     // 3. Verificar PIN con bcrypt (defensa en profundidad contra colisiones SHA-256)
     let user = null;
     if (candidate && candidate.pinHash && await bcrypt.compare(pin, candidate.pinHash)) {
@@ -387,17 +398,11 @@ export const loginWithPin = async (pin: string, tenantId: number) => {
 
     // SEGURIDAD: No revelar si el PIN existe o no (misma respuesta para PIN inválido o inexistente)
     if (!user) {
+        // Track failed attempt if a candidate was found but PIN didn't match
+        if (candidate) {
+            await handleFailedLogin(candidate.id);
+        }
         throw new UnauthorizedError('Invalid credentials');
-    }
-
-    // 4. Verificar si la cuenta está bloqueada
-    if (isAccountLocked(user)) {
-        const remainingMinutes = Math.ceil(
-            (user.lockedUntil!.getTime() - Date.now()) / (1000 * 60)
-        );
-        throw new UnauthorizedError(
-            `Account locked. Try again in ${remainingMinutes} minutes.`
-        );
     }
 
     // 5. Resetear intentos fallidos tras login exitoso

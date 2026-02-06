@@ -1,3 +1,6 @@
+# Dependencies
+node_modules/
+
 # Environment variables (contain secrets)
 .env
 !.env.example
@@ -5,6 +8,7 @@
 # OS files
 .DS_Store
 Thumbs.db
+nul
 
 # IDE
 .vscode/

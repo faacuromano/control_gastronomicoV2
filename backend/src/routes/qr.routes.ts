@@ -16,11 +16,26 @@
  */
 
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { authenticate, requirePermission } from '../middleware/auth';
 import { validateId } from '../middleware/validateId';
+import { apiRateLimiter } from '../middleware/rateLimit';
 import * as qrController from '../controllers/qr.controller';
 
 const router = Router();
+
+// SEC-AUD-003: Strict rate limiter for public QR order endpoint to prevent order flooding
+const qrOrderRateLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 5,
+    message: {
+        success: false,
+        error: { code: 'RATE_LIMITED', message: 'Demasiados pedidos. Intenta en un momento.' }
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: { xForwardedForHeader: false },
+});
 
 // ============================================================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -29,14 +44,13 @@ const router = Router();
 // ============================================================================
 
 // Validar un código QR y obtener la configuración del menú (modo, nombre del negocio)
-router.get('/:code', qrController.validateQr);
+router.get('/:code', apiRateLimiter, qrController.validateQr);
 
 // Obtener el menú público asociado al código QR (categorías y productos activos)
-router.get('/:code/menu', qrController.getPublicMenu);
+router.get('/:code/menu', apiRateLimiter, qrController.getPublicMenu);
 
-// Colocar un pedido desde el menú QR (self-order)
-// El cliente envía los items del carrito y se agregan a la orden existente de la mesa
-router.post('/:code/order', qrController.placeQrOrder);
+// SEC-AUD-003: Strict rate limiting on order creation to prevent kitchen/financial flooding
+router.post('/:code/order', qrOrderRateLimiter, qrController.placeQrOrder);
 
 // ============================================================================
 // RUTAS ADMINISTRATIVAS (Requieren autenticación)

@@ -13,11 +13,39 @@
  */
 
 import { Request, Response } from 'express';
+import { z } from 'zod';
 import { qrService } from '../services/qr.service';
 import { qrOrderService, type QrOrderItemInput } from '../services/qrOrder.service';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { sendSuccess } from '../utils/response';
 import { ValidationError } from '../utils/errors';
+
+// SEC-AUD-005: Runtime validation for QR order items to prevent negative quantities,
+// non-numeric IDs, and arbitrarily large arrays (DoS)
+const QrOrderItemSchema = z.object({
+    productId: z.number().int().positive(),
+    quantity: z.number().int().positive().max(100),
+    notes: z.string().max(500).optional(),
+    modifierIds: z.array(z.number().int().positive()).max(20).optional(),
+    removedIngredientIds: z.array(z.number().int().positive()).max(20).optional(),
+});
+
+const PlaceQrOrderSchema = z.object({
+    items: z.array(QrOrderItemSchema).min(1).max(50),
+});
+
+// SEC-AUD-009: Whitelist only QR-related fields for config update.
+// Transform strips undefined keys to satisfy exactOptionalPropertyTypes.
+const QrConfigUpdateSchema = z.object({
+    qrMenuEnabled: z.boolean().optional(),
+    qrMenuMode: z.enum(['STATIC', 'INTERACTIVE']).optional(),
+    qrSelfOrderEnabled: z.boolean().optional(),
+    qrMenuPdfUrl: z.string().url().max(500).nullable().optional(),
+    qrMenuBannerUrl: z.string().url().max(500).nullable().optional(),
+    qrMenuTheme: z.string().max(50).optional(),
+}).strict().transform((obj) =>
+    Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined))
+);
 
 // ============================================================================
 // ENDPOINTS PUBLICOS (Sin autenticación requerida)
@@ -86,14 +114,11 @@ export const getPublicMenu = asyncHandler(async (req: Request, res: Response) =>
  */
 export const placeQrOrder = asyncHandler(async (req: Request, res: Response) => {
     const code = req.params.code as string;
-    const { items } = req.body as { items?: QrOrderItemInput[] };
 
-    // Validar estructura básica del request
-    if (!items || !Array.isArray(items)) {
-        throw new ValidationError('Se requiere un array de items');
-    }
+    // SEC-AUD-005: Full Zod validation instead of just Array.isArray check
+    const { items } = PlaceQrOrderSchema.parse(req.body);
 
-    const result = await qrOrderService.placeOrder(code, items);
+    const result = await qrOrderService.placeOrder(code, items as QrOrderItemInput[]);
 
     sendSuccess(res, result, undefined, 201);
 });
@@ -117,7 +142,9 @@ export const getConfig = asyncHandler(async (req: Request, res: Response) => {
  * PATCH /api/v1/admin/qr/config
  */
 export const updateConfig = asyncHandler(async (req: Request, res: Response) => {
-    const config = await qrService.updateConfig(req.user!.tenantId!, req.body);
+    // SEC-AUD-009: Whitelist only QR-related config fields to prevent modifying unrelated tenant settings
+    const validatedData = QrConfigUpdateSchema.parse(req.body);
+    const config = await qrService.updateConfig(req.user!.tenantId!, validatedData);
     sendSuccess(res, config);
 });
 

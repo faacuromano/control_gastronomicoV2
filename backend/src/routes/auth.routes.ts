@@ -28,15 +28,16 @@ router.get('/tenant/:code', authRateLimiter, resolveTenant);
 router.post('/login/pin', authRateLimiter, loginPin);
 // Login por email/contraseña: flujo estándar para administradores y managers
 router.post('/login', authRateLimiter, loginUser);
-// Registro de nuevo usuario dentro de un tenant ya existente
-router.post('/register', authRateLimiter, registerUser);
+// SEC-AUD-002: Registro de nuevo usuario — requiere autenticación para evitar que
+// un atacante registre usuarios en cualquier tenant usando tenantId del body
+router.post('/register', authRateLimiter, authenticateToken, registerUser);
 // Registro público SaaS: crea un nuevo tenant con su usuario administrador inicial
 router.post('/signup', authRateLimiter, registerNewTenant);
 
 // Renovación de token usando la cookie refresh_token (no requiere auth_token vigente)
 router.post('/refresh', authRateLimiter, refreshTokenHandler);
 
-// FIX P0-004: Endpoint de logout para limpiar la cookie HttpOnly de autenticación
-router.post('/logout', logoutUser);
+// SEC-AUD-007: Logout requires auth so refresh tokens are properly revoked in DB
+router.post('/logout', authenticateToken, logoutUser);
 
 export default router;
