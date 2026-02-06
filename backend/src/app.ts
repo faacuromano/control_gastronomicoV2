@@ -149,6 +149,7 @@ import printRoutingRoutes from './routes/printRouting.routes';
 import kdsStationRoutes from './routes/kdsStation.routes';
 import stockAlertRoutes from './routes/stockAlert.routes';
 import discountRoutes from './routes/discount.routes';
+import auditRoutes from './routes/audit.routes';
 
 // API-003: Estrategia de versionado
 // Todas las rutas se montan bajo /api/v1. Cuando se necesiten cambios que rompan
@@ -182,6 +183,7 @@ app.use('/api/v1/invoices', invoiceRoutes);
 app.use('/api/v1/loyalty', loyaltyRoutes);
 app.use('/api/v1/stock-alerts', stockAlertRoutes);
 app.use('/api/v1/discounts', discountRoutes);
+app.use('/api/v1/audit-logs', auditRoutes);
 import bulkPriceRoutes from './routes/bulkPriceUpdate.routes';
 app.use('/api/v1/bulk-prices', bulkPriceRoutes);
 import syncRoutes from './routes/sync.routes';

@@ -7,10 +7,10 @@
 
 ```
 phase: 5
-step: 5.2
-sprint: 4
-status: IN_PROGRESS
-last_updated: 2026-02-06 23:00
+step: 5.6
+sprint: 6
+status: WAITING_USER
+last_updated: 2026-02-06 23:30
 ```
 
 ## VALID STATES
@@ -52,13 +52,16 @@ status: NOT_STARTED | IN_PROGRESS | COMPLETED | BLOCKED | WAITING_USER
 | 1 | COMPLETED | PASS | 0 | Input validation: category, product, printer, kdsStation |
 | 2 | COMPLETED | PASS | 0 | Input validation: auth, table, order, qr |
 | 3 | COMPLETED | PASS | 0 | Core service unit tests: order + auth (67 tests, 0 failures) |
+| 4 | COMPLETED | PASS | 0 | Invoicing frontend: InvoicesPage + InvoiceDetail + route + nav |
+| 5 | COMPLETED | PASS (PRE-EXISTING) | 0 | Analytics: all endpoints + dashboard already complete |
+| 6 | COMPLETED | PASS | 0 | Audit log: backend endpoint + frontend page with filters/pagination |
 
 ## LAST COMPLETED ACTION
 
 ```
-action: Git commit 50883cf + tag sprint-003
-output: .agents/reports/sprint-003-review.md
-next: Sprint 4 (Invoicing Frontend) — HUMAN CHECKPOINT after Sprint 4
+action: Sprint 6 complete — awaiting git commit
+output: .agents/reports/sprint-006-review.md
+next: HUMAN CHECKPOINT — awaiting user response before Sprint 7
 ```
 
 ## RECOVERY
