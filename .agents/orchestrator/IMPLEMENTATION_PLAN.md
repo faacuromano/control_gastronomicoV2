@@ -343,15 +343,84 @@ Sprint 4 → Sprint 10 (Discounts Rule Engine)
 
 ---
 
-## Remaining Work (post-Sprint 10, to be replanned)
+## Batch 2 Replan (post-Sprint 10)
 
-After Sprint 10, the following items still require work:
-- Inventory module: PO workflow completion (~10% gap)
-- QR Menu: Frontend completion (~10% gap)
-- Config/Settings: Frontend minor gaps (~5%)
-- Bulk Pricing: Frontend completion (~15%)
-- Printing: Additional coverage (~10%)
-- Fiscal integration (AFIP) — LOW priority, country-specific
-- Additional unit tests for remaining services
-- Integration tests for delivery module
-- E2E tests for new frontend pages
+### Findings from Replan Scan (2026-02-07)
+- **Frontend**: ALL pages fully implemented. No gaps found across all 19 admin pages.
+- **Backend**: ALL services fully implemented. All 22 req.body usages Zod-validated. 171 endpoints across 27 route files.
+- **Security**: Input validation (TD-001) fully resolved. No Critical/High vulnerabilities.
+- **Test Coverage**: Main gap — only 2 unit test files (auth, order) out of 37 services. 8 integration tests + 4 P0 tests exist.
+- **Minor**: sync.controller uses res.json() instead of sendSuccess() (3 instances).
+
+### Sprint 11: Unit Tests — Cash/Table/Payment Services
+**Module(s):** Cash Shifts, Tables, Payments
+**Focus:** Testing — Backend
+
+#### Task 11.1: Unit tests for cashShift.service.ts
+- **Files to create:** `backend/tests/unit/services/cashShift.service.test.ts`
+- **Acceptance criteria:**
+  - [ ] Tests for openShift, closeShift, getActiveShift
+  - [ ] Tests for blind count validation
+  - [ ] Prisma mocked, `npm run test:unit` passes
+
+#### Task 11.2: Unit tests for table.service.ts
+- **Files to create:** `backend/tests/unit/services/table.service.test.ts`
+- **Acceptance criteria:**
+  - [ ] Tests for CRUD operations
+  - [ ] Tests for openTable, closeTable, transferTable
+  - [ ] Prisma mocked, `npm run test:unit` passes
+
+#### Task 11.3: Unit tests for payment.service.ts
+- **Files to create:** `backend/tests/unit/services/payment.service.test.ts`
+- **Acceptance criteria:**
+  - [ ] Tests for processPayment, split payments
+  - [ ] Tests for payment status transitions (PENDING→PARTIAL→PAID)
+  - [ ] Prisma mocked, `npm run test:unit` passes
+
+---
+
+### Sprint 12: Unit Tests — Product/Category/Discount Services
+**Module(s):** Menu/Catalog, Discounts
+**Focus:** Testing — Backend
+
+#### Task 12.1: Unit tests for product.service.ts and category.service.ts
+- **Files to create:** `backend/tests/unit/services/product.service.test.ts`, `backend/tests/unit/services/category.service.test.ts`
+- **Acceptance criteria:**
+  - [ ] Product CRUD tests including stock linkage
+  - [ ] Category CRUD tests including printer/KDS assignment
+  - [ ] Prisma mocked, `npm run test:unit` passes
+
+#### Task 12.2: Unit tests for discount.service.ts
+- **Files to create:** `backend/tests/unit/services/discount.service.test.ts`
+- **Acceptance criteria:**
+  - [ ] Tests for applyDiscount (percentage, fixed, edge cases)
+  - [ ] Tests for removeDiscount
+  - [ ] Tests for validation (negative value, >100%, paid order)
+  - [ ] Prisma mocked, `npm run test:unit` passes
+
+---
+
+### Sprint 13: Minor Fixes + Final Quality Pass
+**Module(s):** Cross-cutting
+**Focus:** Quality
+
+#### Task 13.1: Fix sync controller response format
+- **Files to modify:** `backend/src/controllers/sync.controller.ts`
+- **Acceptance criteria:**
+  - [ ] Replace 3 `res.json()` calls with `sendSuccess()` helper
+  - [ ] `tsc --noEmit` passes
+
+#### Task 13.2: Final project status update + completion report
+- **Files to modify:** `PROJECT_STATUS.md`
+- **Files to create:** `.agents/reports/final-report.md`
+- **Acceptance criteria:**
+  - [ ] All modules ≥ 90% in PROJECT_STATUS.md
+  - [ ] Final report with completion summary, architecture overview, remaining tech debt
+
+---
+
+## Deferred (out of scope)
+- Fiscal integration (AFIP) — country-specific, LOW priority
+- Advanced discount rule engine (buy-X-get-Y, time-based conditions) — requires new Prisma models
+- Points history tracking — requires new Prisma model + migration
+- Remaining 30+ services unit tests — diminishing returns beyond critical path

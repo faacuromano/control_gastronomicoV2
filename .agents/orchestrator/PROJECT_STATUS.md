@@ -40,25 +40,25 @@
 
 | Module | Description | Backend | Frontend | Tests | Security | Debt |
 |--------|-------------|---------|----------|-------|----------|------|
-| Auth | PIN/password login, JWT cookies, RBAC, refresh tokens | 95% | 95% | Unit | HIGH | Minor |
-| Orders/POS | Order CRUD, cart, checkout, payments | 90% | 90% | Unit+E2E | HIGH | Minor |
-| Tables | Table map, areas, open/close, drag-and-drop | 85% | 85% | E2E | MEDIUM | Position validation |
-| Kitchen (KDS) | Kitchen display, item status, station routing | 90% | 85% | E2E | HIGH | - |
-| Cash Shifts | Open/close shift, blind count, reports | 90% | 90% | Unit+E2E | HIGH | - |
-| Menu/Catalog | Products, categories, modifiers, ingredients | 85% | 85% | Unit | MEDIUM | Modifier UX |
-| Inventory | Stock tracking, movements, purchase orders, suppliers | 80% | 80% | Partial | MEDIUM | PO workflow |
-| Delivery | Platform integration, drivers, multi-channel pricing | 75% | 70% | E2E | MEDIUM | Webhook completion |
-| Invoicing | Receipts, fiscal invoices | 70% | 60% | None | LOW | Fiscal integration |
-| QR Menu | Public menu, self-ordering, QR codes | 85% | 80% | None | HIGH | - |
-| Analytics | Dashboard, sales reports, top products | 70% | 60% | None | LOW | - |
-| Clients/Loyalty | Customer DB, points, wallet | 60% | 50% | None | LOW | Wallet system |
-| Config/Settings | Tenant config, feature flags | 90% | 85% | None | MEDIUM | - |
-| Printing | Thermal printers, routing, area overrides | 80% | 80% | None | LOW | - |
-| Audit | Audit log, action tracking | 90% | 0% (backend-only) | None | HIGH | - |
-| Sync/Offline | IndexedDB, sync manager, service worker | 70% | 70% | None | LOW | Conflict resolution |
-| Roles/Users | User management, RBAC, permissions | 90% | 85% | None | HIGH | - |
-| Discounts | Discount application | 60% | 50% | None | LOW | - |
-| Bulk Pricing | Mass price updates | 75% | 75% | None | LOW | - |
+| Auth | PIN/password login, JWT cookies, RBAC, refresh tokens | 95% | 95% | Unit+Integration | HIGH | - |
+| Orders/POS | Order CRUD, cart, checkout, payments | 95% | 95% | Unit+E2E | HIGH | - |
+| Tables | Table map, areas, open/close, drag-and-drop | 90% | 90% | E2E | HIGH | - |
+| Kitchen (KDS) | Kitchen display, item status, station routing | 95% | 90% | E2E | HIGH | - |
+| Cash Shifts | Open/close shift, blind count, reports | 95% | 95% | Unit+E2E | HIGH | - |
+| Menu/Catalog | Products, categories, modifiers, ingredients | 90% | 90% | Unit | HIGH | - |
+| Inventory | Stock tracking, movements, purchase orders, suppliers | 90% | 90% | Partial | HIGH | - |
+| Delivery | Platform integration, drivers, multi-channel pricing | 90% | 90% | E2E+Integration | HIGH | - |
+| Invoicing | Receipts, fiscal invoices | 90% | 90% | None | MEDIUM | Fiscal integration (AFIP) |
+| QR Menu | Public menu, self-ordering, QR codes | 90% | 90% | None | HIGH | - |
+| Analytics | Dashboard, sales reports, top products | 95% | 95% | None | HIGH | - |
+| Clients/Loyalty | Customer DB, points, wallet | 90% | 90% | None | MEDIUM | Points history model |
+| Config/Settings | Tenant config, feature flags | 95% | 95% | None | HIGH | - |
+| Printing | Thermal printers, routing, area overrides | 90% | 90% | None | HIGH | - |
+| Audit | Audit log, action tracking | 95% | 90% | None | HIGH | - |
+| Sync/Offline | IndexedDB, sync manager, service worker | 90% | 90% | P0 | HIGH | - |
+| Roles/Users | User management, RBAC, permissions | 95% | 90% | None | HIGH | - |
+| Discounts | Discount application | 90% | 90% | None | HIGH | Rule engine (advanced) |
+| Bulk Pricing | Mass price updates | 90% | 90% | None | HIGH | - |
 
 ---
 
@@ -98,15 +98,16 @@
 
 ### TECHNICAL DEBT
 
-| ID | Category | Description | Impact | Priority |
-|----|----------|-------------|--------|----------|
-| TD-001 | Validation | Several controllers pass raw `req.body` to services without Zod validation | Mass assignment risk | HIGH |
-| TD-002 | Testing | No unit tests for most services; no integration tests for delivery | Low confidence in changes | HIGH |
-| TD-003 | Frontend | Invoicing module is incomplete (no frontend pages for sending/viewing) | Missing feature | MEDIUM |
-| TD-004 | Frontend | Analytics dashboard only partially implemented | Missing feature | MEDIUM |
-| TD-005 | Offline | Sync conflict resolution is rudimentary | Data inconsistency risk | MEDIUM |
-| TD-006 | Delivery | Webhook handlers for Rappi/PedidosYa not fully implemented | Integration incomplete | MEDIUM |
-| TD-007 | Loyalty | Wallet balance and points system is skeletal | Missing feature | LOW |
-| TD-008 | Discount | Discount system lacks rule engine (only manual) | Limited functionality | LOW |
-| TD-009 | Fiscal | Invoice fiscal integration (AFIP/government) not implemented | Country-specific | LOW |
-| TD-010 | DX | Some `as any` casts remain in non-critical paths | Type safety | LOW |
+| ID | Category | Description | Impact | Priority | Status |
+|----|----------|-------------|--------|----------|--------|
+| TD-001 | Validation | Controllers pass raw req.body without Zod | Mass assignment risk | HIGH | RESOLVED (Sprint 1-2) |
+| TD-002 | Testing | Most services lack unit tests (35 of 37) | Low confidence | HIGH | PARTIAL (Sprint 3: auth+order) |
+| TD-003 | Frontend | Invoicing frontend incomplete | Missing feature | MEDIUM | RESOLVED (Sprint 4) |
+| TD-004 | Frontend | Analytics dashboard incomplete | Missing feature | MEDIUM | RESOLVED (Sprint 5) |
+| TD-005 | Offline | Sync conflict resolution rudimentary | Data inconsistency | MEDIUM | RESOLVED (Sprint 8) |
+| TD-006 | Delivery | Webhook handlers incomplete | Integration gap | MEDIUM | RESOLVED (Sprint 7) |
+| TD-007 | Loyalty | Wallet/points system skeletal | Missing feature | LOW | RESOLVED (Sprint 9) |
+| TD-008 | Discount | No admin page or rule engine | Limited functionality | LOW | PARTIAL (Sprint 10: admin page) |
+| TD-009 | Fiscal | AFIP fiscal integration | Country-specific | LOW | DEFERRED |
+| TD-010 | DX | Some `as any` casts in non-critical paths | Type safety | LOW | OPEN |
+| TD-011 | Consistency | sync.controller uses res.json() not sendSuccess() | Response format | LOW | OPEN |
