@@ -19,6 +19,7 @@ import { syncService } from '../services/sync.service';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { z } from 'zod';
 import { ValidationError } from '../utils/errors';
+import { sendSuccess } from '../utils/response';
 import type { SyncPushRequest } from '../types/sync.types';
 
 // ============================================================================
@@ -71,10 +72,7 @@ const SyncPushRequestSchema = z.object({
 export const pull = asyncHandler(async (req: Request, res: Response) => {
     const data = await syncService.pull(req.user!.tenantId!);
 
-    res.json({
-        success: true,
-        data
-    });
+    sendSuccess(res, data);
 });
 
 /**
@@ -106,10 +104,7 @@ export const push = asyncHandler(async (req: Request, res: Response) => {
         }
     );
 
-    res.json({
-        success: result.success,
-        data: result
-    });
+    sendSuccess(res, result);
 });
 
 /**
@@ -118,11 +113,8 @@ export const push = asyncHandler(async (req: Request, res: Response) => {
  * El frontend lo usa como heartbeat para detectar cuando vuelve la conexión.
  */
 export const status = asyncHandler(async (req: Request, res: Response) => {
-    res.json({
-        success: true,
-        data: {
-            serverTime: new Date().toISOString(),
-            online: true
-        }
+    sendSuccess(res, {
+        serverTime: new Date().toISOString(),
+        online: true,
     });
 });

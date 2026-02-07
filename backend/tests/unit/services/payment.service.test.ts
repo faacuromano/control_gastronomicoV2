@@ -41,14 +41,14 @@ describe('PaymentService', () => {
             it('handles CARD payment method', () => {
                 const result = service.processPayments(5000, 2, 'CARD', undefined);
 
-                expect(result.paymentsToCreate[0].method).toBe('CARD');
+                expect(result.paymentsToCreate[0]!.method).toBe('CARD');
                 expect(result.paymentStatus).toBe('PAID');
             });
 
             it('handles null shiftId', () => {
                 const result = service.processPayments(1000, null, 'CASH', undefined);
 
-                expect(result.paymentsToCreate[0].shiftId).toBeNull();
+                expect(result.paymentsToCreate[0]!.shiftId).toBeNull();
             });
         });
 
@@ -136,7 +136,7 @@ describe('PaymentService', () => {
 
                 // The guard `singlePaymentMethod && !splitPayments` skips single when splits exist
                 expect(result.paymentsToCreate).toHaveLength(1);
-                expect(result.paymentsToCreate[0].method).toBe('CARD');
+                expect(result.paymentsToCreate[0]!.method).toBe('CARD');
                 expect(result.totalPaid).toBe(10000);
             });
         });

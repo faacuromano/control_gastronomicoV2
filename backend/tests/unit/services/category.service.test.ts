@@ -76,8 +76,8 @@ describe('Category Service', () => {
             const result = await getCategories(TENANT_ID);
 
             expect(result).toHaveLength(1);
-            expect(result[0].activeProductsCount).toBe(2);
-            expect(result[0].totalProductsCount).toBe(3);
+            expect(result[0]!.activeProductsCount).toBe(2);
+            expect(result[0]!.totalProductsCount).toBe(3);
         });
 
         it('returns empty array when no categories', async () => {
