@@ -60,13 +60,14 @@ status: NOT_STARTED | IN_PROGRESS | COMPLETED | BLOCKED | WAITING_USER
 | 9 | COMPLETED | PASS | 0 | Client/Loyalty: detail view + points/wallet columns + operations UI |
 | 10 | COMPLETED | PASS | 0 | Discounts: admin page + service enhancement + route + nav |
 | 11 | COMPLETED | PASS | 0 | Unit tests: cashShift (17) + table (25) + payment (22) = 65 new tests |
+| 12 | COMPLETED | PASS | 0 | Unit tests: category (14) + product (19) + discount (19) = 56 new tests |
 
 ## LAST COMPLETED ACTION
 
 ```
-action: Sprint 11 complete — Unit tests for Cash/Table/Payment services
-output: .agents/reports/sprint-011-review.md
-next: Sprint 12 (Unit Tests: Product/Category/Discount)
+action: Sprint 12 complete — Unit tests for Product/Category/Discount services
+output: .agents/reports/sprint-012-review.md
+next: Sprint 13 (Sync fix + final report) — then human checkpoint
 ```
 
 ## RECOVERY
