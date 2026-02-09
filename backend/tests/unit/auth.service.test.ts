@@ -449,7 +449,7 @@ describe('Auth Service - register', () => {
         tenantId: 1,
       });
 
-      expect(hashSpy).toHaveBeenCalledWith('Password123', 10);
+      expect(hashSpy).toHaveBeenCalledWith('Password123', 12);
     });
   });
 

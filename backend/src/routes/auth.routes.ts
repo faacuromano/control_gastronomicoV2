@@ -37,7 +37,8 @@ router.post('/signup', authRateLimiter, registerNewTenant);
 // Renovación de token usando la cookie refresh_token (no requiere auth_token vigente)
 router.post('/refresh', authRateLimiter, refreshTokenHandler);
 
-// SEC-AUD-007: Logout requires auth so refresh tokens are properly revoked in DB
-router.post('/logout', authenticateToken, logoutUser);
+// Logout does NOT require auth — must succeed even with expired/missing token
+// to avoid 401 loop on the frontend. User info is extracted best-effort for audit/revocation.
+router.post('/logout', logoutUser);
 
 export default router;

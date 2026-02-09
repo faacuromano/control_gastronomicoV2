@@ -37,7 +37,7 @@ import { logger } from '../../../utils/logger';
 const SIGNATURE_HEADERS: Record<string, string> = {
   [DeliveryPlatformCode.RAPPI]: 'x-rappi-signature',
   [DeliveryPlatformCode.GLOVO]: 'x-glovo-signature',
-  [DeliveryPlatformCode.PEDIDOSYA]: 'x-py-signature',
+  [DeliveryPlatformCode.PEDIDOSYA]: 'x-peya-token',
   [DeliveryPlatformCode.UBEREATS]: 'x-uber-signature',
 };
 

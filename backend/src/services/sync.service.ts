@@ -271,7 +271,20 @@ export class SyncService {
         tempToRealId: Map<string, number>,
         context: AuditContext
     ): Promise<void> {
-        const realOrderId = tempToRealId.get(pendingPayment.tempOrderId);
+        let realOrderId: number | undefined;
+
+        // Handle real_ prefix: payment references an existing server order directly
+        if (pendingPayment.tempOrderId.startsWith('real_')) {
+            const parsedId = parseInt(pendingPayment.tempOrderId.replace('real_', ''), 10);
+            if (isNaN(parsedId)) {
+                throw new ValidationError(
+                    `Invalid real order ID format: ${pendingPayment.tempOrderId}`
+                );
+            }
+            realOrderId = parsedId;
+        } else {
+            realOrderId = tempToRealId.get(pendingPayment.tempOrderId);
+        }
 
         if (!realOrderId) {
             throw new ValidationError(

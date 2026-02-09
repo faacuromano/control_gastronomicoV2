@@ -44,92 +44,181 @@ export const KitchenPage: React.FC = () => {
   // Socket events
   useEffect(() => {
     if (socket && isConnected) {
-        socket.emit('join:kitchen');
-        if (activeStation !== 'ALL') {
-             // Join station-specific room (backend sanitizes the station code)
-             socket.emit('join:kitchen:station', activeStation.toUpperCase());
-        }
-
-        socket.on('kitchen:order_new', (newOrder) => {
-            setOrders(prev => [...prev, newOrder]);
-            if (soundEnabled) playSuccessSound();
+        console.log('[KDS] Socket connected!', {
+            socketId: socket.id,
+            connected: socket.connected,
+            activeStation
         });
 
+        // Debug: Listen for ALL events to verify socket is working
+        socket.onAny((eventName, ...args) => {
+            console.log('[KDS] Event received:', eventName, args);
+        });
+
+        // Siempre unirse a la cocina general para eventos de actualizacion
+        socket.emit('join:kitchen');
+        console.log('[KDS] Emitted join:kitchen');
+
+        // Si hay una estacion especifica, tambien unirse a su room
+        if (activeStation !== 'ALL') {
+             socket.emit('join:kitchen:station', activeStation.toUpperCase());
+             console.log('[KDS] Joined station room:', activeStation.toUpperCase());
+        }
+
+        // Eventos de nueva orden - solo agregar si estamos en vista ALL
+        // Para vistas de estacion, kitchen:items_new manejara la carga
+        socket.on('kitchen:order_new', (newOrder) => {
+            console.log('[KDS] kitchen:order_new received:', newOrder?.id, 'activeStation:', activeStation);
+            if (activeStation === 'ALL') {
+                setOrders(prev => {
+                    if (prev.find(o => o.id === newOrder.id)) return prev;
+                    if (soundEnabled) playSuccessSound();
+                    return [...prev, newOrder];
+                });
+            }
+        });
+
+        // Nuevos items para estaciones - este es el evento principal para vistas filtradas
         socket.on('kitchen:items_new', (payload) => {
-            // Nuevos items para esta estacion - recargar ordenes
+            console.log('[KDS] kitchen:items_new received:', payload?.stationCode, 'orderId:', payload?.orderId, 'activeStation:', activeStation);
             if (activeStation === 'ALL' || payload.stationCode === activeStation) {
+                console.log('[KDS] Reloading orders...');
+                // Recargar para obtener los items filtrados correctamente
                 loadActiveOrders();
                 if (soundEnabled) playSuccessSound();
             }
         });
 
+        // Evento legacy - solo procesar en vista ALL para evitar duplicados
         socket.on('order:new', (newOrder) => {
-             setOrders(prev => {
-                 if (prev.find(o => o.id === newOrder.id)) return prev;
-                 if (soundEnabled) playSuccessSound();
-                 return [...prev, newOrder];
-             });
+            console.log('[KDS] order:new received:', newOrder?.id, 'activeStation:', activeStation);
+            if (activeStation === 'ALL') {
+                setOrders(prev => {
+                    if (prev.find(o => o.id === newOrder.id)) return prev;
+                    if (soundEnabled) playSuccessSound();
+                    return [...prev, newOrder];
+                });
+            }
         });
 
+        // Actualizaciones de orden - mantener items filtrados por estacion
+        // IMPORTANTE: El backend envía la orden completa con TODOS los items,
+        // pero si estamos viendo una estación específica, debemos mantener solo
+        // los items de esa estación (que ya fueron filtrados por el API)
         socket.on('kitchen:order_update', (updatedOrder) => {
-            setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+            console.log('[KDS] kitchen:order_update received:', updatedOrder?.id);
+            setOrders(prev => prev.map(o => {
+                if (o.id !== updatedOrder.id) return o;
+                // Actualizar el status de la orden pero mantener los items filtrados
+                // Solo actualizar items que existen en nuestra vista actual
+                const updatedItems = o.items.map((item: KitchenOrderItem) => {
+                    const serverItem = updatedOrder.items?.find((i: KitchenOrderItem) => i.id === item.id);
+                    return serverItem ? { ...item, status: serverItem.status } : item;
+                });
+                return { ...o, status: updatedOrder.status, items: updatedItems };
+            }));
         });
 
         socket.on('order:update', (updatedOrder) => {
-             setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+            console.log('[KDS] order:update received:', updatedOrder?.id);
+            setOrders(prev => prev.map(o => {
+                if (o.id !== updatedOrder.id) return o;
+                // Mismo tratamiento: mantener items filtrados, actualizar status
+                const updatedItems = o.items.map((item: KitchenOrderItem) => {
+                    const serverItem = updatedOrder.items?.find((i: KitchenOrderItem) => i.id === item.id);
+                    return serverItem ? { ...item, status: serverItem.status } : item;
+                });
+                return { ...o, status: updatedOrder.status, items: updatedItems };
+            }));
+        });
+
+        // Actualización de item individual
+        socket.on('kitchen:item_update', (payload) => {
+            console.log('[KDS] kitchen:item_update received:', payload);
+            setOrders(prev => prev.map(order => {
+                if (order.id !== payload.orderId) return order;
+                return {
+                    ...order,
+                    items: order.items.map((item: KitchenOrderItem) =>
+                        item.id === payload.itemId ? { ...item, status: payload.status } : item
+                    )
+                };
+            }));
         });
 
         return () => {
+            socket.offAny(); // Remove debug listener
             socket.off('kitchen:order_new');
             socket.off('kitchen:items_new');
             socket.off('kitchen:order_update');
             socket.off('order:new');
             socket.off('order:update');
+            socket.off('kitchen:item_update');
         };
     }
   }, [socket, isConnected, activeStation, soundEnabled]);
 
   const loadActiveOrders = async () => {
+      console.log('[KDS] loadActiveOrders called, activeStation:', activeStation);
       setLoading(true);
       try {
           // Pasar codigo de estacion al API (undefined para ALL)
           const stationCode = activeStation === 'ALL' ? undefined : activeStation;
           const data = await orderService.getActiveOrders(stationCode);
+          console.log('[KDS] Loaded orders:', data.length, 'orders');
           setOrders(data);
       } catch (e) {
-          console.error("Failed to load KDS orders", e);
+          console.error("[KDS] Failed to load KDS orders", e);
       } finally {
           setLoading(false);
       }
   };
 
+  // AudioContext persistente para evitar problemas de autoplay
+  const audioContextRef = React.useRef<AudioContext | null>(null);
+
   const playSuccessSound = () => {
      try {
-         // Intentar reproducir el archivo local primero
-         const audio = new Audio('/sounds/bell.mp3');
-         audio.volume = 0.5;
-         audio.play().catch(() => {
-             // Fallback: usar Web Audio API para generar un beep
-             try {
-                 const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-                 const oscillator = audioContext.createOscillator();
-                 const gainNode = audioContext.createGain();
+         // Usar Web Audio API directamente (mas confiable que archivos externos)
+         if (!audioContextRef.current) {
+             audioContextRef.current = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+         }
 
-                 oscillator.connect(gainNode);
-                 gainNode.connect(audioContext.destination);
+         const audioContext = audioContextRef.current;
 
-                 oscillator.frequency.value = 800; // Frecuencia del tono
-                 oscillator.type = 'sine';
-                 gainNode.gain.value = 0.3;
+         // Reanudar si esta suspendido (requiere interaccion previa del usuario)
+         if (audioContext.state === 'suspended') {
+             audioContext.resume();
+         }
 
-                 oscillator.start();
-                 oscillator.stop(audioContext.currentTime + 0.2); // Duracion: 200ms
-             } catch {
-                 // Audio no disponible
-             }
-         });
+         // Crear un sonido de "ding" agradable con dos tonos
+         const now = audioContext.currentTime;
+
+         // Tono principal (campana)
+         const osc1 = audioContext.createOscillator();
+         const gain1 = audioContext.createGain();
+         osc1.connect(gain1);
+         gain1.connect(audioContext.destination);
+         osc1.frequency.value = 880; // A5
+         osc1.type = 'sine';
+         gain1.gain.setValueAtTime(0.3, now);
+         gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+         osc1.start(now);
+         osc1.stop(now + 0.5);
+
+         // Tono secundario (armónico)
+         const osc2 = audioContext.createOscillator();
+         const gain2 = audioContext.createGain();
+         osc2.connect(gain2);
+         gain2.connect(audioContext.destination);
+         osc2.frequency.value = 1320; // E6
+         osc2.type = 'sine';
+         gain2.gain.setValueAtTime(0.15, now);
+         gain2.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+         osc2.start(now);
+         osc2.stop(now + 0.3);
      } catch {
-         // ignore
+         // Audio no disponible en este navegador
      }
   };
 
@@ -167,10 +256,41 @@ export const KitchenPage: React.FC = () => {
       }
   };
 
-  // Sort orders by status (el filtro por estacion ya viene del backend)
-  const pendingOrders = orders.filter(o => o.status === 'PENDING' || o.status === 'OPEN' || o.status === 'CONFIRMED').sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  const prepOrders = orders.filter(o => o.status === 'IN_PREPARATION' || o.status === 'COOKING').sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  const readyOrders = orders.filter(o => o.status === 'READY' || o.status === 'PREPARED').sort((a,b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  // Determinar el estado efectivo de una orden basado en sus items
+  // Cuando vemos una estación específica, el estado debe derivarse de los items visibles
+  const getEffectiveStatus = (order: KitchenOrder): 'pending' | 'cooking' | 'ready' => {
+      const items = order.items;
+      if (items.length === 0) return 'pending';
+
+      // Si todos los items están READY o SERVED, la orden está lista
+      const allReady = items.every(i => i.status === 'READY' || i.status === 'SERVED');
+      if (allReady) return 'ready';
+
+      // Si algún item está COOKING, la orden está en preparación
+      const hasCooking = items.some(i => i.status === 'COOKING');
+      if (hasCooking) return 'cooking';
+
+      // Por defecto, pendiente
+      return 'pending';
+  };
+
+  // Filtrar y ordenar órdenes según estado
+  // Cuando hay estación activa, derivar estado de los items; de lo contrario usar status de orden
+  const categorizeOrder = (order: KitchenOrder): 'pending' | 'cooking' | 'ready' => {
+      if (activeStation !== 'ALL') {
+          // Para vistas filtradas, usar estado efectivo basado en items
+          return getEffectiveStatus(order);
+      }
+      // Para vista "Todos", usar el estado de la orden
+      if (['PENDING', 'OPEN', 'CONFIRMED'].includes(order.status)) return 'pending';
+      if (['IN_PREPARATION', 'COOKING'].includes(order.status)) return 'cooking';
+      if (['READY', 'PREPARED'].includes(order.status)) return 'ready';
+      return 'pending';
+  };
+
+  const pendingOrders = orders.filter(o => categorizeOrder(o) === 'pending').sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const prepOrders = orders.filter(o => categorizeOrder(o) === 'cooking').sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  const readyOrders = orders.filter(o => categorizeOrder(o) === 'ready').sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   if (loading) {
     return (
@@ -254,15 +374,22 @@ export const KitchenPage: React.FC = () => {
 
           {/* Right: Controls */}
           <div className="flex items-center gap-2">
-            {/* Sound Toggle */}
+            {/* Sound Toggle - click to toggle, long-press/double-click to test sound */}
             <button
-              onClick={() => setSoundEnabled(!soundEnabled)}
+              onClick={() => {
+                const newEnabled = !soundEnabled;
+                setSoundEnabled(newEnabled);
+                // Play sound on enable to verify it works (and to satisfy browser interaction requirement)
+                if (newEnabled) {
+                  playSuccessSound();
+                }
+              }}
               className={`p-2 rounded-lg transition-colors ${
                 soundEnabled
                   ? 'bg-primary/10 text-primary'
                   : 'bg-muted text-muted-foreground hover:text-foreground'
               }`}
-              title={soundEnabled ? 'Sonido activado' : 'Sonido desactivado'}
+              title={soundEnabled ? 'Sonido activado (click para desactivar)' : 'Sonido desactivado (click para activar)'}
             >
               {soundEnabled ? <Volume2 className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
             </button>
@@ -312,6 +439,7 @@ export const KitchenPage: React.FC = () => {
                   order={order}
                   onStatusChange={handleStatusChange}
                   onItemChange={handleItemChange}
+                  itemLevelOnly={activeStation !== 'ALL'}
                 />
               </div>
             ))}
@@ -336,6 +464,7 @@ export const KitchenPage: React.FC = () => {
                   order={order}
                   onStatusChange={handleStatusChange}
                   onItemChange={handleItemChange}
+                  itemLevelOnly={activeStation !== 'ALL'}
                 />
               </div>
             ))}
@@ -359,8 +488,10 @@ export const KitchenPage: React.FC = () => {
                 <TicketCard
                   order={order}
                   onStatusChange={handleStatusChange}
+                  onItemChange={handleItemChange}
                   onMarkServed={handleMarkServed}
                   isHistory={false}
+                  itemLevelOnly={activeStation !== 'ALL'}
                 />
               </div>
             ))}

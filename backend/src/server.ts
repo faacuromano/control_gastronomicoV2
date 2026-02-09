@@ -23,6 +23,7 @@ import http from 'http';
 import app from './app';
 import { initSocket } from './lib/socket';
 import { logger } from './utils/logger';
+import { cleanupExpiredRefreshTokens } from './services/auth.service';
 
 const PORT = process.env.PORT || 3001;
 
@@ -55,6 +56,17 @@ if (process.env.REDIS_HOST || process.env.ENABLE_QUEUE_WORKERS === 'true') {
 httpServer.listen(Number(PORT), '0.0.0.0', () => {
     logger.info('Server started', { port: PORT });
     logger.info('WebSocket server initialized');
+
+    // Limpiar refresh tokens expirados cada hora
+    const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+    cleanupExpiredRefreshTokens().catch((err) => {
+        logger.warn('Initial refresh token cleanup failed', { error: err.message });
+    });
+    setInterval(() => {
+        cleanupExpiredRefreshTokens().catch((err) => {
+            logger.warn('Scheduled refresh token cleanup failed', { error: err.message });
+        });
+    }, CLEANUP_INTERVAL_MS);
 });
 
 // =============================================================================

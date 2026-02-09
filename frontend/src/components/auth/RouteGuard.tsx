@@ -28,8 +28,9 @@ export const RouteGuard = ({ permission, flag, children }: RouteGuardProps) => {
         return <Navigate to="/login" replace />;
     }
 
-    // Check Feature Flag
-    if (flag && !features?.[flag]) {
+    // Check Feature Flag — only block if features loaded AND flag is explicitly false.
+    // When features is null (offline, no cache), allow access to prevent breaking navigation.
+    if (flag && features && !features[flag]) {
         return <Navigate to="/" replace />;
     }
 

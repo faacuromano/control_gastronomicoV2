@@ -1,14 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(grep:*)",
+      "Bash(findstr:*)",
       "Bash(npx tsc:*)",
-      "Bash(node:*)",
-      "Bash(dir:*)",
-      "Bash(dir \"D:\\\\Proyectos\\\\control_gastronomicoV2\\\\audit-phase*.md\")"
+      "Bash(npm test:*)",
+      "Bash(pushd:*)",
+      "Bash(npx jest:*)",
+      "Bash(npm run test:unit:*)"
     ]
-  },
-  "enabledPlugins": {
-    "claude-mem@thedotmack": true
   }
 }

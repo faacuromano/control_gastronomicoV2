@@ -11,7 +11,8 @@ import type { OrderItemResponse } from '../../../../services/orderService';
 import { tableService } from '../../../../services/tableService';
 
 import { OpenShiftModal } from '../../../../components/cash/OpenShiftModal';
-import { cashShiftService } from '../../../../services/cashShiftService';
+import { useCashStore } from '../../../../store/cash.store';
+import { isOnline as checkOnline } from '../../../../lib/connectivity';
 
 import { ClientLookup } from '../components/ClientLookup';
 import { DeliveryModal } from '../components/DeliveryModal';
@@ -61,11 +62,16 @@ export const POSPage: React.FC = () => {
   }, [action, orderLoaded]);
 
   const checkShiftStatus = async () => {
-    try {
-        const shift = await cashShiftService.getCurrentShift();
-        setIsShiftOpen(!!shift);
-    } catch (err) {
-        setIsShiftOpen(false);
+    // Use the persisted cash store (survives offline + page reload)
+    const store = useCashStore.getState();
+
+    if (checkOnline()) {
+        // Online: refresh from server, store auto-persists
+        await store.checkShiftStatus();
+        setIsShiftOpen(!!useCashStore.getState().shift);
+    } else {
+        // Offline: use the persisted shift from last online check
+        setIsShiftOpen(!!store.shift);
     }
   };
 

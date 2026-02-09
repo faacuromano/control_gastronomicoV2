@@ -1,7 +1,8 @@
 
 import api from '../lib/api';
-import { offlineDb, type PendingOrderItem } from '../lib/offlineDb';
+import { offlineDb, type PendingOrderItem, type PendingPayment } from '../lib/offlineDb';
 import { isOnline } from '../lib/connectivity';
+import { useCashStore } from '../store/cash.store';
 
 /**
  * Order item as returned from the API
@@ -69,6 +70,9 @@ export interface CreateOrderData {
     discount?: number;
 }
 
+// Double-click guard: prevents duplicate order creation
+let _creatingOrder = false;
+
 export const orderService = {
     /**
      * Create order - with offline fallback
@@ -76,6 +80,19 @@ export const orderService = {
      * If offline: stores in IndexedDB queue
      */
     create: async (data: CreateOrderData): Promise<OrderResponse> => {
+        if (_creatingOrder) {
+            throw new Error('Ya se está procesando una orden. Por favor espera.');
+        }
+        _creatingOrder = true;
+        try {
+            return await orderService._createInternal(data);
+        } finally {
+            _creatingOrder = false;
+        }
+    },
+
+    /** @internal Actual creation logic, guarded by _creatingOrder flag */
+    _createInternal: async (data: CreateOrderData): Promise<OrderResponse> => {
         // Try online first
         if (isOnline()) {
             try {
@@ -95,6 +112,9 @@ export const orderService = {
         console.log('[OrderService] Creating order offline');
         const tempId = offlineDb.generateTempId();
         
+        // Get the persisted shift ID so backend can associate the order
+        const currentShift = useCashStore.getState().shift;
+
         const pendingOrder = {
             tempId,
             items: data.items.map(item => ({
@@ -107,11 +127,25 @@ export const orderService = {
             channel: data.channel || 'POS',
             tableId: data.tableId,
             clientId: data.clientId,
+            shiftId: currentShift?.id,
             createdAt: new Date(),
             status: 'pending' as const
         };
 
         await offlineDb.pendingOrders.add(pendingOrder);
+
+        // Also queue any payments included with the order
+        if (data.payments && data.payments.length > 0) {
+            for (const payment of data.payments) {
+                await offlineDb.pendingPayments.add({
+                    tempOrderId: tempId,
+                    method: payment.method as PendingPayment['method'],
+                    amount: payment.amount,
+                    createdAt: new Date(),
+                    status: 'pending'
+                });
+            }
+        }
 
         // Return a fake response for UI
         const offlineResponse: OrderResponse = {
@@ -185,11 +219,49 @@ export const orderService = {
 
     /**
      * Add payments to an existing order (used for table checkout).
-     * Calls POST /orders/:id/payments
+     * Calls POST /orders/:id/payments - with offline fallback.
      */
     addPayments: async (orderId: number, payments: { method: string; amount: number }[], closeOrder = true): Promise<OrderResponse> => {
-        const response = await api.post(`/orders/${orderId}/payments`, { payments, closeOrder });
-        return response.data.data;
+        // Try online first
+        if (isOnline()) {
+            try {
+                const response = await api.post(`/orders/${orderId}/payments`, { payments, closeOrder });
+                return response.data.data;
+            } catch (error: unknown) {
+                // If network error, fall through to offline mode
+                if (error && typeof error === 'object' && 'response' in error && (error as Record<string, unknown>).response) {
+                    throw error; // Re-throw API errors (validation, etc.)
+                }
+                console.warn('[OrderService] Network error on payment, falling back to offline mode');
+            }
+        }
+
+        // Offline mode: queue payments in IndexedDB
+        console.log('[OrderService] Queueing payment offline for order', orderId);
+        for (const payment of payments) {
+            await offlineDb.pendingPayments.add({
+                // real_ prefix tells sync that this references an existing server order ID
+                tempOrderId: `real_${orderId}`,
+                method: payment.method as PendingPayment['method'],
+                amount: payment.amount,
+                createdAt: new Date(),
+                status: 'pending'
+            });
+        }
+
+        // Return a synthetic response so UI can continue
+        return {
+            id: orderId,
+            orderNumber: 0,
+            channel: 'POS',
+            status: 'PENDING',
+            paymentStatus: 'PENDING',
+            subtotal: '0',
+            total: '0',
+            createdAt: new Date().toISOString(),
+            items: [],
+            isOffline: true
+        };
     },
 
     /**

@@ -46,7 +46,7 @@ export async function getTenantConfig(tenantId: number): Promise<TenantConfig> {
                 businessName: 'Mi Negocio',
                 enableStock: true,
                 enableDelivery: false,
-                enableKDS: false,
+                enableKDS: true,
                 enableFiscal: false,
                 enableDigital: false,
                 currencySymbol: '$'

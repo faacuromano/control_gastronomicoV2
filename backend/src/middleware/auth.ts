@@ -20,6 +20,8 @@ import jwt from 'jsonwebtoken';
 import { sendError } from '../utils/response';
 import type { JwtPayload, Permissions } from '../types/express-extensions';
 import { logger } from '../utils/logger';
+import { JWT_ISSUER, JWT_AUDIENCE } from '../services/auth.service';
+import { prisma } from '../lib/prisma';
 
 // ============================================================================
 // CONFIGURACION
@@ -112,7 +114,7 @@ export const authenticateToken = (req: Request, res: Response, next: NextFunctio
 
     // FIX P1-003: Algoritmo explicito para prevenir el ataque "alg: none"
     // donde un atacante envia un token sin firma y el servidor lo acepta
-    return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }, (err, decoded) => {
+    return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'], issuer: JWT_ISSUER, audience: JWT_AUDIENCE }, (err, decoded) => {
         if (err) {
             logger.debug('Auth failed: invalid token', {
                 error: err.message,
@@ -176,7 +178,7 @@ export const authorize = (allowedRoles: string[]) => {
  * @param action - Accion intentada sobre el recurso (ej: 'create', 'delete')
  */
 export const requirePermission = (resource: string, action: string) => {
-    return (req: Request, res: Response, next: NextFunction) => {
+    return async (req: Request, res: Response, next: NextFunction) => {
         if (!req.user) {
             return sendError(res, 'AUTH_REQUIRED', 'No autenticado', null, 401);
         }
@@ -186,9 +188,22 @@ export const requirePermission = (resource: string, action: string) => {
             return next();
         }
 
-        const permissions: Permissions | undefined = req.user.permissions;
+        let permissions: Permissions | undefined = req.user.permissions;
 
-        // Si no se encontraron permisos en el token/usuario, denegar acceso
+        // Fallback a BD si los permisos no están en el JWT (omitidos por tamaño)
+        if (!permissions) {
+            const role = await prisma.role.findFirst({
+                where: { name: req.user.role, tenantId: req.user.tenantId },
+                select: { permissions: true }
+            });
+            if (role?.permissions && typeof role.permissions === 'object') {
+                permissions = role.permissions as Permissions;
+                // Cache en req.user para evitar queries repetidas en la misma request
+                req.user.permissions = permissions;
+            }
+        }
+
+        // Si no se encontraron permisos ni en el token ni en la BD, denegar acceso
         if (!permissions) {
             return sendError(res, 'AUTH_INVALID', 'El usuario no tiene permisos asignados', null, 403);
         }

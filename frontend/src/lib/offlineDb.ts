@@ -114,18 +114,28 @@ export class OfflineDatabase extends Dexie {
 
     constructor() {
         super('PentiumPOS');
-        
+
         this.version(1).stores({
             // Cached data - indexed by id for lookups
             products: 'id, categoryId, name',
             categories: 'id, name',
             printerRouting: 'categoryId, printerId',
-            
+
             // Pending operations - auto-increment localId
             pendingOrders: '++localId, tempId, status',
             pendingPayments: '++localId, tempOrderId, status',
-            
+
             // Metadata - key is primary
+            syncStatus: 'key'
+        });
+
+        // v2: Add createdAt index for cleanup queries
+        this.version(2).stores({
+            products: 'id, categoryId, name',
+            categories: 'id, name',
+            printerRouting: 'categoryId, printerId',
+            pendingOrders: '++localId, tempId, status, createdAt',
+            pendingPayments: '++localId, tempOrderId, status, createdAt',
             syncStatus: 'key'
         });
     }
@@ -230,6 +240,107 @@ export class OfflineDatabase extends Dexie {
             .where('tempId')
             .equals(tempId)
             .modify({ status: 'error', errorMessage });
+    }
+
+    /**
+     * Get the syncToken stored from last pull
+     */
+    async getSyncToken(): Promise<string | null> {
+        const record = await this.syncStatus.get('syncToken');
+        return record?.value ?? null;
+    }
+
+    /**
+     * Get the last sync timestamp
+     */
+    async getLastSyncTime(): Promise<string | null> {
+        const record = await this.syncStatus.get('lastSync');
+        return record?.value ?? null;
+    }
+
+    /**
+     * Mark payments as synced
+     */
+    async markPaymentsSynced(tempOrderIds: string[]) {
+        await this.pendingPayments
+            .where('tempOrderId')
+            .anyOf(tempOrderIds)
+            .modify({ status: 'synced' });
+    }
+
+    /**
+     * Mark payment as error
+     */
+    async markPaymentError(tempOrderId: string, errorMessage: string) {
+        await this.pendingPayments
+            .where('tempOrderId')
+            .equals(tempOrderId)
+            .modify({ status: 'error', errorMessage });
+    }
+
+    /**
+     * Delete synced orders and payments older than maxAgeMs (default 24h).
+     * Returns total number of records cleaned up.
+     */
+    async cleanupSyncedRecords(maxAgeMs = 86_400_000): Promise<number> {
+        const cutoff = new Date(Date.now() - maxAgeMs);
+        let cleaned = 0;
+
+        const oldOrders = await this.pendingOrders
+            .where('status')
+            .equals('synced')
+            .filter(o => o.createdAt < cutoff)
+            .primaryKeys();
+
+        if (oldOrders.length > 0) {
+            await this.pendingOrders.bulkDelete(oldOrders);
+            cleaned += oldOrders.length;
+        }
+
+        const oldPayments = await this.pendingPayments
+            .where('status')
+            .equals('synced')
+            .filter(p => p.createdAt < cutoff)
+            .primaryKeys();
+
+        if (oldPayments.length > 0) {
+            await this.pendingPayments.bulkDelete(oldPayments);
+            cleaned += oldPayments.length;
+        }
+
+        if (cleaned > 0) {
+            console.log(`[OfflineDB] Cleaned up ${cleaned} synced records older than ${maxAgeMs}ms`);
+        }
+        return cleaned;
+    }
+
+    /**
+     * Reset error orders back to pending for retry.
+     * Returns number of orders reset.
+     */
+    async resetErrorOrders(): Promise<number> {
+        const errorOrders = await this.pendingOrders
+            .where('status')
+            .equals('error')
+            .toArray();
+
+        if (errorOrders.length === 0) return 0;
+
+        await this.pendingOrders
+            .where('status')
+            .equals('error')
+            .modify({ status: 'pending', errorMessage: undefined });
+
+        // Also reset associated payments
+        const errorTempIds = errorOrders.map(o => o.tempId);
+        await this.pendingPayments
+            .where('tempOrderId')
+            .anyOf(errorTempIds)
+            .and(p => p.status === 'error')
+            .modify({ status: 'pending', errorMessage: undefined });
+
+        console.log(`[OfflineDB] Reset ${errorOrders.length} error orders to pending`);
+        return errorOrders.length;
     }
 
     /**

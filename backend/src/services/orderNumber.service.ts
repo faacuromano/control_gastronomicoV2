@@ -70,9 +70,13 @@ export class OrderNumberService {
     const generatedUuid = crypto.randomUUID();
 
     // 1. Formatear fecha para la clave: YYYYMMDD
-    const yyyy = businessDate.getFullYear();
-    const mm = String(businessDate.getMonth() + 1).padStart(2, '0');
-    const dd = String(businessDate.getDate()).padStart(2, '0');
+    // FIX: Usar metodos UTC para evitar desplazamiento de timezone.
+    // Prisma devuelve fechas DATE como UTC midnight, pero getFullYear()/getMonth()/getDate()
+    // usan timezone local, lo que puede resultar en el dia anterior si el servidor
+    // esta en un timezone negativo (ej: UTC-3).
+    const yyyy = businessDate.getUTCFullYear();
+    const mm = String(businessDate.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(businessDate.getUTCDate()).padStart(2, '0');
     const dateStr = `${yyyy}${mm}${dd}`;
 
     // 2. Construir clave de secuencia unica por tenant y fecha

@@ -38,7 +38,16 @@ export class OrderKitchenService {
     async updateItemStatus(itemId: number, status: 'PENDING' | 'COOKING' | 'READY' | 'SERVED', tenantId: number) {
         // Verificar que el item pertenezca al tenant antes de actualizar
         const existing = await prisma.orderItem.findFirst({
-            where: { id: itemId, tenantId }
+            where: { id: itemId, tenantId },
+            include: {
+                order: true,
+                product: {
+                    include: {
+                        kdsStation: true,
+                        category: { include: { kdsStation: true } }
+                    }
+                }
+            }
         });
         if (!existing) throw new NotFoundError('Order item');
 
@@ -49,7 +58,21 @@ export class OrderKitchenService {
             include: { order: true }
         });
 
-        // Transmitir actualizacion al KDS via WebSocket
+        // Resolver la estación del item para emitir evento específico
+        const stationCode =
+            existing.product?.kdsStation?.code ??
+            existing.product?.category?.kdsStation?.code ??
+            'KITCHEN';
+
+        // Emitir actualizacion de item específico a la estación correspondiente
+        kdsService.broadcastItemUpdateToStation(tenantId, stationCode, {
+            itemId,
+            orderId: item.orderId,
+            orderNumber: item.order.orderNumber,
+            status
+        });
+
+        // También transmitir la orden completa para actualizar el estado general
         const fullOrder = await this.getOrderWithRelations(item.orderId, tenantId);
         if (fullOrder) {
             kdsService.broadcastOrderUpdate(fullOrder);

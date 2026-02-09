@@ -26,12 +26,14 @@ import { logger } from '../utils/logger';
 // =============================================================================
 // CONSTANTES DE SEGURIDAD
 // =============================================================================
-export const BCRYPT_SALT_ROUNDS = 10;
+export const BCRYPT_SALT_ROUNDS = 12;
 
 // =============================================================================
 // VALIDACIÓN DEL SECRETO JWT
 // =============================================================================
 const JWT_SECRET = process.env.JWT_SECRET;
+export const JWT_ISSUER = 'pentiumpos';
+export const JWT_AUDIENCE = 'pentiumpos-api';
 
 // SEGURIDAD: El servidor no puede arrancar sin un secreto JWT configurado
 if (!JWT_SECRET) {
@@ -200,20 +202,38 @@ const resetFailedAttempts = async (userId: number): Promise<void> => {
 };
 
 /**
+ * Tamaño máximo seguro para el payload de permisos en el JWT (en bytes).
+ * Los cookies tienen un límite de ~4KB. Reservamos espacio para el resto del payload
+ * (id, role, name, tenantId, iss, aud, iat, exp) y overhead de firma JWT.
+ */
+const MAX_PERMISSIONS_SIZE_BYTES = 2048;
+
+/**
  * Genera un token JWT con los datos del usuario autenticado.
  * Incluye tenantId en el payload para aislamiento multi-inquilino en cada request.
+ *
+ * Si el objeto de permisos excede MAX_PERMISSIONS_SIZE_BYTES, se omite del token
+ * para evitar superar el límite de 4KB de las cookies. En ese caso, el middleware
+ * requirePermission consultará la BD como fallback.
  */
 const generateToken = (user: { id: number; name: string; tenantId: number; role: { name: string; permissions: unknown } }, expiresIn: string): string => {
+    const permissions = user.role.permissions || {};
+    const permissionsSize = Buffer.byteLength(JSON.stringify(permissions), 'utf8');
+
+    if (permissionsSize > MAX_PERMISSIONS_SIZE_BYTES) {
+        logger.warn(`[AUTH] Permissions for role "${user.role.name}" exceed ${MAX_PERMISSIONS_SIZE_BYTES}B (${permissionsSize}B). Omitting from JWT; will use DB fallback.`);
+    }
+
     const payload = {
         id: user.id,
         role: user.role.name,
         name: user.name,
         tenantId: user.tenantId,
-        permissions: user.role.permissions || {}
+        permissions: permissionsSize <= MAX_PERMISSIONS_SIZE_BYTES ? permissions : undefined
     };
 
     // JWT_SECRET se valida al arranque del servidor, por lo que es seguro hacer assert aquí
-    return jwt.sign(payload, JWT_SECRET!, { expiresIn } as jwt.SignOptions);
+    return jwt.sign(payload, JWT_SECRET!, { expiresIn, issuer: JWT_ISSUER, audience: JWT_AUDIENCE } as jwt.SignOptions);
 };
 
 // =============================================================================
@@ -325,6 +345,24 @@ export const revokeRefreshTokens = async (userId: number, tenantId: number): Pro
     await prisma.refreshToken.deleteMany({
         where: { userId, tenantId }
     });
+};
+
+// =============================================================================
+// LIMPIEZA DE REFRESH TOKENS EXPIRADOS
+// =============================================================================
+
+/**
+ * Elimina todos los refresh tokens expirados de la base de datos.
+ * Debe ejecutarse periódicamente para evitar acumulación de filas muertas.
+ */
+export const cleanupExpiredRefreshTokens = async (): Promise<number> => {
+    const result = await prisma.refreshToken.deleteMany({
+        where: { expiresAt: { lt: new Date() } }
+    });
+    if (result.count > 0) {
+        logger.info(`[AUTH] Cleaned up ${result.count} expired refresh tokens`);
+    }
+    return result.count;
 };
 
 // =============================================================================

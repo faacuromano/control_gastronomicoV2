@@ -294,7 +294,17 @@ export class KDSService {
     async broadcastNewOrderWithStations(order: KDSOrder) {
         try {
             const io = getIO();
-            if (!io) return;
+            if (!io) {
+                logger.warn('[KDS] Socket.IO not available, skipping broadcast');
+                return;
+            }
+
+            logger.info('[KDS] broadcastNewOrderWithStations called', {
+                orderId: order.id,
+                orderNumber: order.orderNumber,
+                tenantId: order.tenantId,
+                itemCount: order.items?.length || 0
+            });
 
             if (!order.tenantId) {
                 logger.error('broadcastNewOrderWithStations called without tenantId', { orderId: order.id });
@@ -347,14 +357,18 @@ export class KDSService {
                     timestamp
                 };
 
-                // Emitir a la estacion especifica
-                io.to(`tenant:${tenantId}:kitchen:station:${stationCode}`).emit('kitchen:items_new', stationPayload);
-
-                logger.debug('Broadcasted items to KDS station', {
+                const stationRoom = `tenant:${tenantId}:kitchen:station:${stationCode}`;
+                logger.info(`[KDS] Emitting kitchen:items_new to room: ${stationRoom}`, {
                     orderNumber: order.orderNumber,
                     stationCode,
                     itemCount: stationItems.length
                 });
+
+                // Emitir a la estacion especifica
+                io.to(stationRoom).emit('kitchen:items_new', stationPayload);
+
+                // También emitir a la cocina general para que reciba todas las estaciones
+                io.to(`tenant:${tenantId}:kitchen`).emit('kitchen:items_new', stationPayload);
             }
 
             // Enviar orden completa a la cocina general (para vista "Todos")
@@ -364,10 +378,25 @@ export class KDSService {
                 timestamp
             };
 
-            io.to(`tenant:${tenantId}:kitchen`).emit('kitchen:order_new', fullPayload);
-            io.to(`tenant:${tenantId}:kitchen`).emit('order:new', fullPayload); // Legacy
+            const kitchenRoom = `tenant:${tenantId}:kitchen`;
 
-            logger.info('Broadcasted new order to KDS with station routing', {
+            // Debug: Check how many clients are in the room
+            const roomSockets = io.sockets.adapter.rooms.get(kitchenRoom);
+            const clientCount = roomSockets ? roomSockets.size : 0;
+
+            logger.info(`[KDS] Emitting kitchen:order_new to room: ${kitchenRoom}`, {
+                orderNumber: order.orderNumber,
+                orderId: order.id,
+                itemCount: items.length,
+                clientsInRoom: clientCount
+            });
+
+            io.to(kitchenRoom).emit('kitchen:order_new', fullPayload);
+            io.to(kitchenRoom).emit('order:new', fullPayload); // Legacy
+
+            logger.info(`[KDS] Events emitted successfully to ${clientCount} clients`);
+
+            logger.info('[KDS] Broadcasted new order to KDS with station routing', {
                 orderNumber: order.orderNumber,
                 tenantId,
                 stations: Array.from(itemsByStation.keys()),

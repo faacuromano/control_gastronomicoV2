@@ -40,6 +40,7 @@ const envSchema = z.object({
     RAPPI_HMAC_SECRET: z.string().optional(),
     GLOVO_HMAC_SECRET: z.string().optional(),
     PEDIDOSYA_HMAC_SECRET: z.string().optional(),
+    PEDIDOSYA_CLIENT_ID: z.string().optional(),
 });
 
 /**

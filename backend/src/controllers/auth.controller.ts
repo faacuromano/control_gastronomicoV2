@@ -12,6 +12,7 @@
  */
 
 import { Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import { AuditAction } from '@prisma/client';
 import { loginWithPin, register, loginWithPassword, registerTenant, createRefreshToken, refreshAccessToken, revokeRefreshTokens } from '../services/auth.service';
 import { sendSuccess, sendError } from '../utils/response';
@@ -364,10 +365,25 @@ export const logoutUser = asyncHandler(async (req: Request, res: Response) => {
     // Limpiar cookies de autenticación y refresh
     clearAuthCookie(res);
 
+    // Best-effort: try to extract user from token for audit/revocation.
+    // If token is expired or missing, we still clear cookies and return 200.
+    let user = req.user;
+    if (!user) {
+        try {
+            const token = req.cookies?.[AUTH_COOKIE_NAME]
+                || req.headers['authorization']?.split('Bearer ')[1];
+            if (token && process.env.JWT_SECRET) {
+                user = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] }) as typeof req.user;
+            }
+        } catch {
+            // Token invalid/expired — that's fine, just skip revocation
+        }
+    }
+
     // Revocar todos los refresh tokens del usuario en BD
-    if (req.user) {
-        await revokeRefreshTokens(req.user.id, req.user.tenantId);
-        await auditService.logAuth('LOGOUT', req.user.id, getAuditContext(req), {
+    if (user) {
+        await revokeRefreshTokens(user.id, user.tenantId);
+        await auditService.logAuth('LOGOUT', user.id, getAuditContext(req), {
             authMethod: 'COOKIE'
         });
     }

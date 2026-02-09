@@ -35,18 +35,98 @@ interface TicketCardProps {
     onItemChange?: (itemId: number, status: string) => void;
     onMarkServed?: (orderId: number) => void;
     isHistory?: boolean;
+    /** Cuando true, solo muestra controles a nivel de item (para vistas filtradas por estación) */
+    itemLevelOnly?: boolean;
 }
+
+/** Acciones a nivel de item para vistas filtradas por estación */
+const ItemLevelActions: React.FC<{
+    order: KitchenOrder;
+    onItemChange?: (itemId: number, status: string) => void;
+}> = ({ order, onItemChange }) => {
+    if (!onItemChange) return null;
+
+    const pendingItems = order.items.filter(i => i.status === 'PENDING');
+    const cookingItems = order.items.filter(i => i.status === 'COOKING');
+    const allReady = order.items.every(i => i.status === 'READY' || i.status === 'SERVED');
+
+    // Marcar todos los pendientes como COOKING
+    const handleStartAll = () => {
+        pendingItems.forEach(item => onItemChange(item.id, 'COOKING'));
+    };
+
+    // Marcar todos los cooking como READY
+    const handleReadyAll = () => {
+        cookingItems.forEach(item => onItemChange(item.id, 'READY'));
+    };
+
+    if (allReady) {
+        return (
+            <div className="flex items-center justify-center gap-2 text-emerald-600 py-2">
+                <Check className="w-4 h-4" />
+                <span className="text-sm font-medium">Items listos</span>
+            </div>
+        );
+    }
+
+    if (pendingItems.length > 0) {
+        return (
+            <button
+                onClick={handleStartAll}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
+            >
+                <ChefHat className="w-4 h-4" />
+                Comenzar ({pendingItems.length})
+            </button>
+        );
+    }
+
+    if (cookingItems.length > 0) {
+        return (
+            <button
+                onClick={handleReadyAll}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
+            >
+                <Check className="w-4 h-4" />
+                Listo ({cookingItems.length})
+            </button>
+        );
+    }
+
+    return null;
+};
 
 export const TicketCard: React.FC<TicketCardProps> = ({
     order,
     onStatusChange,
     onItemChange,
     onMarkServed,
-    isHistory = false
+    isHistory = false,
+    itemLevelOnly = false
 }) => {
-    const isPending = ['PENDING', 'OPEN', 'CONFIRMED'].includes(order.status);
-    const isCooking = ['IN_PREPARATION', 'COOKING'].includes(order.status);
-    const isReady = ['READY', 'PREPARED'].includes(order.status);
+    // Cuando itemLevelOnly, derivar el estado visual desde los items
+    // en lugar del status de la orden (que puede incluir items de otras estaciones)
+    const getEffectiveStatus = (): 'pending' | 'cooking' | 'ready' => {
+        if (!itemLevelOnly) {
+            // Modo normal: usar status de la orden
+            if (['PENDING', 'OPEN', 'CONFIRMED'].includes(order.status)) return 'pending';
+            if (['IN_PREPARATION', 'COOKING'].includes(order.status)) return 'cooking';
+            return 'ready';
+        }
+        // Modo item-level: derivar de items visibles
+        const items = order.items;
+        if (items.length === 0) return 'pending';
+        const allReady = items.every(i => i.status === 'READY' || i.status === 'SERVED');
+        if (allReady) return 'ready';
+        const hasCooking = items.some(i => i.status === 'COOKING');
+        if (hasCooking) return 'cooking';
+        return 'pending';
+    };
+
+    const effectiveStatus = getEffectiveStatus();
+    const isPending = effectiveStatus === 'pending';
+    const isCooking = effectiveStatus === 'cooking';
+    const isReady = effectiveStatus === 'ready';
     const isDelivery = order.channel === 'DELIVERY_APP' || !!order.deliveryAddress;
 
     // Status-based styling - Clean light theme
@@ -68,8 +148,7 @@ export const TicketCard: React.FC<TicketCardProps> = ({
         },
     };
 
-    const status = isPending ? 'pending' : isCooking ? 'cooking' : 'ready';
-    const styles = statusStyles[status];
+    const styles = statusStyles[effectiveStatus];
 
     return (
         <div
@@ -189,57 +268,64 @@ export const TicketCard: React.FC<TicketCardProps> = ({
             {/* Footer Actions */}
             {!isHistory && (
                 <div className="p-2 border-t border-border bg-muted/30 mt-auto">
-                    {isPending && (
-                        <button
-                            onClick={() => onStatusChange(order.id, 'IN_PREPARATION')}
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
-                        >
-                            <ChefHat className="w-4 h-4" />
-                            Comenzar
-                        </button>
-                    )}
-
-                    {isCooking && (
-                        <button
-                            onClick={() => onStatusChange(order.id, 'PREPARED')}
-                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
-                        >
-                            <Check className="w-4 h-4" />
-                            Listo
-                        </button>
-                    )}
-
-                    {isReady && (
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => onStatusChange(order.id, 'IN_PREPARATION')}
-                                className="p-2.5 rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
-                                title="Volver a cocina"
-                            >
-                                <RefreshCcw className="w-4 h-4" />
-                            </button>
-
-                            {isDelivery ? (
-                                <div className="flex-1 bg-emerald-100 text-emerald-700 text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2">
-                                    <Check className="w-4 h-4" />
-                                    Listo despacho
-                                </div>
-                            ) : (
+                    {/* Modo item-level: muestra botones para marcar items de esta estación */}
+                    {itemLevelOnly ? (
+                        <ItemLevelActions order={order} onItemChange={onItemChange} />
+                    ) : (
+                        <>
+                            {isPending && (
                                 <button
-                                    onClick={() => {
-                                        if (onMarkServed) {
-                                            onMarkServed(order.id);
-                                        } else {
-                                            onStatusChange(order.id, 'DELIVERED');
-                                        }
-                                    }}
-                                    className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                                    onClick={() => onStatusChange(order.id, 'IN_PREPARATION')}
+                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
                                 >
-                                    <Send className="w-4 h-4" />
-                                    Entregar
+                                    <ChefHat className="w-4 h-4" />
+                                    Comenzar
                                 </button>
                             )}
-                        </div>
+
+                            {isCooking && (
+                                <button
+                                    onClick={() => onStatusChange(order.id, 'PREPARED')}
+                                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                                >
+                                    <Check className="w-4 h-4" />
+                                    Listo
+                                </button>
+                            )}
+
+                            {isReady && (
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => onStatusChange(order.id, 'IN_PREPARATION')}
+                                        className="p-2.5 rounded-lg bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                                        title="Volver a cocina"
+                                    >
+                                        <RefreshCcw className="w-4 h-4" />
+                                    </button>
+
+                                    {isDelivery ? (
+                                        <div className="flex-1 bg-emerald-100 text-emerald-700 text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2">
+                                            <Check className="w-4 h-4" />
+                                            Listo despacho
+                                        </div>
+                                    ) : (
+                                        <button
+                                            onClick={() => {
+                                                if (onMarkServed) {
+                                                    onMarkServed(order.id);
+                                                } else {
+                                                    onStatusChange(order.id, 'DELIVERED');
+                                                }
+                                            }}
+                                            className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold py-2.5 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                                        >
+                                            <Send className="w-4 h-4" />
+                                            Entregar
+                                        </button>
+                                    )}
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
             )}

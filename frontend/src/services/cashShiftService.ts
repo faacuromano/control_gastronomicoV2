@@ -65,8 +65,13 @@ export const cashShiftService = {
         try {
             const response = await axios.get(`${API_URL}/current`);
             return response.data.data;
-        } catch (error) {
-            return null;
+        } catch (error: unknown) {
+            // If server responded with 404 = no active shift, return null
+            if (error && typeof error === 'object' && 'response' in error) {
+                return null;
+            }
+            // Network error (offline) — throw so caller can distinguish
+            throw error;
         }
     },
 

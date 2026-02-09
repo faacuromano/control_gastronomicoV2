@@ -66,8 +66,12 @@ api.interceptors.response.use(
         switch (status) {
             case 401:
                 // Unauthorized - clear auth state and redirect to login
-                useAuthStore.getState().logout();
-                clearFeatureFlagsCache();
+                // Skip for logout requests to prevent infinite loop:
+                // logout() calls /auth/logout → 401 → interceptor calls logout() → loop
+                if (!error.config?.url?.includes('/auth/logout')) {
+                    useAuthStore.getState().logout();
+                    clearFeatureFlagsCache();
+                }
                 break;
                 
             case 403:
@@ -119,6 +123,14 @@ function getUserFriendlyMessage(
         case 503: return 'Servicio temporalmente no disponible.';
         default: return 'Ha ocurrido un error inesperado.';
     }
+}
+
+// Conditionally attach dummy API interceptor for offline mock testing
+if (import.meta.env.VITE_OFFLINE_MOCK === 'true') {
+    import('./dummyApiInterceptor').then(({ attachDummyInterceptor }) => {
+        attachDummyInterceptor(api);
+        console.log('[API] Dummy API interceptor attached (VITE_OFFLINE_MOCK=true)');
+    });
 }
 
 export default api;

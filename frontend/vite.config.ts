@@ -9,6 +9,9 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       includeAssets: ['favicon.ico', 'icons/*.png'],
       manifest: {
         name: 'PentiumPOS',
@@ -30,31 +33,10 @@ export default defineConfig({
           }
         ]
       },
-      workbox: {
-        // Cache API calls with stale-while-revalidate
-        runtimeCaching: [
-          {
-            urlPattern: /\/api\/v1\/sync\/pull/,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'sync-cache',
-              expiration: {
-                maxAgeSeconds: 60 * 60 * 24 // 24 hours
-              }
-            }
-          },
-          {
-            urlPattern: /\/api\/v1\/(products|categories|modifiers)/,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'api-cache',
-              expiration: {
-                maxAgeSeconds: 60 * 60 // 1 hour
-              }
-            }
-          }
-        ]
-      }
+      injectManifest: {
+        // Increase the default max file size for precaching
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
+      },
     })
   ],
   resolve: {
@@ -63,4 +45,3 @@ export default defineConfig({
     },
   },
 })
-
