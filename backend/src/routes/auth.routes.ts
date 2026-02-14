@@ -13,11 +13,17 @@
  */
 
 import { Router } from 'express';
+import express from 'express';
 import { loginPin, loginUser, registerUser, logoutUser, registerNewTenant, resolveTenant, refreshTokenHandler } from '../controllers/auth.controller';
 import { authRateLimiter } from '../middleware/rateLimit';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requirePermission } from '../middleware/auth';
 
 const router = Router();
+
+// SEC-P4-02: Stricter body size limit for auth endpoints.
+// Auth payloads are small (PIN=6 chars, email+password ~200 chars).
+// A 16KB limit prevents abuse while accommodating all valid auth requests.
+const authBodyLimit = express.json({ limit: '16kb' });
 
 // Público: Resolver tenant por código de negocio (usado en la página de login para
 // identificar a qué empresa pertenece el usuario antes de autenticarse)
@@ -25,14 +31,14 @@ router.get('/tenant/:code', authRateLimiter, resolveTenant);
 
 // Endpoints de login protegidos con rate limiting para evitar ataques de fuerza bruta.
 // Login por PIN: flujo rápido para meseros y cajeros en el punto de venta
-router.post('/login/pin', authRateLimiter, loginPin);
+router.post('/login/pin', authBodyLimit, authRateLimiter, loginPin);
 // Login por email/contraseña: flujo estándar para administradores y managers
-router.post('/login', authRateLimiter, loginUser);
-// SEC-AUD-002: Registro de nuevo usuario — requiere autenticación para evitar que
-// un atacante registre usuarios en cualquier tenant usando tenantId del body
-router.post('/register', authRateLimiter, authenticateToken, registerUser);
+router.post('/login', authBodyLimit, authRateLimiter, loginUser);
+// SEC-AUD-002: Registro de nuevo usuario — requiere autenticación y permiso users:create
+// para evitar escalación de privilegios (cualquier usuario podría crear un admin sin esto)
+router.post('/register', authBodyLimit, authRateLimiter, authenticateToken, requirePermission('users', 'create'), registerUser);
 // Registro público SaaS: crea un nuevo tenant con su usuario administrador inicial
-router.post('/signup', authRateLimiter, registerNewTenant);
+router.post('/signup', authBodyLimit, authRateLimiter, registerNewTenant);
 
 // Renovación de token usando la cookie refresh_token (no requiere auth_token vigente)
 router.post('/refresh', authRateLimiter, refreshTokenHandler);

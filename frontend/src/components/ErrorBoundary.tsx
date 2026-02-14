@@ -32,7 +32,9 @@ export class ErrorBoundary extends Component<Props, State> {
                 <div style={{ padding: '2rem', textAlign: 'center' }}>
                     <h2>Algo salio mal</h2>
                     <p style={{ color: '#666', marginBottom: '1rem' }}>
-                        {this.state.error?.message || 'Error inesperado'}
+                        {import.meta.env.DEV
+                            ? (this.state.error?.message || 'Error inesperado')
+                            : 'Ha ocurrido un error inesperado. Por favor, recarga la pagina.'}
                     </p>
                     <button
                         onClick={() => {

@@ -51,10 +51,16 @@ export class OrderKitchenService {
         });
         if (!existing) throw new NotFoundError('Order item');
 
-        // SEGURO: findFirst en L25 verifica propiedad del tenant antes del update
-        const item = await prisma.orderItem.update({
-            where: { id: itemId },
-            data: { status },
+        // SEC-P3-01: Include tenantId in WHERE to prevent IDOR cross-tenant manipulation
+        const updateResult = await prisma.orderItem.updateMany({
+            where: { id: itemId, tenantId },
+            data: { status }
+        });
+        if (updateResult.count === 0) {
+            throw new NotFoundError('Order item');
+        }
+        const item = await prisma.orderItem.findFirstOrThrow({
+            where: { id: itemId, tenantId },
             include: { order: true }
         });
 

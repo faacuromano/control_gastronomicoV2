@@ -22,11 +22,24 @@ const globalForPrisma = global as unknown as { prisma: PrismaClient };
 // DB-007: El pool de conexiones se configura via el parametro connection_limit
 // en DATABASE_URL o la variable DB_POOL_SIZE en docker-compose (por defecto 50).
 // Prisma lee connection_limit directamente de la URL de conexion.
+//
+// SEC-P4-04: Recommended DATABASE_URL pool parameters for production:
+//   ?connection_limit=20&pool_timeout=10&connect_timeout=5
+//   - connection_limit: Max connections in pool (default: num_cpus * 2 + 1)
+//   - pool_timeout: Seconds to wait for a free connection before error (default: 10)
+//   - connect_timeout: Seconds to wait for DB connection establishment (default: 5)
 const basePrisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development'
     ? ['warn', 'error']
     : ['error'],
 });
+
+// SEC-P4-04: Default transaction options to prevent slow query DoS.
+// Transactions that exceed 10s timeout are aborted to prevent connection exhaustion.
+export const TRANSACTION_OPTIONS = {
+  maxWait: 5000,  // Max time to acquire a connection from pool (ms)
+  timeout: 10000, // Max transaction duration before automatic rollback (ms)
+} as const;
 
 // =============================================================================
 // FIX P0-DATA-002: Extension de soft-delete para el modelo Order

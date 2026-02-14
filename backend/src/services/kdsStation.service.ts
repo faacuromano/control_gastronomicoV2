@@ -145,7 +145,8 @@ export class KdsStationService {
         }
 
         // Preparar datos de actualización
-        const updateData: Prisma.KdsStationUpdateInput = {};
+        // SEC-P4-REVIEW: Use correct type for updateMany (not UpdateInput which includes relations)
+        const updateData: Prisma.KdsStationUpdateManyMutationInput = {};
         if (data.name !== undefined) updateData.name = data.name.trim();
         if (data.code !== undefined) {
             updateData.code = data.code.toUpperCase().replace(/[^A-Z0-9_]/g, '');
@@ -155,10 +156,15 @@ export class KdsStationService {
         if (data.isDefault !== undefined) updateData.isDefault = data.isDefault;
 
         try {
-            return await prisma.kdsStation.update({
-                where: { id },
+            // SEC-FIX: Include tenantId in WHERE clause for defense-in-depth tenant isolation
+            const result = await prisma.kdsStation.updateMany({
+                where: { id, tenantId },
                 data: updateData
             });
+            if (result.count === 0) {
+                throw new NotFoundError('KDS Station');
+            }
+            return prisma.kdsStation.findFirst({ where: { id, tenantId } });
         } catch (error) {
             if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
                 throw new ConflictError(`Station with code "${data.code}" already exists`);
@@ -195,8 +201,9 @@ export class KdsStationService {
             );
         }
 
-        await prisma.kdsStation.delete({
-            where: { id }
+        // SEC-FIX: Include tenantId in WHERE clause for defense-in-depth tenant isolation
+        await prisma.kdsStation.deleteMany({
+            where: { id, tenantId }
         });
 
         logger.info('KDS Station deleted', { stationId: id, tenantId });
@@ -215,6 +222,7 @@ export class KdsStationService {
             throw new NotFoundError('KDS Station');
         }
 
+        // SEC-FIX: Include tenantId in WHERE clause for defense-in-depth tenant isolation
         await prisma.$transaction([
             // Quitar default de todas las estaciones del tenant
             prisma.kdsStation.updateMany({
@@ -222,8 +230,8 @@ export class KdsStationService {
                 data: { isDefault: false }
             }),
             // Establecer la nueva default
-            prisma.kdsStation.update({
-                where: { id },
+            prisma.kdsStation.updateMany({
+                where: { id, tenantId },
                 data: { isDefault: true }
             })
         ]);

@@ -28,11 +28,12 @@ import { validateId } from '../middleware/validateId';
 
 const router = Router();
 
-// Listar roles - cualquier usuario autenticado (para dropdowns de asignación)
-router.get('/', authenticate, getRoles);
+// SEC-FIX: Require roles:read permission to prevent RBAC structure disclosure
+// Listar roles - requiere permiso roles:read (expone permisos JSON completos)
+router.get('/', authenticate, requirePermission('roles', 'read'), getRoles);
 
 // Obtener catálogo de recursos y acciones disponibles para configurar permisos
-router.get('/permission-options', authenticate, getPermissionOptions);
+router.get('/permission-options', authenticate, requirePermission('roles', 'read'), getPermissionOptions);
 
 // Obtener detalle de un rol con sus permisos - requiere permiso roles:read
 router.get('/:id', authenticate, validateId(), requirePermission('roles', 'read'), getRoleById);

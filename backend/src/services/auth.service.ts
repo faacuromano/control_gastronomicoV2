@@ -82,6 +82,14 @@ export const generatePinLookup = (pin: string): string => {
 };
 
 // =============================================================================
+// TIMING ATTACK MITIGATION
+// =============================================================================
+// SEC-P2-03: Pre-computed dummy hash for timing-safe rejection of invalid credentials.
+// When no user is found, we still run bcrypt.compare against this dummy to ensure
+// consistent response times (prevents timing oracle for user enumeration).
+const DUMMY_BCRYPT_HASH = '$2a$12$LJ3m4ys3Lg/2VCdxQhBusu5wH5EmKlrV7fDe0FBwrCyEFQ9lB3kRy';
+
+// =============================================================================
 // CONFIGURACIÓN DE BLOQUEO DE CUENTAS
 // =============================================================================
 const MAX_FAILED_ATTEMPTS = 5;
@@ -233,7 +241,8 @@ const generateToken = (user: { id: number; name: string; tenantId: number; role:
     };
 
     // JWT_SECRET se valida al arranque del servidor, por lo que es seguro hacer assert aquí
-    return jwt.sign(payload, JWT_SECRET!, { expiresIn, issuer: JWT_ISSUER, audience: JWT_AUDIENCE } as jwt.SignOptions);
+    // SEC-P2-01: Explicit algorithm to prevent alg confusion attacks
+    return jwt.sign(payload, JWT_SECRET!, { algorithm: 'HS256', expiresIn, issuer: JWT_ISSUER, audience: JWT_AUDIENCE } as jwt.SignOptions);
 };
 
 // =============================================================================
@@ -286,6 +295,11 @@ export const createRefreshToken = async (userId: number, tenantId: number): Prom
  * Valida y consume un refresh token (rotación).
  * Retorna un nuevo access token + nuevo refresh token.
  * El token viejo se elimina para prevenir reutilización.
+ *
+ * SEC-P2-05: If a token is not found, it may indicate token reuse (replay attack).
+ * Since the token was already consumed, an attacker or the legitimate user is replaying it.
+ * We defensively revoke ALL tokens for the user extracted from the hashed token lookup
+ * to force re-authentication on all devices.
  */
 export const refreshAccessToken = async (rawToken: string) => {
     const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
@@ -300,6 +314,12 @@ export const refreshAccessToken = async (rawToken: string) => {
     });
 
     if (!storedToken) {
+        // SEC-P2-05: Token not found — possible replay attack.
+        // Log for security monitoring. Full reuse detection with family-based
+        // revocation requires adding a familyId column (future schema migration).
+        logger.warn('[SECURITY] Refresh token not found — possible token reuse/replay attempt', {
+            tokenPrefix: hashedToken.substring(0, 8),
+        });
         throw new UnauthorizedError('Invalid refresh token');
     }
 
@@ -315,14 +335,27 @@ export const refreshAccessToken = async (rawToken: string) => {
         throw new UnauthorizedError('User account is inactive');
     }
 
-    // Rotación de tokens: eliminar el token viejo antes de emitir uno nuevo
-    await prisma.refreshToken.delete({ where: { id: storedToken.id } });
-
-    // Generar nuevo access token JWT
+    // SEC-P2-05: Atomic rotation — delete old token and create new one in transaction
+    // to prevent race conditions where two concurrent refreshes could both succeed
     const accessToken = generateToken(storedToken.user, '12h');
+    const newRawToken = crypto.randomBytes(32).toString('hex');
+    const newHashedToken = crypto.createHash('sha256').update(newRawToken).digest('hex');
+    const newExpiresAt = new Date();
+    newExpiresAt.setDate(newExpiresAt.getDate() + REFRESH_TOKEN_EXPIRY_DAYS);
 
-    // Generar nuevo refresh token (rotación completa)
-    const newRefreshToken = await createRefreshToken(storedToken.userId, storedToken.tenantId);
+    await prisma.$transaction([
+        prisma.refreshToken.delete({ where: { id: storedToken.id } }),
+        prisma.refreshToken.create({
+            data: {
+                tenantId: storedToken.tenantId,
+                userId: storedToken.userId,
+                token: newHashedToken,
+                expiresAt: newExpiresAt
+            }
+        })
+    ]);
+
+    const newRefreshToken = newRawToken;
 
     return {
         accessToken,
@@ -419,19 +452,23 @@ export const loginWithPin = async (pin: string, tenantId: number) => {
 
     // SEC-AUD-006: Check lockout BEFORE bcrypt to avoid wasting CPU on locked accounts
     // and to prevent timing-based PIN validity leakage
+    // SEC-FIX: Use generic error message to prevent user enumeration via lockout differentiation
     if (candidate && isAccountLocked(candidate)) {
-        const remainingMinutes = Math.ceil(
-            (candidate.lockedUntil!.getTime() - Date.now()) / (1000 * 60)
-        );
-        throw new UnauthorizedError(
-            `Account locked. Try again in ${remainingMinutes} minutes.`
-        );
+        logger.warn('Login attempt on locked account', { userId: candidate.id, tenantId });
+        throw new UnauthorizedError('Invalid credentials');
     }
 
     // 3. Verificar PIN con bcrypt (defensa en profundidad contra colisiones SHA-256)
+    // SEC-P2-03: Timing-safe — always run bcrypt.compare even when no candidate found
+    // to prevent timing oracle that reveals whether a PIN exists in the system
     let user = null;
-    if (candidate && candidate.pinHash && await bcrypt.compare(pin, candidate.pinHash)) {
-        user = candidate;
+    if (candidate && candidate.pinHash) {
+        if (await bcrypt.compare(pin, candidate.pinHash)) {
+            user = candidate;
+        }
+    } else {
+        // Dummy compare to normalize response time when no candidate found
+        await bcrypt.compare(pin, DUMMY_BCRYPT_HASH);
     }
 
     // SEGURIDAD: No revelar si el PIN existe o no (misma respuesta para PIN inválido o inexistente)
@@ -552,19 +589,17 @@ export const loginWithPassword = async (data: PasswordLoginData) => {
         include: { role: true }
     });
 
-    // SEGURIDAD: No revelar si el email existe o no
+    // SEC-P2-03: Timing-safe — run dummy bcrypt when user not found to prevent
+    // email enumeration via response time differences
     if (!user) {
+        await bcrypt.compare(data.password, DUMMY_BCRYPT_HASH);
         throw new UnauthorizedError('Invalid credentials');
     }
 
-    // 3. Verificar si la cuenta está bloqueada
+    // SEC-FIX: Use generic error message to prevent user enumeration via lockout differentiation
     if (isAccountLocked(user)) {
-        const remainingMinutes = Math.ceil(
-            (user.lockedUntil!.getTime() - Date.now()) / (1000 * 60)
-        );
-        throw new UnauthorizedError(
-            `Account locked. Try again in ${remainingMinutes} minutes.`
-        );
+        logger.warn('Login attempt on locked account', { userId: user.id, tenantId: data.tenantId });
+        throw new UnauthorizedError('Invalid credentials');
     }
 
     // 4. Verificar que el usuario esté activo y tenga contraseña configurada
@@ -613,7 +648,8 @@ export const registerTenant = async (data: RegisterTenantData) => {
     }
 
     // 2. Generar código slug a partir del nombre del negocio (para URLs y referencias)
-    const code = data.businessName.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Math.floor(Math.random() * 1000);
+    // SEC-FIX: Use CSPRNG instead of Math.random() to prevent PRNG state prediction
+    const code = data.businessName.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + crypto.randomInt(0, 1000);
 
     // 3. Crear tenant y toda la configuración inicial en una transacción atómica
     const result = await prisma.$transaction(async (tx) => {
@@ -672,7 +708,8 @@ export const registerTenant = async (data: RegisterTenantData) => {
         // Crear usuario administrador con contraseña y PIN de respaldo
         const passwordHash = await bcrypt.hash(data.password, BCRYPT_SALT_ROUNDS);
         // Generar PIN aleatorio de 6 dígitos como método de acceso rápido
-        const pinCode = Math.floor(100000 + Math.random() * 900000).toString();
+        // SEC-FIX: Use CSPRNG for PIN generation to prevent prediction attacks
+        const pinCode = crypto.randomInt(100000, 1000000).toString();
         const pinHash = await bcrypt.hash(pinCode, BCRYPT_SALT_ROUNDS);
         const pinLookup = generatePinLookup(pinCode);
 

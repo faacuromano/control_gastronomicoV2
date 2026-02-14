@@ -136,9 +136,9 @@ export class BulkPriceUpdateService {
                 const currentPrice = Number(product.price);
                 const newPrice = Math.max(0, update.newPrice);
 
-                // SAFE: tx.product.findFirst en L121 verifica propiedad del tenant
-                await tx.product.update({
-                    where: { id: update.id },
+                // SEC-P3-01: Include tenantId in WHERE for defense-in-depth
+                await tx.product.updateMany({
+                    where: { id: update.id, tenantId },
                     data: { price: newPrice }
                 });
 

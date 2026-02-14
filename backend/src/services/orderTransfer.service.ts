@@ -184,9 +184,9 @@ export class OrderTransferService {
                 }
             }
 
-            // SEGURO: tx.table.findFirst en L53 verifica propiedad del tenant sobre la orden origen
-            await tx.order.update({
-                where: { id: sourceOrder.id },
+            // SEC-P3-01: Include tenantId in WHERE for defense-in-depth
+            await tx.order.updateMany({
+                where: { id: sourceOrder.id, tenantId },
                 data: {
                     subtotal: sourceSubtotal,
                     total: sourceSubtotal - Number(sourceOrder.discount)
@@ -195,9 +195,9 @@ export class OrderTransferService {
 
             // Si la orden origen quedo sin items, cancelarla y liberar la mesa
             if (remainingSourceItems.length === 0) {
-                // SEGURO: sourceOrder verificado via tx.table.findFirst en L53
-                await tx.order.update({
-                    where: { id: sourceOrder.id },
+                // SEC-P3-01: Include tenantId in WHERE for defense-in-depth
+                await tx.order.updateMany({
+                    where: { id: sourceOrder.id, tenantId },
                     data: { status: 'CANCELLED' }
                 });
                 await tx.table.updateMany({
@@ -220,9 +220,9 @@ export class OrderTransferService {
                 }
             }
 
-            // SEGURO: targetOrderId proviene de tx.table.findFirst en L88 o fue creado en L117
-            await tx.order.update({
-                where: { id: targetOrderId },
+            // SEC-P3-01: Include tenantId in WHERE for defense-in-depth
+            await tx.order.updateMany({
+                where: { id: targetOrderId, tenantId },
                 data: {
                     subtotal: targetSubtotal,
                     total: targetSubtotal

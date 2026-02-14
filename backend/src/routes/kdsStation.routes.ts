@@ -17,11 +17,12 @@ const router = Router();
 // Todas las rutas requieren autenticación
 router.use(authenticate);
 
-// Listar estaciones (lectura, cualquier usuario autenticado)
-router.get('/', kdsStationController.getStations);
+// SEC-FIX: Require settings:read permission for KDS station configuration access
+// Listar estaciones - requiere permiso settings:read
+router.get('/', requirePermission('settings', 'read'), kdsStationController.getStations);
 
-// Obtener estación por ID
-router.get('/:id', validateId(), kdsStationController.getStation);
+// Obtener estación por ID - requiere permiso settings:read
+router.get('/:id', validateId(), requirePermission('settings', 'read'), kdsStationController.getStation);
 
 // Crear estación (requiere permiso de settings)
 router.post('/', requirePermission('settings', 'update'), kdsStationController.createStation);

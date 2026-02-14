@@ -308,8 +308,10 @@ export abstract class AbstractDeliveryAdapter {
     const bufA = Buffer.from(a);
     const bufB = Buffer.from(b);
 
-    // Si los buffers tienen distinta longitud, no son iguales
+    // SEC-P4-REVIEW: On length mismatch, compare bufA against itself to consume
+    // constant time, preventing timing oracle that leaks signature length info
     if (bufA.length !== bufB.length) {
+      crypto.timingSafeEqual(bufA, bufA);
       return false;
     }
 

@@ -24,11 +24,12 @@ import { validateId } from '../middleware/validateId';
 
 const router = Router();
 
+// SEC-FIX: Require users:read permission to prevent information disclosure to low-privilege users
 // Buscar usuarios por capacidad/permiso específico (ej: usuarios con permiso de delivery)
-router.get('/with-capability', authenticate, getUsersWithCapability);
+router.get('/with-capability', authenticate, requirePermission('users', 'read'), getUsersWithCapability);
 
-// Listar usuarios - cualquier usuario autenticado (para dropdowns de asignación)
-router.get('/', authenticate, listUsers);
+// Listar usuarios - requiere permiso users:read (expone emails, roles y estado de usuarios)
+router.get('/', authenticate, requirePermission('users', 'read'), listUsers);
 
 // Obtener detalle de un usuario - requiere permiso users:read
 router.get('/:id', authenticate, validateId(), requirePermission('users', 'read'), getUserById);

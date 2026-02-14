@@ -33,21 +33,6 @@ router.use(webhookRateLimiter);
 // ============================================================================
 
 /**
- * Ruta generica para webhooks de cualquier plataforma.
- * La plataforma se detecta dinamicamente desde el parametro de la URL.
- *
- * @route POST /api/v1/webhooks/:platform
- * @example POST /api/v1/webhooks/rappi
- * @example POST /api/v1/webhooks/pedidosya
- */
-router.post(
-  '/:platform',
-  raw({ type: 'application/json', limit: '1mb' }),
-  skipHmacInDevelopment,
-  webhookController.handleWebhook.bind(webhookController)
-);
-
-/**
  * Health check para verificar estado del sistema de webhooks.
  *
  * @route GET /api/v1/webhooks/health
@@ -55,7 +40,9 @@ router.post(
 router.get('/health', webhookController.healthCheck.bind(webhookController));
 
 // ============================================================================
-// RUTAS ESPECIFICAS POR PLATAFORMA (Opcionales, para mayor claridad en la config)
+// SEC-FIX: RUTAS ESPECIFICAS ANTES DEL CATCH-ALL /:platform
+// Express evalúa rutas en orden de registro. Las rutas específicas deben ir
+// ANTES del parámetro genérico para que no sean interceptadas por /:platform.
 // ============================================================================
 
 /**
@@ -92,6 +79,19 @@ router.post(
   raw({ type: 'application/json', limit: '1mb' }),
   validateHmac('PEDIDOSYA'),
   webhookController.handlePedidosYaWebhook.bind(webhookController)
+);
+
+/**
+ * Ruta generica catch-all para webhooks de plataformas no listadas arriba.
+ * DEBE ir DESPUES de las rutas específicas para no interceptarlas.
+ *
+ * @route POST /api/v1/webhooks/:platform
+ */
+router.post(
+  '/:platform',
+  raw({ type: 'application/json', limit: '1mb' }),
+  skipHmacInDevelopment,
+  webhookController.handleWebhook.bind(webhookController)
 );
 
 export default router;

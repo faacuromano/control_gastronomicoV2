@@ -14,7 +14,7 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { AuditAction } from '@prisma/client';
-import { loginWithPin, register, loginWithPassword, registerTenant, createRefreshToken, refreshAccessToken, revokeRefreshTokens } from '../services/auth.service';
+import { loginWithPin, register, loginWithPassword, registerTenant, createRefreshToken, refreshAccessToken, revokeRefreshTokens, JWT_ISSUER, JWT_AUDIENCE } from '../services/auth.service';
 import { sendSuccess, sendError } from '../utils/response';
 import { prisma } from '../lib/prisma';
 import { asyncHandler } from '../middleware/asyncHandler';
@@ -373,7 +373,8 @@ export const logoutUser = asyncHandler(async (req: Request, res: Response) => {
             const token = req.cookies?.[AUTH_COOKIE_NAME]
                 || req.headers['authorization']?.split('Bearer ')[1];
             if (token && process.env.JWT_SECRET) {
-                user = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] }) as typeof req.user;
+                // SEC-P2-01: Validate issuer/audience on all verify calls, not just primary auth
+                user = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'], issuer: JWT_ISSUER, audience: JWT_AUDIENCE }) as typeof req.user;
             }
         } catch {
             // Token invalid/expired — that's fine, just skip revocation

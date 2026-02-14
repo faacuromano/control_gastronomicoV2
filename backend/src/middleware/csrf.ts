@@ -20,6 +20,14 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
         return;
     }
 
+    // SEC-P4-REVIEW: Exempt webhook routes from CSRF — they are protected by HMAC
+    // signature validation instead. External delivery platforms (Rappi, Glovo, PedidosYa)
+    // cannot send X-Requested-With headers, so CSRF would block all legitimate webhooks.
+    if (req.path.startsWith('/v1/webhooks')) {
+        next();
+        return;
+    }
+
     const xRequestedWith = req.headers['x-requested-with'];
     if (xRequestedWith !== 'XMLHttpRequest') {
         res.status(403).json({

@@ -19,6 +19,7 @@ import { Server as HttpServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import { DefaultEventsMap } from 'socket.io/dist/typed-events';
 import jwt from 'jsonwebtoken';
+import { JWT_ISSUER, JWT_AUDIENCE } from '../services/auth.service';
 import { logger } from '../utils/logger';
 
 // Instancia singleton de Socket.IO, undefined hasta que se llame initSocket()
@@ -112,7 +113,8 @@ export const initSocket = (httpServer: HttpServer) => {
 
       // FIX-003 (SEC-003): Verificar JWT restringiendo a HS256 para prevenir
       // ataques de alg:none y confusion de algoritmos (consistente con auth.ts:115)
-      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as {
+      // SEC-P2-01: Validate issuer/audience on WebSocket auth to match HTTP auth middleware
+      const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'], issuer: JWT_ISSUER, audience: JWT_AUDIENCE }) as {
         id: number;
         role: string;
         name: string;

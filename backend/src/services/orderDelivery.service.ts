@@ -54,10 +54,16 @@ export class OrderDeliveryService {
             throw new NotFoundError('Driver');
         }
 
-        // SEGURO: findFirst en L25 verifica propiedad del tenant antes del update
-        const order = await prisma.order.update({
-            where: { id: orderId },
-            data: { driverId },
+        // SEC-P3-01: Include tenantId in WHERE to prevent IDOR cross-tenant manipulation
+        const updateResult = await prisma.order.updateMany({
+            where: { id: orderId, tenantId },
+            data: { driverId }
+        });
+        if (updateResult.count === 0) {
+            throw new NotFoundError('Order');
+        }
+        const order = await prisma.order.findFirstOrThrow({
+            where: { id: orderId, tenantId },
             include: {
                 driver: true,
                 items: {

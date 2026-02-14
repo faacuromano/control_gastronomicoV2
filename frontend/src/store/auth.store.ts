@@ -154,8 +154,10 @@ export const useAuthStore = create<AuthState>()(
             name: 'auth-storage',
             // FIX P0-004: Only persist user data, not sensitive tokens
             // FIX FE-004: No longer persist isAuthenticated — derive from user on rehydration
+            // SEC-F-02: Strip generatedPin from persisted state — it's a sensitive
+            // credential that should only exist in memory for the initial display
             partialize: (state) => ({
-                user: state.user,
+                user: state.user ? (() => { const { generatedPin, ...safe } = state.user as Record<string, unknown>; return safe; })() : null,
                 tenantId: state.tenantId
             }),
             onRehydrateStorage: () => (state) => {

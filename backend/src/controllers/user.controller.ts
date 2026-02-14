@@ -22,9 +22,10 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { ValidationError, NotFoundError, ConflictError, UnauthorizedError, ApiError } from '../utils/errors';
-import { BCRYPT_SALT_ROUNDS, generatePinLookup } from '../services/auth.service';
+import { BCRYPT_SALT_ROUNDS, generatePinLookup, revokeRefreshTokens } from '../services/auth.service';
 import { auditService } from '../services/audit.service';
 import { sendSuccess } from '../utils/response';
+import { logger } from '../utils/logger';
 
 /** Esquema de validación para crear un nuevo usuario */
 const CreateUserSchema = z.object({
@@ -375,6 +376,13 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
         throw new NotFoundError('User');
     }
 
+    // SEC-P2-04: Invalidate all sessions when credentials change to prevent
+    // stolen tokens from remaining valid after password/PIN rotation
+    if (password || pinCode) {
+        await revokeRefreshTokens(userId, req.user!.tenantId!);
+        logger.info(`[SECURITY] Revoked all refresh tokens for user ${userId} due to credential change`);
+    }
+
     // Obtener usuario actualizado para la respuesta
     const user = await prisma.user.findFirst({
         where: { id: userId, tenantId: req.user!.tenantId! },
@@ -398,7 +406,8 @@ export const updateUser = asyncHandler(async (req: Request, res: Response) => {
             ipAddress: String(req.ip),
             userAgent: req.headers['user-agent'] ?? 'unknown'
         },
-        { updates: data }
+        // SEC-FIX: Redact sensitive fields to prevent plaintext credentials in audit logs
+        { updates: (() => { const { pinCode, password, ...safeData } = data; return { ...safeData, pinChanged: !!pinCode, passwordChanged: !!password }; })() }
     );
 
     sendSuccess(res, user);

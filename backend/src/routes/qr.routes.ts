@@ -61,14 +61,15 @@ const adminRouter = Router();
 // Todas las rutas admin requieren usuario autenticado
 adminRouter.use(authenticate);
 
+// SEC-FIX: Require settings:read permission for QR admin read endpoints
 // Obtener configuración QR del tenant (modo del menú, diseño, etc.)
-adminRouter.get('/config', qrController.getConfig);
+adminRouter.get('/config', requirePermission('settings', 'read'), qrController.getConfig);
 // Actualizar configuración QR (cambiar modo, personalizar apariencia)
 adminRouter.patch('/config', requirePermission('settings', 'update'), qrController.updateConfig);
 
 // Gestión de códigos QR individuales
 // Listar todos los códigos QR generados para el tenant
-adminRouter.get('/codes', qrController.getAllCodes);
+adminRouter.get('/codes', requirePermission('settings', 'read'), qrController.getAllCodes);
 // Generar nuevo código QR vinculado a una mesa
 adminRouter.post('/codes', requirePermission('settings', 'update'), qrController.generateCode);
 // Activar/desactivar un código QR sin eliminarlo

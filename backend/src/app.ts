@@ -105,9 +105,19 @@ app.use(helmet({
       formAction: ["'self'"],
     },
   } : false,
-  hsts: isProduction ? { maxAge: 31536000, includeSubDomains: true } : false,
+  hsts: isProduction ? { maxAge: 31536000, includeSubDomains: true, preload: true } : false,
   crossOriginEmbedderPolicy: false, // Permitir carga de imagenes externas
+  // SEC-P4-05: Additional security headers
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  crossOriginResourcePolicy: { policy: 'same-origin' },
 }));
+// SEC-P4-05: Permissions-Policy — restrict browser features this app doesn't use
+// Prevents iframed contexts or injected scripts from accessing sensitive APIs
+app.use((_req, res, next) => {
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+  next();
+});
 app.use(correlationId);
 // API-004: Logging estructurado de requests en formato JSON con correlation ID
 import { requestLogger } from './middleware/requestLogger';
@@ -115,6 +125,11 @@ app.use(requestLogger);
 // Compresion gzip de las respuestas para reducir el ancho de banda
 // PERF-002: Solo comprimir respuestas mayores a 1KB para evitar overhead en respuestas pequeñas
 app.use(compression({ threshold: 1024 }));
+
+// SEC-FIX: Global API rate limiter applied to ALL endpoints as baseline DoS protection.
+// Individual routes may apply stricter limits (e.g., authRateLimiter for login).
+import { apiRateLimiter } from './middleware/rateLimit';
+app.use('/api/', apiRateLimiter);
 
 // Proteccion CSRF: exige el header X-Requested-With en peticiones que modifican estado.
 // Esto previene que sitios maliciosos hagan requests POST/PUT/DELETE en nombre del usuario.

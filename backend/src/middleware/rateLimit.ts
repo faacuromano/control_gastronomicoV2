@@ -61,7 +61,8 @@ export const apiRateLimiter = rateLimit({
   legacyHeaders: false,
   // CFG-002: En desarrollo se usa un límite alto en vez de omitir, para que el middleware
   // se ejercite y se detecten bugs de integración antes de producción
-  skip: () => process.env.DISABLE_RATE_LIMIT === 'true',
+  // SEC-FIX: Production guard to prevent accidental bypass in production
+  skip: () => process.env.NODE_ENV !== 'production' && process.env.DISABLE_RATE_LIMIT === 'true',
 });
 
 /**

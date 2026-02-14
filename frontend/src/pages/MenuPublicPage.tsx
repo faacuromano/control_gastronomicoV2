@@ -11,6 +11,22 @@ import { Loader2, AlertCircle, ShoppingCart, Plus, Minus, CheckCircle } from 'lu
 import { toast } from 'sonner';
 import { getErrorMessage } from '../lib/errorUtils';
 
+// SEC-F-01: Sanitize theme values to prevent CSS injection via admin-controlled config
+const ALLOWED_FONTS = ['Outfit', 'Playfair Display', 'Roboto', 'Merriweather', 'Montserrat'];
+const sanitizeColor = (val: string): string =>
+    /^#[0-9a-fA-F]{3,8}$|^rgba?\([\d,.\s]+\)$/.test(val) ? val : '#ffffff';
+const sanitizeFont = (val: string): string =>
+    ALLOWED_FONTS.includes(val) ? val : 'Outfit';
+// SEC-F-03: Validate URLs to prevent javascript:/data: injection in img/iframe
+const isSafeUrl = (url: string): boolean => {
+    try {
+        const parsed = new URL(url);
+        return ['https:', 'http:'].includes(parsed.protocol);
+    } catch {
+        return false;
+    }
+};
+
 interface CartItem {
     productId: number;
     name: string;
@@ -162,11 +178,12 @@ export const MenuPublicPage: React.FC = () => {
                 </div>
                 
                 {/* PDF Viewer */}
-                {menu.pdfUrl ? (
+                {menu.pdfUrl && isSafeUrl(menu.pdfUrl) ? (
                     <iframe
                         src={menu.pdfUrl}
                         className="w-full h-[calc(100vh-64px)]"
                         title="Menú"
+                        sandbox="allow-same-origin"
                     />
                 ) : (
                     <div className="flex items-center justify-center h-96">
@@ -184,15 +201,14 @@ export const MenuPublicPage: React.FC = () => {
 
     const currentCategoryName = menu?.categories?.find((c: PublicMenuCategory) => c.id === selectedCategory)?.name || 'CARTA';
 
-    // Theme values with defaults
+    // Theme values with defaults — SEC-F-01: sanitized to prevent CSS injection
     const theme = {
-        bg: menu?.theme?.backgroundColor || '#2c2e2c',
-        textPrimary: menu?.theme?.primaryColor || '#ffffff',
-        textSecondary: menu?.theme?.secondaryColor || 'rgba(254, 243, 199, 0.6)',
-        accent: menu?.theme?.accentColor || '#fef3c7',
-        fontFamily: menu?.theme?.fontFamily || 'Outfit',
+        bg: sanitizeColor(menu?.theme?.backgroundColor || '#2c2e2c'),
+        textPrimary: sanitizeColor(menu?.theme?.primaryColor || '#ffffff'),
+        textSecondary: sanitizeColor(menu?.theme?.secondaryColor || 'rgba(254, 243, 199, 0.6)'),
+        accent: sanitizeColor(menu?.theme?.accentColor || '#fef3c7'),
+        fontFamily: sanitizeFont(menu?.theme?.fontFamily || 'Outfit'),
         enableAnimations: menu?.theme?.enableAnimations ?? true,
-        ...menu?.theme
     };
 
     // Build Google Fonts URL dynamically
@@ -272,12 +288,12 @@ export const MenuPublicPage: React.FC = () => {
 
             {/* Header / Banner */}
             <div className="relative">
-                {menu?.bannerUrl ? (
+                {menu?.bannerUrl && isSafeUrl(menu.bannerUrl) ? (
                     <div className="w-full h-56 overflow-hidden relative">
                         <div className="absolute inset-0 bg-black/60 z-10" />
-                        <img 
-                            src={menu.bannerUrl} 
-                            alt="Banner" 
+                        <img
+                            src={menu.bannerUrl}
+                            alt="Banner"
                             className="w-full h-full object-cover"
                         />
                         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-6 text-center">
@@ -397,10 +413,10 @@ export const MenuPublicPage: React.FC = () => {
                                 )}
                                 
                                 {/* Product Image if exists */}
-                                {product.imageUrl && (
+                                {product.image && isSafeUrl(product.image) && (
                                     <div className="mt-4 overflow-hidden rounded-xl border border-white/10 opacity-80 group-hover:opacity-100 transition-all max-w-[140px] shadow-lg">
-                                        <img 
-                                            src={product.imageUrl} 
+                                        <img
+                                            src={product.image}
                                             alt={product.name}
                                             className="w-full h-28 object-cover transform group-hover:scale-105 transition-transform duration-500"
                                         />
