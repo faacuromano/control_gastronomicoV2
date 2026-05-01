@@ -4,7 +4,7 @@
 # Versión simplificada sin multi-stage para desarrollo más rápido
 # =============================================================================
 
-FROM node:20.11-alpine
+FROM node:25.9-alpine
 
 WORKDIR /app
 
